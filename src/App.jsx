@@ -544,19 +544,40 @@ function sortearEquipes(entradas, opcoes = {}) {
     return { ...cor, vagas, forca: jogadores.reduce((s, j) => s + j.estrelas, 0) };
   };
 
-  // pareamento: ordena os times pela soma de estrelas e junta os adjacentes —
-  // cada partida fica o mais parelha possível mesmo quando as somas não empatam.
-  const ordenados = escolhido.times
-    .map((jogadores) => ({ jogadores, forca: jogadores.reduce((s, j) => s + j.estrelas, 0) }))
-    .sort((a, b) => b.forca - a.forca);
+  /* Regra do campeonato: só a ÚLTIMA partida pode ter vagas em aberto. Todas as
+   * anteriores saem completas (2 goleiros + 8 de linha cada). O motor acima
+   * equilibra; aqui COMPACTAMOS enchendo uma partida por vez — cada partida
+   * consome 2 goleiros e 8 jogadores de linha do topo das listas — até o
+   * material acabar. A última partida fica com o que sobrou e suas vagas vazias.
+   *
+   * Dentro de cada partida cheia, os 10 jogadores são repartidos em dois times
+   * equilibrados por força (serpentina), preservando o balanceamento. */
+  const gksOrdenados = [...gkFinal].sort((a, b) => b.estrelas - a.estrelas);
+  const lnOrdenados = [...linhaFinal].sort((a, b) => b.estrelas - a.estrelas);
+
+  const repartir = (gks, lns) => {
+    // distribui em 2 times por serpentina de força; goleiro fixo 1 por time
+    const A = [], B = [];
+    if (gks[0]) A.push(gks[0]);
+    if (gks[1]) B.push(gks[1]);
+    lns.forEach((j, i) => (i % 4 === 0 || i % 4 === 3 ? A : B).push(j)); // A,B,B,A
+    return [A, B];
+  };
+
   const blocos = [];
-  for (let i = 0; i < ordenados.length; i += 2) {
-    const [x, y] = rng() < 0.5 ? [ordenados[i], ordenados[i + 1]] : [ordenados[i + 1], ordenados[i]];
+  for (let p = 0; p < partidas; p++) {
+    const gks = gksOrdenados.splice(0, gkPorTime * 2); // até 2 goleiros
+    const lns = lnOrdenados.splice(0, linhaPorTime * 2); // até 8 de linha
+    const [A, B] = repartir(gks, lns);
     blocos.push({
-      numero: blocos.length + 1, extra: false,
-      amarelo: equipe(AMARELO, x.jogadores), azul: equipe(AZUL, y.jogadores),
+      numero: p + 1, extra: false,
+      preenchimento: A.length + B.length,
+      amarelo: equipe(AMARELO, A), azul: equipe(AZUL, B),
     });
   }
+  // a partida menos preenchida vai para o fim e é renumerada
+  blocos.sort((a, b) => b.preenchimento - a.preenchimento);
+  blocos.forEach((b, i) => { b.numero = i + 1; delete b.preenchimento; });
 
   /* Não há mais "partida extra de sobressalentes": todas as N partidas nascem
    * do mesmo sorteio, e as vagas que faltarem na última ficam vazias para o
