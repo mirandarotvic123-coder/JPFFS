@@ -1490,6 +1490,18 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
   function trocar(a, b) {
     setSel(null);
     if (!a || !b || a === b) return;
+    // Não permite mover quem está na partida onde pontua (1ª aparição). Só quem
+    // repete (entrou para completar) pode ser trocado.
+    const primeira = {};
+    for (const q of sorteio.partidas) for (const e of [q.amarelo, q.azul]) for (const v of e.vagas)
+      if (v.jogador) { const at = primeira[v.jogador.id]; if (at === undefined || q.numero < at) primeira[v.jogador.id] = q.numero; }
+    const posicaoDe = (id) => {
+      for (const q of sorteio.partidas) for (const e of [q.amarelo, q.azul]) for (const v of e.vagas)
+        if (v.jogador?.id === id) return q.numero;
+      return null;
+    };
+    const travado = (id) => primeira[id] === posicaoDe(id) && !aparicoes[id];
+    if (travado(a) || travado(b)) { avisar("Jogador bloqueado 🔒 — está na partida em que pontua"); return; }
     let recusa = null;
     mexer((partidas) => {
       let va = null, vb = null, ea = null, eb = null;
@@ -1542,53 +1554,73 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
    *  jogou (priorizando quem apareceu menos vezes). Quem repete não pontua de
    *  novo — só cartão conta —, o que é tratado na hora de gravar/pontuar. */
   function completarAutomaticamente(numeroPartida) {
+    let preencheu = 0;
     mexer((partidas) => {
       const alvos = numeroPartida ? partidas.filter((p) => p.numero === numeroPartida) : partidas;
 
+      // Uso atual de cada jogador considerando o sorteio na tela (quantas
+      // partidas já ocupa). Serve para priorizar quem aparece menos.
+      const usoAtual = () => {
+        const m = {};
+        for (const q of partidas) for (const e of [q.amarelo, q.azul])
+          for (const x of e.vagas) if (x.jogador) m[x.jogador.id] = (m[x.jogador.id] || 0) + 1;
+        return m;
+      };
+
       for (const p of alvos) for (const lado of ["amarelo", "azul"]) {
         const equipe = p[lado];
-        for (const v of equipe.vagas) {
-          if (v.jogador) continue;
-          const jaTemGk = contarGoleiros(equipe, v) >= cfg.goleirosPorTime;
-          const querGk = v.papel === "GOLEIRO";
+        for (const vaga of equipe.vagas) {
+          if (vaga.jogador) continue;
+          const querGk = vaga.papel === "GOLEIRO";
+          const jaTemGk = contarGoleiros(equipe, vaga) >= cfg.goleirosPorTime;
 
-          // Quem já está escalado NESTA partida não pode ocupar outra vaga dela.
+          // Quem já está NESTA partida não pode ocupar outra vaga dela.
           const nestaPartida = new Set([p.amarelo, p.azul]
             .flatMap((e) => e.vagas.map((x) => x.jogador?.id).filter(Boolean)));
-          // Contagem de aparições já considerando o sorteio atual na tela.
-          const usoAtual = {};
-          for (const q of partidas) for (const e of [q.amarelo, q.azul])
-            for (const x of e.vagas) if (x.jogador) usoAtual[x.jogador.id] = (usoAtual[x.jogador.id] || 0) + 1;
 
-          // Candidatos: todos os aptos que servem para o papel e não estão já
-          // nesta partida. Ordena por menos aparições (soma sorteio + gravadas).
+          const uso = usoAtual();
+          // Candidatos = todos os aptos que ainda não estão nesta partida.
+          // Para completar, reutilizamos quem já jogou (vem das outras partidas);
+          // se houver alguém ainda de fora, entra primeiro. Prioridade: quem
+          // apareceu menos vezes no dia. Vaga de goleiro pode ser completada com
+          // qualquer jogador (goleiro ou de linha), como na regra do campeonato.
           const candidatos = P.aptos
             .filter((e) => !nestaPartida.has(e.jogador.id))
             .filter((e) => {
               const ehGk = e.jogador.posicao === "GOLEIRO";
+              // não colocar um 2º goleiro de ofício na mesma equipe
               if (jaTemGk && ehGk) return false;
-              return querGk ? ehGk : true; // vaga de linha aceita qualquer não-goleiro-excedente
+              return true;
             })
-            .filter((e) => querGk ? e.jogador.posicao === "GOLEIRO" : e.jogador.posicao !== "GOLEIRO")
             .sort((a, b) => {
-              const ua = (usoAtual[a.jogador.id] || 0) + (aparicoes[a.jogador.id] || 0);
-              const ub = (usoAtual[b.jogador.id] || 0) + (aparicoes[b.jogador.id] || 0);
-              return ua - ub;
+              const ua = (uso[a.jogador.id] || 0) + (aparicoes[a.jogador.id] || 0);
+              const ub = (uso[b.jogador.id] || 0) + (aparicoes[b.jogador.id] || 0);
+              if (ua !== ub) return ua - ub; // quem jogou menos primeiro
+              // desempate: para vaga de goleiro, prefere goleiro de ofício
+              if (querGk) {
+                const ga = a.jogador.posicao === "GOLEIRO" ? 0 : 1;
+                const gb = b.jogador.posicao === "GOLEIRO" ? 0 : 1;
+                if (ga !== gb) return ga - gb;
+              }
+              return 0;
             });
 
           const e = candidatos[0];
           if (!e) continue;
           const l = e.linha;
-          v.jogador = {
+          vaga.jogador = {
             id: e.jogador.id, nome: e.jogador.nome, ehGoleiro: e.jogador.posicao === "GOLEIRO",
             convidado: !!e.jogador.convidado,
             estrelas: e.jogador.convidado ? e.jogador.estrelasIniciais || 1 : l?.estrelas || 1,
-            posicaoTabela: l?.posicao || 999, slotGoleiro: v.papel === "GOLEIRO",
+            posicaoTabela: l?.posicao || 999, slotGoleiro: vaga.papel === "GOLEIRO",
           };
+          preencheu++;
         }
       }
     });
-    avisar("Vagas completadas com quem jogou menos");
+    avisar(preencheu > 0
+      ? `${preencheu} vaga(s) completada(s) com quem jogou menos`
+      : "Não há quem completar — todos já estão nesta partida");
   }
 
 
@@ -1624,6 +1656,20 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
   const CardTime = ({ p, pi, lado }) => {
     const time = p[lado];
     const idsNaPartida = new Set(jogadoresDaPartida(p).map((j) => j.id));
+
+    // Trava (cadeado): um jogador está na 1ª APARIÇÃO — a partida onde ele
+    // pontua — se este é o menor número de partida em que ele aparece no
+    // sorteio atual. Nessa vaga ele não pode ser removido nem trocado. Nas
+    // partidas seguintes (repetições, entrou só para completar) fica editável.
+    const primeiraAparicao = {};
+    for (const q of sorteio.partidas)
+      for (const e of [q.amarelo, q.azul])
+        for (const v of e.vagas)
+          if (v.jogador) {
+            const at = primeiraAparicao[v.jogador.id];
+            if (at === undefined || q.numero < at) primeiraAparicao[v.jogador.id] = q.numero;
+          }
+
     return (
       <div className="rounded-lg p-2" style={{ background: "rgba(0,0,0,.28)", borderTop: `4px solid ${time.hex}` }} onDragOver={(e) => e.preventDefault()}>
         <div className="mb-2 flex items-baseline justify-between">
@@ -1663,26 +1709,33 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
             }
             const noGol = v.papel === "GOLEIRO";
             const repetido = !!aparicoes[j.id];
+            // Travado = está na partida onde pontua (1ª aparição no sorteio) e
+            // não é um reaproveitamento de partida já gravada. Não pode mover.
+            const travado = primeiraAparicao[j.id] === p.numero && !repetido;
             return (
-              <li key={j.id} draggable
-                onDragStart={(e) => e.dataTransfer.setData("text/plain", j.id)}
-                onDrop={(e) => { e.preventDefault(); trocar(e.dataTransfer.getData("text/plain"), j.id); }}
+              <li key={j.id} draggable={!travado}
+                onDragStart={(e) => { if (travado) { e.preventDefault(); return; } e.dataTransfer.setData("text/plain", j.id); }}
+                onDrop={(e) => { e.preventDefault(); if (!travado) trocar(e.dataTransfer.getData("text/plain"), j.id); }}
                 onDragOver={(e) => e.preventDefault()}
-                onClick={() => (sel === null ? setSel(j.id) : sel === j.id ? setSel(null) : trocar(sel, j.id))}
-                className="flex cursor-pointer items-center justify-between gap-1 rounded"
+                onClick={() => { if (travado) return; sel === null ? setSel(j.id) : sel === j.id ? setSel(null) : trocar(sel, j.id); }}
+                className={`flex items-center justify-between gap-1 rounded ${travado ? "" : "cursor-pointer"}`}
                 style={{ padding: "7px 6px", fontSize: 12.5, minHeight: 36,
                   background: sel === j.id ? T.ouroFraco : noGol ? T.gkFraco : "transparent",
-                  outline: sel === j.id ? `1px solid ${T.ouro}` : noGol ? `1px solid ${T.gk}` : "none" }}>
+                  outline: sel === j.id ? `1px solid ${T.ouro}` : noGol ? `1px solid ${T.gk}` : "none",
+                  opacity: travado ? 0.92 : 1 }}>
                 <span className="flex min-w-0 items-center gap-1" style={{ color: repetido ? T.fraco : T.texto, fontStyle: repetido ? "italic" : "normal" }}>
                   {noGol && <IconeGoleiro tam={13} />}
                   <span className="truncate">{j.nome}</span>
+                  {travado && <span title="Está na partida em que pontua — bloqueado para não desfazer a escalação que vale" style={{ fontSize: 11 }}>🔒</span>}
                   {repetido && <span title="Já jogou nesta rodada — aqui só o cartão conta" style={{ fontSize: 8, fontWeight: 800, color: T.laranja }}>CART</span>}
                   {j.convidado && <span style={{ fontSize: 8, color: T.roxo }}>CONV</span>}
                 </span>
                 <span className="flex shrink-0 items-center gap-1">
                   <Estrelas n={j.estrelas} tam={9} goleiro={j.ehGoleiro} />
-                  <button onClick={(e) => { e.stopPropagation(); definirVaga(pi, lado, vi, null); }}
-                    title="Esvaziar a vaga" style={{ color: "rgba(255,255,255,.25)", fontSize: 12 }}>✕</button>
+                  {!travado && (
+                    <button onClick={(e) => { e.stopPropagation(); definirVaga(pi, lado, vi, null); }}
+                      title="Esvaziar a vaga" style={{ color: "rgba(255,255,255,.25)", fontSize: 12 }}>✕</button>
+                  )}
                 </span>
               </li>
             );
