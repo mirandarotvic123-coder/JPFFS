@@ -439,15 +439,18 @@ function sortearEquipes(entradas, opcoes = {}) {
 
   const goleiros = entradas.filter((j) => j.ehGoleiro);
   const linha = entradas.filter((j) => !j.ehGoleiro);
-  // cada partida consome 2 equipes completas, então nTimes é sempre par
-  // O gargalo é o jogador de linha: a vaga de goleiro pode sair em aberto e ser
-  // completada na mão, mas as 4 vagas de linha de cada equipe saem do sorteio.
-  const maxPartidas = Math.min(3, Math.floor(linha.length / (linhaPorTime * 2)));
+  // Regra do campeonato: cada partida = 10 jogadores (2 equipes de 5). O número
+  // de partidas é o TOTAL de presentes dividido por 10, arredondado para cima.
+  // As vagas que sobrarem na última partida ficam vazias e são completadas na
+  // mão com quem já jogou (esses não pontuam de novo, só cartão conta).
+  const totalPresentes = entradas.length;
+  const porPartida = cfg.jogadoresPorTime * 2;
+  const maxPartidas = Math.min(3, Math.ceil(totalPresentes / porPartida));
   const partidas = Math.max(0, Math.min(opcoes.partidas || maxPartidas, maxPartidas));
   const nTimes = partidas * 2;
 
   if (partidas < 1) return {
-    erro: `Faltam jogadores de linha: são necessários ${linhaPorTime * 2} para montar 1 partida. Há ${linha.length}.`,
+    erro: `Nenhum jogador presente para sortear.`,
     partidas: [], sobressalentes: entradas, seed, diagnostico: null,
   };
 
@@ -555,36 +558,11 @@ function sortearEquipes(entradas, opcoes = {}) {
     });
   }
 
-  /* Art. 34º §10º — partida adicional dos sobressalentes. Distribui quem sobrou
-   * em duas equipes, em serpentina pela estrela, e deixa as vagas restantes em
-   * aberto para escolha manual entre os presentes. Vale a mesma regra: no
-   * máximo um goleiro por equipe, e goleiro não é escalado na linha. */
-  const sobras = linhaFora;
-  let partidaExtra = null;
-  let naoAlocados = sobras;
-  if (sobras.length > 0) {
-    const A = equipe(AMARELO, []), B = equipe(AZUL, []);
-    const usados = new Set();
-    const encaixar = (equipeAlvo, papel, jogador) => {
-      const vaga = equipeAlvo.vagas.find((v) => v.papel === papel && !v.jogador);
-      if (!vaga) return false;
-      vaga.jogador = jogador;
-      usados.add(jogador.id);
-      return true;
-    };
-    const gkSobra = sobras.filter((j) => j.ehGoleiro).sort((a, b) => b.estrelas - a.estrelas);
-    const lnSobra = sobras.filter((j) => !j.ehGoleiro).sort((a, b) => b.estrelas - a.estrelas);
-    // um goleiro por equipe; do terceiro em diante, ninguém é jogado na linha
-    if (gkSobra[0]) encaixar(A, "GOLEIRO", { ...gkSobra[0], slotGoleiro: true });
-    if (gkSobra[1]) encaixar(B, "GOLEIRO", { ...gkSobra[1], slotGoleiro: true });
-    lnSobra.forEach((j, i) => {
-      const primeiro = i % 4 === 0 || i % 4 === 3 ? A : B; // serpentina A,B,B,A
-      if (!encaixar(primeiro, "LINHA", j)) encaixar(primeiro === A ? B : A, "LINHA", j);
-    });
-    for (const e of [A, B]) e.forca = e.vagas.reduce((s, v) => s + (v.jogador?.estrelas || 0), 0);
-    partidaExtra = { numero: blocos.length + 1, extra: true, amarelo: A, azul: B };
-    naoAlocados = sobras.filter((j) => !usados.has(j.id));
-  }
+  /* Não há mais "partida extra de sobressalentes": todas as N partidas nascem
+   * do mesmo sorteio, e as vagas que faltarem na última ficam vazias para o
+   * organizador completar na mão com quem já jogou. `linhaFora` guarda apenas
+   * eventual excedente real (ex.: goleiro sem vaga de meta), que fica avisado. */
+  const naoAlocados = linhaFora;
 
   const avisos = [];
   if (ctx.totalCinco > nTimes) avisos.push(`${ctx.totalCinco} jogadores 5★ para ${nTimes} equipes — o excedente foi espalhado, mas uma equipe fica com 2.`);
@@ -596,7 +574,7 @@ function sortearEquipes(entradas, opcoes = {}) {
 
   return {
     erro: null, seed,
-    partidas: partidaExtra ? [...blocos, partidaExtra] : blocos,
+    partidas: blocos,
     sobressalentes: naoAlocados,
     diagnostico: { ...escolhido.avaliacao, alternativas: empatados.length, avisos },
   };
@@ -1270,8 +1248,13 @@ function poolsDoDia(base, rodada, porId, dados, cfg) {
 
 /** Quantas partidas dá para montar. Conta pelos jogadores de LINHA: a vaga de
  *  goleiro pode sair em aberto e ser completada manualmente. */
-function partidasPossiveis(nLinha, cfg) {
-  return Math.min(3, Math.floor(nLinha / ((cfg.jogadoresPorTime - cfg.goleirosPorTime) * 2)));
+/** Quantas partidas a rodada gera. Regra do campeonato: cada partida leva 10
+ *  jogadores (2 equipes de 5). Com qualquer sobra, abre-se mais uma partida,
+ *  cujas vagas restantes são completadas na mão com quem já jogou. Ex.: 16
+ *  presentes → 2 partidas (faltam 4 p/ completar); 27 → 3 (faltam 3). */
+function partidasPossiveis(nPresentes, cfg) {
+  const porPartida = cfg.jogadoresPorTime * 2; // 5 + 5 = 10
+  return Math.min(3, Math.ceil(nPresentes / porPartida));
 }
 
 /* --------------------- Etapa 1: presença ---------------------------------*/
@@ -1281,9 +1264,12 @@ function EtapaPresenca({ base, setBase, rodada, atualizar, porId, cfg, dados, av
   const ciclo = { ausente: "presente", presente: "atrasado", atrasado: "ausente" };
   const statusDe = (jid) => rodada.presencas[jid] || "ausente";
   const P = poolsDoDia(base, rodada, porId, dados, cfg);
-  const partidas = partidasPossiveis(P.linha.length, cfg);
+  const partidas = partidasPossiveis(P.aptos.length, cfg);
   const linhaPorTime = cfg.jogadoresPorTime - cfg.goleirosPorTime;
-  const sobramLinha = P.linha.length - partidas * linhaPorTime * 2;
+  // Vagas totais das N partidas e quantas faltam preencher (serão completadas
+  // na mão com quem já jogou). Positivo = precisa completar; nunca negativo.
+  const vagasTotais = partidas * cfg.jogadoresPorTime * 2;
+  const faltamCompletar = Math.max(0, vagasTotais - P.aptos.length);
   const vagasGkAbertas = Math.max(0, partidas * cfg.goleirosPorTime * 2 - P.goleiros.length);
   const dist = [5, 4, 3, 2, 1].map((e) => ({ e, n: P.aptos.filter((a) => (a.linha?.estrelas || 1) === e).length })).filter((d) => d.n);
 
@@ -1298,7 +1284,7 @@ function EtapaPresenca({ base, setBase, rodada, atualizar, porId, cfg, dados, av
         <Contador rotulo="Goleiros" valor={P.goleiros.length} cor={T.gk} />
         <Contador rotulo="Linha" valor={P.linha.length} />
         <Contador rotulo="Partidas" valor={partidas} cor={partidas >= 1 ? T.ouro : T.laranja} />
-        <Contador rotulo="Sobram" valor={Math.max(0, sobramLinha)} cor={sobramLinha > 0 ? T.laranja : T.fraco} />
+        <Contador rotulo="Completar" valor={faltamCompletar} cor={faltamCompletar > 0 ? T.laranja : T.fraco} />
       </Painel>
 
       {partidas >= 1 && vagasGkAbertas > 0 && (
@@ -1380,7 +1366,7 @@ function EtapaPresenca({ base, setBase, rodada, atualizar, porId, cfg, dados, av
       </section>
 
       <Botao className="w-full" disabled={partidas < 1} onClick={ir}>
-        {partidas >= 1 ? `Sortear ${partidas} partida(s)` : `Faltam ${linhaPorTime * 2 - P.linha.length} jogador(es) de linha`}
+        {partidas >= 1 ? `Sortear ${partidas} partida(s)` : `Nenhum jogador presente ainda`}
       </Botao>
     </div>
   );
@@ -1394,7 +1380,7 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
   const [nPartidas, setNPartidas] = useState(0);
 
   const P = poolsDoDia(base, rodada, porId, dados, cfg);
-  const maxPartidas = partidasPossiveis(P.linha.length, cfg);
+  const maxPartidas = partidasPossiveis(P.aptos.length, cfg);
   const alvo = nPartidas || maxPartidas;
 
   // quantas vezes cada um já apareceu em partidas gravadas nesta rodada
@@ -1432,20 +1418,22 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
     });
     if (r.erro) return avisar(r.erro);
     setSorteio(r); setSel(null);
-    const extra = r.partidas.find((p) => p.extra);
-    const buracos = extra ? contarVazias(extra) : 0;
+    const contaVazias = (p) => [p.amarelo, p.azul].reduce((s, e) => s + e.vagas.filter((v) => !v.jogador).length, 0);
+    const incompleta = r.partidas.find((p) => contaVazias(p) > 0);
+    const buracos = incompleta ? contaVazias(incompleta) : 0;
     avisar(buracos > 0
-      ? `Sorteado · a partida ${extra.numero} tem ${buracos} vaga(s) para preencher`
+      ? `Sorteado · a partida ${incompleta.numero} tem ${buracos} vaga(s) para completar`
       : `${r.partidas.length} partida(s) sorteada(s)`);
   }
 
   const jogadoresDaPartida = (p) => [p.amarelo, p.azul].flatMap((e) => e.vagas.map((v) => v.jogador).filter(Boolean));
   const contarVazias = (p) => [p.amarelo, p.azul].reduce((s, e) => s + e.vagas.filter((v) => !v.jogador).length, 0);
 
-  // equilíbrio calculado só nas partidas completas — a extra costuma ser desigual
+  // equilíbrio calculado só nas partidas SEM vagas em aberto — a incompleta,
+  // que ainda vai ser completada na mão, costuma ficar desigual
   const diag = useMemo(() => {
     if (!sorteio) return null;
-    const completas = sorteio.partidas.filter((p) => !p.extra);
+    const completas = sorteio.partidas.filter((p) => contarVazias(p) === 0);
     const base2 = completas.length ? completas : sorteio.partidas;
     const times = base2.flatMap((p) => [p.amarelo, p.azul]).map((e) => e.vagas.map((v) => v.jogador).filter(Boolean));
     const todos = times.flat();
@@ -1528,30 +1516,47 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
     if (recusa) avisar(recusa);
   }
 
-  /** Preenche as vagas em aberto priorizando quem jogou menos na rodada. */
-  function completarAutomaticamente() {
+  /** Preenche as vagas em aberto de uma partida. Primeiro usa quem ainda não
+   *  entrou em nenhuma partida; se acabarem, completa REUTILIZANDO quem já
+   *  jogou (priorizando quem apareceu menos vezes). Quem repete não pontua de
+   *  novo — só cartão conta —, o que é tratado na hora de gravar/pontuar. */
+  function completarAutomaticamente(numeroPartida) {
     mexer((partidas) => {
-      const usados = new Set(partidas.flatMap((p) => [p.amarelo, p.azul])
-        .flatMap((e) => e.vagas.map((v) => v.jogador?.id).filter(Boolean)));
-      const fila = P.aptos
-        .filter((e) => !usados.has(e.jogador.id))
-        .sort((a, b) => (aparicoes[a.jogador.id] || 0) - (aparicoes[b.jogador.id] || 0));
+      const alvos = numeroPartida ? partidas.filter((p) => p.numero === numeroPartida) : partidas;
 
-      for (const p of partidas) for (const lado of ["amarelo", "azul"]) {
+      for (const p of alvos) for (const lado of ["amarelo", "azul"]) {
         const equipe = p[lado];
         for (const v of equipe.vagas) {
           if (v.jogador) continue;
           const jaTemGk = contarGoleiros(equipe, v) >= cfg.goleirosPorTime;
-          // vaga de meta pede goleiro; vaga de linha evita goleiro se a equipe já tem um
           const querGk = v.papel === "GOLEIRO";
-          let i = fila.findIndex((e) => {
-            const ehGk = e.jogador.posicao === "GOLEIRO";
-            if (jaTemGk && ehGk) return false;
-            return querGk ? ehGk : !ehGk;
-          });
-          if (i < 0) i = fila.findIndex((e) => !(jaTemGk && e.jogador.posicao === "GOLEIRO"));
-          if (i < 0) continue;
-          const e = fila.splice(i, 1)[0];
+
+          // Quem já está escalado NESTA partida não pode ocupar outra vaga dela.
+          const nestaPartida = new Set([p.amarelo, p.azul]
+            .flatMap((e) => e.vagas.map((x) => x.jogador?.id).filter(Boolean)));
+          // Contagem de aparições já considerando o sorteio atual na tela.
+          const usoAtual = {};
+          for (const q of partidas) for (const e of [q.amarelo, q.azul])
+            for (const x of e.vagas) if (x.jogador) usoAtual[x.jogador.id] = (usoAtual[x.jogador.id] || 0) + 1;
+
+          // Candidatos: todos os aptos que servem para o papel e não estão já
+          // nesta partida. Ordena por menos aparições (soma sorteio + gravadas).
+          const candidatos = P.aptos
+            .filter((e) => !nestaPartida.has(e.jogador.id))
+            .filter((e) => {
+              const ehGk = e.jogador.posicao === "GOLEIRO";
+              if (jaTemGk && ehGk) return false;
+              return querGk ? ehGk : true; // vaga de linha aceita qualquer não-goleiro-excedente
+            })
+            .filter((e) => querGk ? e.jogador.posicao === "GOLEIRO" : e.jogador.posicao !== "GOLEIRO")
+            .sort((a, b) => {
+              const ua = (usoAtual[a.jogador.id] || 0) + (aparicoes[a.jogador.id] || 0);
+              const ub = (usoAtual[b.jogador.id] || 0) + (aparicoes[b.jogador.id] || 0);
+              return ua - ub;
+            });
+
+          const e = candidatos[0];
+          if (!e) continue;
           const l = e.linha;
           v.jogador = {
             id: e.jogador.id, nome: e.jogador.nome, ehGoleiro: e.jogador.posicao === "GOLEIRO",
@@ -1562,17 +1567,15 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
         }
       }
     });
-    avisar("Vagas preenchidas com quem jogou menos");
+    avisar("Vagas completadas com quem jogou menos");
   }
 
-  function descartarExtra() {
-    setSorteio({ ...sorteio, partidas: sorteio.partidas.filter((p) => !p.extra) });
-    avisar("Partida dos sobressalentes descartada");
-  }
 
   const vaziasTotal = sorteio ? sorteio.partidas.reduce((s, p) => s + contarVazias(p), 0) : 0;
 
   function gravar() {
+    // Substitui as partidas da rodada: recomeça do zero a cada gravação, para
+    // não empilhar sorteios antigos. A numeração recomeça em 1.
     const times = [], jogos = [];
     sorteio.partidas.forEach((p, i) => {
       const criar = (lado) => {
@@ -1587,10 +1590,10 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
         times.push(t); return t.id;
       };
       const a = criar(p.amarelo), b = criar(p.azul);
-      jogos.push({ id: id(), numero: rodada.jogos.length + i + 1, timeA: a, timeB: b,
+      jogos.push({ id: id(), numero: i + 1, timeA: a, timeB: b,
         golsContraA: 0, golsContraB: 0, placarManual: null, encerrado: false, completaTime: [], soCartoes: [], eventos: {} });
     });
-    const nova = { ...rodada, times: [...rodada.times, ...times], jogos: [...rodada.jogos, ...jogos] };
+    const nova = { ...rodada, times, jogos };
     atualizar({ times: nova.times, jogos: marcarReaproveitamentos(nova) });
     setSorteio(null); setTravas({});
     avisar(`${sorteio.partidas.length} partida(s) gravada(s)`);
@@ -1674,16 +1677,27 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
         <Painel className="p-3" style={{ fontSize: 11.5, color: T.secundario }}>
           <b style={{ color: T.ouro }}>{rodada.jogos.length} partida(s) já gravada(s).</b>
           <span style={{ display: "block", marginTop: 4, color: T.fraco }}>
-            Sortear de novo cria partidas adicionais (§10º) — quem já jogou entra sem pontuar, só com cartão contando.
+            Sortear e gravar de novo substitui estas partidas — a rodada recomeça do zero.
           </span>
+          <button
+            onClick={() => {
+              if (confirm("Apagar todas as partidas desta rodada? Placares e cartões lançados serão perdidos.")) {
+                atualizar({ times: [], jogos: [] });
+                setSorteio(null); setTravas({});
+                avisar("Partidas da rodada apagadas");
+              }
+            }}
+            style={{ marginTop: 8, color: T.laranja, fontSize: 12, fontWeight: 700, textDecoration: "underline" }}>
+            Apagar partidas desta rodada
+          </button>
         </Painel>
       )}
 
       <div className="flex gap-2">
-        <Campo rotulo="Partidas completas">
+        <Campo rotulo="Partidas">
           <select value={alvo} onChange={(e) => setNPartidas(Number(e.target.value))} style={{ ...inputStyle, padding: "10px", fontSize: 13 }}>
             {Array.from({ length: Math.max(1, maxPartidas) }, (_, i) => i + 1).map((n) => (
-              <option key={n} value={n}>{n} partida{n > 1 ? "s" : ""} · {n * (cfg.jogadoresPorTime - cfg.goleirosPorTime) * 2} de linha</option>
+              <option key={n} value={n}>{n} partida{n > 1 ? "s" : ""} · {n * cfg.jogadoresPorTime * 2} jogadores</option>
             ))}
           </select>
         </Campo>
@@ -1709,31 +1723,31 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
 
           {sel && <p className="rounded px-2 py-2 text-center" style={{ background: T.ouroFraco, fontSize: 12, color: T.ouroClaro }}>{nomes[sel]} selecionado — toque em outro para trocar.</p>}
 
-          {sorteio.partidas.map((p, pi) => (
+          {sorteio.partidas.map((p, pi) => {
+            const vazias = contarVazias(p);
+            return (
             <div key={p.numero}>
-              <FaixaPartida n={p.numero} extra={p.extra} />
-              {p.extra && (
+              <FaixaPartida n={p.numero} extra={vazias > 0} />
+              {vazias > 0 && (
                 <p className="mb-1.5 rounded px-2 py-1.5" style={{ background: "rgba(255,165,61,.12)", border: `1px solid rgba(255,165,61,.4)`, fontSize: 10.5, lineHeight: 1.45, color: T.laranja }}>
-                  Partida dos sobressalentes (§10º). Preencha as vagas em aberto com quem está presente —
-                  quem já jogou entra só com o cartão contando.
+                  Esta partida tem {vazias} vaga(s) em aberto. Complete com quem está presente —
+                  quem já jogou entra só com o cartão contando, sem pontuar de novo.
                 </p>
               )}
               <div className="grid grid-cols-2 gap-2">
                 <CardTime p={p} pi={pi} lado="amarelo" />
                 <CardTime p={p} pi={pi} lado="azul" />
               </div>
-              {p.extra && (
+              {vazias > 0 && (
                 <div className="mt-2 flex gap-2">
-                  <Botao variante="secundario" className="flex-1" style={{ minHeight: 42, fontSize: 11.5 }} onClick={completarAutomaticamente}>
+                  <Botao variante="secundario" className="flex-1" style={{ minHeight: 42, fontSize: 11.5 }} onClick={() => completarAutomaticamente(p.numero)}>
                     Completar automaticamente
-                  </Botao>
-                  <Botao variante="secundario" style={{ minHeight: 42, fontSize: 11.5 }} onClick={descartarExtra}>
-                    Descartar
                   </Botao>
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
 
           <p style={{ textAlign: "center", fontSize: 10.5, lineHeight: 1.6, color: T.fraco }}>
             Toque num jogador e depois em outro para trocar (funciona entre partidas)<br />
@@ -1811,6 +1825,17 @@ function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId 
           Fechar rodada {rodada.numero}
         </Botao>
       )}
+
+      <button
+        onClick={() => {
+          if (confirm(`Apagar as ${rodada.jogos.length} partida(s) desta rodada? Placares e cartões lançados serão perdidos, e você poderá sortear de novo do zero.`)) {
+            atualizar({ times: [], jogos: [] });
+            avisar("Partidas apagadas · sorteie novamente");
+          }
+        }}
+        style={{ width: "100%", padding: 10, marginTop: 4, fontSize: 12, fontWeight: 700, color: T.fraco, border: `1px solid ${T.borda}`, borderRadius: 8 }}>
+        Apagar partidas desta rodada
+      </button>
     </div>
   );
 }
