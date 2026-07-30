@@ -468,10 +468,9 @@ function sortearEquipes(entradas, opcoes = {}) {
     return [esc, grupo.filter((j) => !ids.has(j.id))];
   };
 
-  /* Cada categoria preenche só as próprias vagas. O sorteio NUNCA promove um
-   * jogador de linha a goleiro: faltando goleiro, a vaga de meta sai vazia e
-   * quem completa é escolhido na mão. E nunca dois goleiros na mesma equipe —
-   * o goleiro excedente vira sobressalente, assim como o 5º jogador de linha. */
+  /* Cada categoria preenche primeiro as próprias vagas. Sobras (de goleiro ou
+   * linha) são reaproveitadas na etapa de compactação, que decide quem entra e
+   * concentra as vagas verdadeiramente livres na última partida. */
   const [gkFinal0, gkSobrando] = selecionar(goleiros, vagasGk);
   const [linhaFinal, linhaSobrando] = selecionar(linha, vagasLinha);
   const gkFinal = gkFinal0.map((j) => ({ ...j, slotGoleiro: true }));
@@ -551,46 +550,66 @@ function sortearEquipes(entradas, opcoes = {}) {
    * partidas: o melhor vai para a P1, o 2º para a P2, o 3º para a P3, o 4º volta
    * para a P3, o 5º para a P2, etc. Assim cada partida recebe uma fatia
    * equilibrada de estrelas. As vagas que faltarem se concentram na última. */
-  const distribuirSerpentina = (lista, capacidadePorPartida) => {
-    const baldes = Array.from({ length: partidas }, () => []);
-    const ordenada = [...lista].sort((a, b) => b.estrelas - a.estrelas);
+  // Todos os presentes, sem descartar ninguém. Quem a seleção deixou de fora
+  // por excesso volta ao pote (será usado para completar vagas de gol).
+  const poteGk = [...gkFinal, ...gkSobrando.map((j) => ({ ...j, slotGoleiro: true }))]
+    .sort((a, b) => b.estrelas - a.estrelas);
+  const poteLinha = [...linhaFinal, ...linhaSobrando].sort((a, b) => b.estrelas - a.estrelas);
+
+  /* Distribuição: monta N partidas de 10, concentrando as vagas vazias na
+   * ÚLTIMA e equilibrando o nível entre as partidas.
+   *  - Goleiros de ofício ocupam o gol (2 por partida, na ordem). Faltando
+   *    goleiro, um jogador de linha completa o gol (regra do campeonato).
+   *  - A linha é espalhada em serpentina por nível, mas com um "alvo" de vagas
+   *    por partida: as primeiras enchem por completo; a última recebe o resto.
+   *  Assim nunca sobra gente à toa e as vagas realmente livres ficam na última. */
+  const capGk = gkPorTime * 2;
+  const capLn = linhaPorTime * 2;
+  const gksPorPartida = Array.from({ length: partidas }, () => []);
+  const lnsPorPartida = Array.from({ length: partidas }, () => []);
+
+  const filaG = [...poteGk];
+  const filaL = [...poteLinha];
+
+  // 1) goleiros: 2 por partida, na ordem; completa com linha (pior estrela) se faltar
+  for (let p = 0; p < partidas; p++) {
+    while (gksPorPartida[p].length < capGk) {
+      let j = filaG.shift();
+      if (!j) { if (filaL.length > 0) j = { ...filaL.pop() }; else break; }
+      j = { ...j, slotGoleiro: true };
+      gksPorPartida[p].push(j);
+    }
+  }
+
+  // 2) linha: define quantas vagas de linha cada partida terá de fato. As vagas
+  //    que ficarão vazias são tiradas da última partida para trás.
+  const alvoLn = Array(partidas).fill(capLn);
+  let faltamLn = partidas * capLn - filaL.length;
+  for (let p = partidas - 1; p >= 0 && faltamLn > 0; p--) {
+    const tira = Math.min(faltamLn, capLn);
+    alvoLn[p] -= tira; faltamLn -= tira;
+  }
+
+  // 3) distribui a linha em serpentina, respeitando o alvo de cada partida
+  {
     let dir = 1, idx = 0;
-    for (const j of ordenada) {
-      let tentativas = 0;
-      while (baldes[idx].length >= capacidadePorPartida && tentativas < partidas * 2) {
+    for (const jr of filaL) {
+      const j = { ...jr, slotGoleiro: false };
+      let t = 0;
+      while (lnsPorPartida[idx].length >= alvoLn[idx] && t < partidas * 2) {
         idx += dir;
         if (idx >= partidas) { idx = partidas - 1; dir = -1; }
         else if (idx < 0) { idx = 0; dir = 1; }
-        tentativas++;
+        t++;
       }
-      if (baldes[idx].length < capacidadePorPartida) baldes[idx].push(j);
+      if (lnsPorPartida[idx].length < alvoLn[idx]) lnsPorPartida[idx].push(j);
       idx += dir;
       if (idx >= partidas) { idx = partidas - 1; dir = -1; }
       else if (idx < 0) { idx = 0; dir = 1; }
     }
-    return baldes;
-  };
-
-  // Goleiros: preenchem na ORDEM das partidas (jogo 1 recebe os 2 primeiros,
-  // jogo 2 o próximo, etc.), conforme a regra do campeonato — as vagas de
-  // goleiro faltantes ficam nas últimas partidas.
-  const gksPorPartida = Array.from({ length: partidas }, () => []);
-  {
-    const fila = [...gkFinal].sort((a, b) => b.estrelas - a.estrelas);
-    let p = 0;
-    for (const g of fila) {
-      while (p < partidas && gksPorPartida[p].length >= gkPorTime * 2) p++;
-      if (p >= partidas) break;
-      gksPorPartida[p].push(g);
-    }
   }
-  // Linha: serpentina por nível, para que todas as partidas tenham força
-  // parecida (não jogar todos os craques na primeira).
-  const lnsPorPartida = distribuirSerpentina(linhaFinal, linhaPorTime * 2);
 
   const repartir = (gks, lns) => {
-    // divide os jogadores de uma partida em 2 times equilibrados por força;
-    // 1 goleiro por time, linha em serpentina A,B,B,A
     const A = [], B = [];
     if (gks[0]) A.push(gks[0]);
     if (gks[1]) B.push(gks[1]);
@@ -608,22 +627,24 @@ function sortearEquipes(entradas, opcoes = {}) {
       amarelo: equipe(AMARELO, A), azul: equipe(AZUL, B),
     });
   }
-  // a partida menos preenchida (a que tem as vagas em aberto) vai para o fim
   blocos.sort((a, b) => b.preenchimento - a.preenchimento);
   blocos.forEach((b, i) => { b.numero = i + 1; delete b.preenchimento; });
 
-  /* Não há mais "partida extra de sobressalentes": todas as N partidas nascem
-   * do mesmo sorteio, e as vagas que faltarem na última ficam vazias para o
-   * organizador completar na mão com quem já jogou. `linhaFora` guarda apenas
-   * eventual excedente real (ex.: goleiro sem vaga de meta), que fica avisado. */
-  const naoAlocados = linhaFora;
+  /* Sobressalentes de verdade: quem, no fim, não entrou em NENHUMA partida.
+   * Com a distribuição atual isso só acontece se houver mais presentes que
+   * vagas (raro, exigiria mais de 3 partidas). Todos os demais foram escalados,
+   * inclusive os que a seleção inicial havia cortado. */
+  const idsEscalados = new Set();
+  for (const b of blocos)
+    for (const e of [b.amarelo, b.azul])
+      for (const v of e.vagas)
+        if (v.jogador) idsEscalados.add(v.jogador.id);
+  const naoAlocados = entradas.filter((j) => !idsEscalados.has(j.id));
 
   const avisos = [];
   if (ctx.totalCinco > nTimes) avisos.push(`${ctx.totalCinco} jogadores 5★ para ${nTimes} equipes — o excedente foi espalhado, mas uma equipe fica com 2.`);
-  if (faltamGk > 0) avisos.push(`${faltamGk} vaga(s) de goleiro em aberto: há ${goleiros.length} goleiro(s) para ${vagasGk} vaga(s). Escolha na mão quem vai completar no gol.`);
-  if (faltamLinha > 0) avisos.push(`${faltamLinha} vaga(s) de linha em aberto: faltaram jogadores de linha para fechar as equipes.`);
   const gkDeFora = naoAlocados.filter((j) => j.ehGoleiro);
-  if (gkDeFora.length) avisos.push(`${gkDeFora.map((g) => g.nome).join(", ")} — goleiro(s) sem vaga de meta nesta rodada. Não foram escalados na linha.`);
+  if (gkDeFora.length) avisos.push(`${gkDeFora.map((g) => g.nome).join(", ")} — sem vaga nesta rodada (mais presentes que vagas).`);
   for (const v of escolhido.avaliacao.violacoes) avisos.push(v.texto);
 
   return {
