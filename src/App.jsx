@@ -1201,6 +1201,10 @@ export default function App() {
 
   useEffect(() => { if (aviso) { const t = setTimeout(() => setAviso(null), 3600); return () => clearTimeout(t); } }, [aviso]);
 
+  // Se o usuário deslogar estando numa aba de gestão, volta para a Tabela.
+  // (fica antes de qualquer return condicional para não quebrar a ordem dos hooks)
+  useEffect(() => { if (!sessao && aba !== "tabela") setAba("tabela"); }, [sessao, aba]);
+
   const dados = useMemo(() => (base ? calcularClassificacao(base) : null), [base]);
   if (!base || !dados)
     return (
@@ -1217,9 +1221,6 @@ export default function App() {
   // Jogador comum (sem login) só enxerga a Tabela. As telas de gestão só
   // aparecem para organizadores autenticados.
   ].filter((a) => sessao || a.id === "tabela");
-
-  // Se o usuário deslogar estando numa aba de gestão, volta para a Tabela.
-  useEffect(() => { if (!sessao && aba !== "tabela") setAba("tabela"); }, [sessao, aba]);
 
   return (
     <div style={{ minHeight: "100vh", background: FUNDO_APP, color: T.texto, fontVariantNumeric: "tabular-nums", fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif" }}>
