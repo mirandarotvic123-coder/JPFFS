@@ -439,13 +439,13 @@ function sortearEquipes(entradas, opcoes = {}) {
 
   const goleiros = entradas.filter((j) => j.ehGoleiro);
   const linha = entradas.filter((j) => !j.ehGoleiro);
-  // Regra do campeonato: cada partida = 10 jogadores (2 equipes de 5). O número
-  // de partidas é o TOTAL de presentes dividido por 10, arredondado para cima.
-  // As vagas que sobrarem na última partida ficam vazias e são completadas na
-  // mão com quem já jogou (esses não pontuam de novo, só cartão conta).
-  const totalPresentes = entradas.length;
-  const porPartida = cfg.jogadoresPorTime * 2;
-  const maxPartidas = Math.min(3, Math.ceil(totalPresentes / porPartida));
+  // Regra do campeonato: TODA partida é 8 de linha + 2 goleiros. O número de
+  // partidas é o necessário para acomodar a linha (8/partida) e os goleiros
+  // (2/partida) — o que exigir mais manda. Vagas que faltarem ficam abertas nas
+  // últimas partidas e são completadas na mão (quem repete não pontua de novo).
+  const nLinhaPresente = entradas.filter((j) => !j.ehGoleiro).length;
+  const nGkPresente = entradas.filter((j) => j.ehGoleiro).length;
+  const maxPartidas = partidasPossiveis(nLinhaPresente, nGkPresente, cfg);
   const partidas = Math.max(0, Math.min(opcoes.partidas || maxPartidas, maxPartidas));
   const nTimes = partidas * 2;
 
@@ -558,11 +558,11 @@ function sortearEquipes(entradas, opcoes = {}) {
 
   /* Distribuição: monta N partidas de 10, concentrando as vagas vazias na
    * ÚLTIMA e equilibrando o nível entre as partidas.
-   *  - Goleiros de ofício ocupam o gol (2 por partida, na ordem). Faltando
-   *    goleiro, um jogador de linha completa o gol (regra do campeonato).
-   *  - A linha é espalhada em serpentina por nível, mas com um "alvo" de vagas
-   *    por partida: as primeiras enchem por completo; a última recebe o resto.
-   *  Assim nunca sobra gente à toa e as vagas realmente livres ficam na última. */
+   *  - Goleiros de ofício ocupam o gol (2 por partida). O sorteio NUNCA coloca
+   *    jogador de linha no gol: faltando goleiro, a vaga de meta fica ABERTA e
+   *    é concentrada na última partida, para ser completada na mão.
+   *  - A linha é espalhada em serpentina por nível, com um "alvo" de vagas por
+   *    partida: as primeiras enchem por completo; a última recebe o resto. */
   const capGk = gkPorTime * 2;
   const capLn = linhaPorTime * 2;
   const gksPorPartida = Array.from({ length: partidas }, () => []);
@@ -571,13 +571,19 @@ function sortearEquipes(entradas, opcoes = {}) {
   const filaG = [...poteGk];
   const filaL = [...poteLinha];
 
-  // 1) goleiros: 2 por partida, na ordem; completa com linha (pior estrela) se faltar
+  // 1) goleiros de ofício preenchem as vagas de gol. Quantas vagas de gol cada
+  //    partida terá é definido por um "alvo": as vagas de gol que faltarem
+  //    (por falta de goleiro) são tiradas da última partida para trás, ficando
+  //    abertas ali para completar na mão. Linha NUNCA vai para o gol aqui.
+  const alvoGk = Array(partidas).fill(capGk);
+  let faltamGkVagas = partidas * capGk - filaG.length;
+  for (let p = partidas - 1; p >= 0 && faltamGkVagas > 0; p--) {
+    const tira = Math.min(faltamGkVagas, capGk);
+    alvoGk[p] -= tira; faltamGkVagas -= tira;
+  }
   for (let p = 0; p < partidas; p++) {
-    while (gksPorPartida[p].length < capGk) {
-      let j = filaG.shift();
-      if (!j) { if (filaL.length > 0) j = { ...filaL.pop() }; else break; }
-      j = { ...j, slotGoleiro: true };
-      gksPorPartida[p].push(j);
+    while (gksPorPartida[p].length < alvoGk[p] && filaG.length) {
+      gksPorPartida[p].push({ ...filaG.shift(), slotGoleiro: true });
     }
   }
 
@@ -1146,6 +1152,24 @@ export default function App() {
   // Carga inicial da base.
   useEffect(() => { (async () => setBase((await carregarBase()) || baseOficial()))(); }, []);
 
+  // Recarrega a base sempre que o app volta ao foco (troca de aba, volta do
+  // segundo plano no celular). Garante que mudanças feitas em outro dispositivo
+  // apareçam mesmo que o realtime não tenha entregue o evento, sem precisar
+  // recarregar a página na mão.
+  useEffect(() => {
+    const sincronizar = async () => {
+      if (document.visibilityState !== "visible") return;
+      const nova = await carregarBase();
+      if (nova) { pularProximoSalvar.current = true; setBase(nova); }
+    };
+    document.addEventListener("visibilitychange", sincronizar);
+    window.addEventListener("focus", sincronizar);
+    return () => {
+      document.removeEventListener("visibilitychange", sincronizar);
+      window.removeEventListener("focus", sincronizar);
+    };
+  }, []);
+
   // Realtime: quando outro organizador salvar, o Supabase avisa aqui e a tela
   // se atualiza sozinha. A flag `pularProximoSalvar` evita loop de gravação.
   useEffect(() => {
@@ -1190,7 +1214,12 @@ export default function App() {
   const abas = [
     { id: "tabela", rotulo: "Tabela", icone: "≡" }, { id: "rodada", rotulo: "Rodada", icone: "◉" },
     { id: "elenco", rotulo: "Elenco", icone: "⚑" }, { id: "config", rotulo: "Ajustes", icone: "⚙" },
-  ];
+  // Jogador comum (sem login) só enxerga a Tabela. As telas de gestão só
+  // aparecem para organizadores autenticados.
+  ].filter((a) => sessao || a.id === "tabela");
+
+  // Se o usuário deslogar estando numa aba de gestão, volta para a Tabela.
+  useEffect(() => { if (!sessao && aba !== "tabela") setAba("tabela"); }, [sessao, aba]);
 
   return (
     <div style={{ minHeight: "100vh", background: FUNDO_APP, color: T.texto, fontVariantNumeric: "tabular-nums", fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif" }}>
@@ -1223,10 +1252,10 @@ export default function App() {
         style={{ bottom: 92, background: `linear-gradient(180deg,${T.ouroClaro},${T.ouro})`, color: "#0a1b3d", fontWeight: 800, fontSize: 13.5, boxShadow: "0 8px 28px rgba(0,0,0,.5)" }}>{aviso}</div>}
 
       <main className="mx-auto max-w-3xl px-3 pt-4" style={{ paddingBottom: 104 }}>
-        {aba === "rodada" && <TelaRodada {...{ base, setBase, dados, cfg, avisar: setAviso }} />}
+        {aba === "rodada" && sessao && <TelaRodada {...{ base, setBase, dados, cfg, avisar: setAviso }} />}
         {aba === "tabela" && <TelaClassificacao {...{ base, dados, cfg, avisar: setAviso }} />}
-        {aba === "elenco" && <TelaElenco {...{ base, setBase, dados, cfg, avisar: setAviso }} />}
-        {aba === "config" && <TelaConfig {...{ base, setBase, dados, cfg, avisar: setAviso }} />}
+        {aba === "elenco" && sessao && <TelaElenco {...{ base, setBase, dados, cfg, avisar: setAviso }} />}
+        {aba === "config" && sessao && <TelaConfig {...{ base, setBase, dados, cfg, avisar: setAviso }} />}
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 z-20" style={{ background: "rgba(6,20,48,.97)", borderTop: `1px solid ${T.borda}` }}>
@@ -1323,13 +1352,20 @@ function poolsDoDia(base, rodada, porId, dados, cfg) {
 
 /** Quantas partidas dá para montar. Conta pelos jogadores de LINHA: a vaga de
  *  goleiro pode sair em aberto e ser completada manualmente. */
-/** Quantas partidas a rodada gera. Regra do campeonato: cada partida leva 10
- *  jogadores (2 equipes de 5). Com qualquer sobra, abre-se mais uma partida,
- *  cujas vagas restantes são completadas na mão com quem já jogou. Ex.: 16
- *  presentes → 2 partidas (faltam 4 p/ completar); 27 → 3 (faltam 3). */
-function partidasPossiveis(nPresentes, cfg) {
-  const porPartida = cfg.jogadoresPorTime * 2; // 5 + 5 = 10
-  return Math.min(3, Math.ceil(nPresentes / porPartida));
+/** Quantas partidas a rodada gera. Regra do campeonato: TODA partida é 8 de
+ *  linha + 2 goleiros. O número de partidas é o necessário para acomodar tanto
+ *  a linha (8 por partida) quanto os goleiros (2 por partida) — o que exigir
+ *  mais partidas manda. As vagas que faltarem (de linha ou de gol) ficam
+ *  abertas nas últimas partidas, para completar na mão.
+ *  Ex.: 18L+2G → máx(⌈18/8⌉,⌈2/2⌉)=3 · 12L+3G → máx(2,2)=2 · 20L+4G → 3. */
+function partidasPossiveis(nLinha, nGoleiros, cfg) {
+  const linhaPorTime = cfg.jogadoresPorTime - cfg.goleirosPorTime; // 4
+  const gkPorTime = cfg.goleirosPorTime;                            // 1
+  const porLinha = linhaPorTime * 2;   // 8 de linha por partida
+  const porGk = gkPorTime * 2;         // 2 goleiros por partida
+  const necessariasLinha = Math.ceil(nLinha / porLinha);
+  const necessariasGk = Math.ceil(nGoleiros / porGk);
+  return Math.min(3, Math.max(necessariasLinha, necessariasGk));
 }
 
 /* --------------------- Etapa 1: presença ---------------------------------*/
@@ -1339,13 +1375,15 @@ function EtapaPresenca({ base, setBase, rodada, atualizar, porId, cfg, dados, av
   const ciclo = { ausente: "presente", presente: "atrasado", atrasado: "ausente" };
   const statusDe = (jid) => rodada.presencas[jid] || "ausente";
   const P = poolsDoDia(base, rodada, porId, dados, cfg);
-  const partidas = partidasPossiveis(P.aptos.length, cfg);
+  const partidas = partidasPossiveis(P.linha.length, P.goleiros.length, cfg);
   const linhaPorTime = cfg.jogadoresPorTime - cfg.goleirosPorTime;
-  // Vagas totais das N partidas e quantas faltam preencher (serão completadas
-  // na mão com quem já jogou). Positivo = precisa completar; nunca negativo.
-  const vagasTotais = partidas * cfg.jogadoresPorTime * 2;
-  const faltamCompletar = Math.max(0, vagasTotais - P.aptos.length);
-  const vagasGkAbertas = Math.max(0, partidas * cfg.goleirosPorTime * 2 - P.goleiros.length);
+  // Vagas de cada tipo nas N partidas e quantas ficam abertas para completar na
+  // mão. Linha: 8 por partida; gol: 2 por partida.
+  const vagasLinhaTot = partidas * linhaPorTime * 2;
+  const vagasGkTot = partidas * cfg.goleirosPorTime * 2;
+  const faltamLinha = Math.max(0, vagasLinhaTot - P.linha.length);
+  const vagasGkAbertas = Math.max(0, vagasGkTot - P.goleiros.length);
+  const faltamCompletar = faltamLinha + vagasGkAbertas;
   const dist = [5, 4, 3, 2, 1].map((e) => ({ e, n: P.aptos.filter((a) => (a.linha?.estrelas || 1) === e).length })).filter((d) => d.n);
 
   const visiveis = base.jogadores.filter((j) => j.ativo !== false)
@@ -1455,7 +1493,7 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
   const [nPartidas, setNPartidas] = useState(0);
 
   const P = poolsDoDia(base, rodada, porId, dados, cfg);
-  const maxPartidas = partidasPossiveis(P.aptos.length, cfg);
+  const maxPartidas = partidasPossiveis(P.linha.length, P.goleiros.length, cfg);
   const alvo = nPartidas || maxPartidas;
 
   // quantas vezes cada um já apareceu em partidas gravadas nesta rodada
@@ -2128,6 +2166,7 @@ function Ajustes({ rodada, base, onMudar }) {
 
 /* ======================= TELA: CLASSIFICAÇÃO =============================*/
 function TelaClassificacao({ base, dados, cfg, avisar }) {
+  const [vista, setVista] = useState("classificacao");
   const [detalhe, setDetalhe] = useState(null);
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState("todos");
@@ -2147,15 +2186,29 @@ function TelaClassificacao({ base, dados, cfg, avisar }) {
 
   return (
     <div className="space-y-3">
-      <Secao titulo="Classificação geral" detalhe={`Supercopa: 1º ao ${cfg.zonaSupercopa}º`} />
+      {/* Alternador Classificação | Resultados */}
+      <div className="flex rounded-xl p-1" style={{ background: "rgba(255,255,255,.06)", border: `1px solid ${T.borda}` }}>
+        {[["classificacao", "Classificação"], ["resultados", "Resultados"]].map(([v, r]) => (
+          <button key={v} onClick={() => setVista(v)} className="flex-1 rounded-lg"
+            style={{ padding: "10px 0", fontSize: 12.5, fontWeight: 800, letterSpacing: ".04em",
+              background: vista === v ? `linear-gradient(180deg,${T.ouroClaro},${T.ouro})` : "transparent",
+              color: vista === v ? "#0a1b3d" : T.secundario }}>{r}</button>
+        ))}
+      </div>
+
+      {vista === "resultados" ? <Resultados base={base} /> : (<>
+      <Secao titulo="Classificação geral" detalhe={`Supercopa: 1º ao ${cfg.zonaSupercopa}º`} /></>)}
+
+      {vista === "classificacao" && (<>
       <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar jogador…" style={inputStyle} />
       <div className="flex gap-1.5 overflow-x-auto pb-1">
         {[["todos", "Todos"], ["linha", "Linha"], ["goleiros", "Goleiros"], ["supercopa", "Supercopa"], ["alerta", "Alertas"]].map(([f, r]) => (
           <button key={f} onClick={() => setFiltro(f)} className="shrink-0 rounded-full"
             style={{ padding: "9px 15px", fontSize: 12, fontWeight: 800, background: filtro === f ? `linear-gradient(180deg,${T.ouroClaro},${T.ouro})` : "rgba(255,255,255,.07)", color: filtro === f ? "#0a1b3d" : T.secundario }}>{r}</button>
         ))}
-      </div>
+      </div></>)}
 
+      {vista === "classificacao" && (<>
       <div className="overflow-x-auto rounded-xl" style={{ border: `1px solid ${T.borda}` }}>
         <table style={{ width: "100%", minWidth: 760, textAlign: "right", fontSize: 12, borderCollapse: "collapse" }}>
           <thead>
@@ -2236,6 +2289,68 @@ function TelaClassificacao({ base, dados, cfg, avisar }) {
         <Botao variante="secundario" onClick={() => { baixarArquivo("jpffs-classificacao.csv", csvClassificacao(dados.classificacao)); avisar("CSV exportado"); }}>Exportar CSV</Botao>
         <Botao onClick={() => { imagemTabela(dados.classificacao, cfg, { rodadas: dados.rodadasRealizadas, teto: dados.teto }); avisar("Imagem PNG gerada"); }}>Imagem PNG</Botao>
       </div>
+      </>)}
+    </div>
+  );
+}
+
+/* Aba de resultados dos jogos (só rodadas feitas no app — 21ª em diante). */
+function Resultados({ base }) {
+  const nomes = Object.fromEntries(base.jogadores.map((j) => [j.id, j.nome]));
+  const rodadas = [...(base.rodadas || [])]
+    .filter((r) => (r.jogos || []).some((g) => g.encerrado))
+    .sort((a, b) => b.numero - a.numero); // mais recente primeiro
+
+  if (rodadas.length === 0)
+    return (
+      <Painel className="p-6 text-center" style={{ borderStyle: "dashed", color: T.secundario, fontSize: 13, lineHeight: 1.6 }}>
+        Ainda não há resultados lançados no app.<br />
+        <span style={{ color: T.fraco, fontSize: 12 }}>As rodadas aparecem aqui assim que forem encerradas.</span>
+      </Painel>
+    );
+
+  return (
+    <div className="space-y-4">
+      {rodadas.map((rodada) => {
+        const jogos = [...(rodada.jogos || [])].filter((g) => g.encerrado).sort((a, b) => a.numero - b.numero);
+        return (
+          <div key={rodada.id}>
+            <div className="flex items-baseline justify-between" style={{ marginBottom: 8 }}>
+              <span style={{ fontSize: 14, fontWeight: 900, color: T.ouro }}>{rodada.numero}ª rodada</span>
+              {rodada.data && <span style={{ fontSize: 11, color: T.fraco }}>{new Date(rodada.data + "T12:00:00").toLocaleDateString("pt-BR")}</span>}
+            </div>
+            <div className="space-y-2">
+              {jogos.map((jogo) => {
+                const p = placarDe(jogo, rodada);
+                const tA = (rodada.times || []).find((x) => x.id === jogo.timeA);
+                const tB = (rodada.times || []).find((x) => x.id === jogo.timeB);
+                const gA = (tA?.jogadores || []).filter((j) => !(jogo.soCartoes || []).includes(j.jogadorId));
+                const gB = (tB?.jogadores || []).filter((j) => !(jogo.soCartoes || []).includes(j.jogadorId));
+                const golsDe = (jid) => eventoDe(jogo, jid).gols;
+                const artilheiros = (grupo) => grupo.filter((j) => golsDe(j.jogadorId) > 0)
+                  .map((j) => `${nomes[j.jogadorId] || "?"}${golsDe(j.jogadorId) > 1 ? " " + golsDe(j.jogadorId) : ""}`);
+                const venceuA = p.A > p.B, venceuB = p.B > p.A;
+                return (
+                  <Painel key={jogo.id} className="p-3">
+                    <div className="flex items-center justify-between" style={{ gap: 8 }}>
+                      <span className="flex-1 text-right" style={{ fontSize: 13.5, fontWeight: venceuA ? 900 : 600, color: venceuA ? T.ouro : T.texto }}>Amarelo</span>
+                      <span style={{ fontSize: 18, fontWeight: 900, color: T.texto, minWidth: 58, textAlign: "center", letterSpacing: ".05em" }}>{p.A} <span style={{ color: T.fraco }}>×</span> {p.B}</span>
+                      <span className="flex-1" style={{ fontSize: 13.5, fontWeight: venceuB ? 900 : 600, color: venceuB ? "#7FB0FF" : T.texto }}>Azul</span>
+                    </div>
+                    {(artilheiros(gA).length > 0 || artilheiros(gB).length > 0) && (
+                      <div className="flex justify-between" style={{ gap: 8, marginTop: 6, fontSize: 10.5, color: T.secundario }}>
+                        <span className="flex-1 text-right">{artilheiros(gA).join(", ")}</span>
+                        <span style={{ minWidth: 14, textAlign: "center" }}>⚽</span>
+                        <span className="flex-1">{artilheiros(gB).join(", ")}</span>
+                      </div>
+                    )}
+                  </Painel>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
