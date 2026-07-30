@@ -544,38 +544,71 @@ function sortearEquipes(entradas, opcoes = {}) {
     return { ...cor, vagas, forca: jogadores.reduce((s, j) => s + j.estrelas, 0) };
   };
 
-  /* Regra do campeonato: só a ÚLTIMA partida pode ter vagas em aberto. Todas as
-   * anteriores saem completas (2 goleiros + 8 de linha cada). O motor acima
-   * equilibra; aqui COMPACTAMOS enchendo uma partida por vez — cada partida
-   * consome 2 goleiros e 8 jogadores de linha do topo das listas — até o
-   * material acabar. A última partida fica com o que sobrou e suas vagas vazias.
-   *
-   * Dentro de cada partida cheia, os 10 jogadores são repartidos em dois times
-   * equilibrados por força (serpentina), preservando o balanceamento. */
-  const gksOrdenados = [...gkFinal].sort((a, b) => b.estrelas - a.estrelas);
-  const lnOrdenados = [...linhaFinal].sort((a, b) => b.estrelas - a.estrelas);
+  /* Regra do campeonato: só a ÚLTIMA partida pode ter vagas em aberto; as
+   * anteriores saem completas. Mas as partidas também devem ter NÍVEL parecido
+   * entre si — não adianta jogar todos os craques na Partida 1 e sobrar os
+   * fracos na última. Por isso distribuímos os jogadores em SERPENTINA entre as
+   * partidas: o melhor vai para a P1, o 2º para a P2, o 3º para a P3, o 4º volta
+   * para a P3, o 5º para a P2, etc. Assim cada partida recebe uma fatia
+   * equilibrada de estrelas. As vagas que faltarem se concentram na última. */
+  const distribuirSerpentina = (lista, capacidadePorPartida) => {
+    const baldes = Array.from({ length: partidas }, () => []);
+    const ordenada = [...lista].sort((a, b) => b.estrelas - a.estrelas);
+    let dir = 1, idx = 0;
+    for (const j of ordenada) {
+      let tentativas = 0;
+      while (baldes[idx].length >= capacidadePorPartida && tentativas < partidas * 2) {
+        idx += dir;
+        if (idx >= partidas) { idx = partidas - 1; dir = -1; }
+        else if (idx < 0) { idx = 0; dir = 1; }
+        tentativas++;
+      }
+      if (baldes[idx].length < capacidadePorPartida) baldes[idx].push(j);
+      idx += dir;
+      if (idx >= partidas) { idx = partidas - 1; dir = -1; }
+      else if (idx < 0) { idx = 0; dir = 1; }
+    }
+    return baldes;
+  };
+
+  // Goleiros: preenchem na ORDEM das partidas (jogo 1 recebe os 2 primeiros,
+  // jogo 2 o próximo, etc.), conforme a regra do campeonato — as vagas de
+  // goleiro faltantes ficam nas últimas partidas.
+  const gksPorPartida = Array.from({ length: partidas }, () => []);
+  {
+    const fila = [...gkFinal].sort((a, b) => b.estrelas - a.estrelas);
+    let p = 0;
+    for (const g of fila) {
+      while (p < partidas && gksPorPartida[p].length >= gkPorTime * 2) p++;
+      if (p >= partidas) break;
+      gksPorPartida[p].push(g);
+    }
+  }
+  // Linha: serpentina por nível, para que todas as partidas tenham força
+  // parecida (não jogar todos os craques na primeira).
+  const lnsPorPartida = distribuirSerpentina(linhaFinal, linhaPorTime * 2);
 
   const repartir = (gks, lns) => {
-    // distribui em 2 times por serpentina de força; goleiro fixo 1 por time
+    // divide os jogadores de uma partida em 2 times equilibrados por força;
+    // 1 goleiro por time, linha em serpentina A,B,B,A
     const A = [], B = [];
     if (gks[0]) A.push(gks[0]);
     if (gks[1]) B.push(gks[1]);
-    lns.forEach((j, i) => (i % 4 === 0 || i % 4 === 3 ? A : B).push(j)); // A,B,B,A
+    [...lns].sort((a, b) => b.estrelas - a.estrelas)
+      .forEach((j, i) => (i % 4 === 0 || i % 4 === 3 ? A : B).push(j));
     return [A, B];
   };
 
   const blocos = [];
   for (let p = 0; p < partidas; p++) {
-    const gks = gksOrdenados.splice(0, gkPorTime * 2); // até 2 goleiros
-    const lns = lnOrdenados.splice(0, linhaPorTime * 2); // até 8 de linha
-    const [A, B] = repartir(gks, lns);
+    const [A, B] = repartir(gksPorPartida[p] || [], lnsPorPartida[p] || []);
     blocos.push({
       numero: p + 1, extra: false,
       preenchimento: A.length + B.length,
       amarelo: equipe(AMARELO, A), azul: equipe(AZUL, B),
     });
   }
-  // a partida menos preenchida vai para o fim e é renumerada
+  // a partida menos preenchida (a que tem as vagas em aberto) vai para o fim
   blocos.sort((a, b) => b.preenchimento - a.preenchimento);
   blocos.forEach((b, i) => { b.numero = i + 1; delete b.preenchimento; });
 
@@ -803,7 +836,7 @@ BRUNO GORDO|.|30|10|6|2|2|13|8|1|0|0|0|4|3
 RODRIGO NANTES|G|30|12|5|3|4|16|14|0|0|0|0|0|0
 CARLOS|.|29|14|3|4|7|7|17|0|0|2|0|0|1
 RAFAEL DELGADO|.|27|10|5|2|3|15|10|0|0|0|0|3|4
-GABRIEL|G|27|11|4|3|4|11|13|1|0|1|0|3|2
+GABRIEL|.|27|11|4|3|4|11|13|1|0|1|0|3|2
 JAPA|.|26|9|5|2|2|12|8|0|0|0|0|3|1
 HENDOR|.|26|10|5|1|4|8|8|0|0|0|0|4|2
 ANDRÉ|.|26|12|3|4|5|12|12|0|0|1|0|3|1
@@ -840,7 +873,7 @@ function baseOficial() {
     const [nome, g, P, J, V, E, D, GP, GC, CA, CV, Pmais, Pmenos, gols, ass] = l.split("|");
     const jid = slug(nome);
     jogadores.push({ id: jid, nome, posicao: g === "G" ? "GOLEIRO" : "LINHA", ativo: true, convidado: false,
-      estrelasIniciais: 1, pendenciaFinanceira: false, pontuacaoPendente: false, posicaoInferida: g === "G" });
+      estrelasIniciais: 1, pendenciaFinanceira: false, pontuacaoPendente: false, posicaoInferida: false });
     hist[jid] = { P: +P, J: +J, V: +V, E: +E, D: +D, GP: +GP, GC: +GC, CA: +CA, CV: +CV, Pmais: +Pmais, Pmenos: +Pmenos, gols: +gols, assistencias: +ass };
   }
   return {
