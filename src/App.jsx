@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { supabase } from "./supabase";
 
 /* ============================================================================
  * CAMPEONATO JPFFS
@@ -850,25 +851,40 @@ function baseOficial() {
   };
 }
 
-/* --- infra/repositorio ---------------------------------------------------*/
-const CHAVE = "jpffs:base:v6";
+/* --- infra/repositorio (Supabase) ---------------------------------------*/
+/* A base do campeonato mora em uma única linha da tabela `public.base`,
+ * coluna `dados` (jsonb). Leitura é liberada para qualquer visitante; escrita
+ * só é aceita para organizadores autenticados (garantido por RLS no banco). */
 
-/**
- * Persistência em localStorage. É o único ponto de I/O do sistema: para trocar
- * por IndexedDB ou por um servidor, basta reescrever estas duas funções.
- */
 async function carregarBase() {
   try {
-    const bruto = localStorage.getItem(CHAVE);
-    return bruto ? migrarBase(JSON.parse(bruto)) : null;
-  } catch {
+    const { data, error } = await supabase
+      .from("base")
+      .select("dados")
+      .eq("id", 1)
+      .single();
+    if (error) throw error;
+    const b = data?.dados;
+    return b && Object.keys(b).length ? migrarBase(b) : null;
+  } catch (e) {
+    console.error("Falha ao carregar a base:", e);
     return null;
   }
 }
 
 async function salvarBase(b) {
   try {
-    localStorage.setItem(CHAVE, JSON.stringify(b));
+    const { data: s } = await supabase.auth.getSession();
+    if (!s?.session) return false; // visitante não autenticado: ignora
+    const { error } = await supabase
+      .from("base")
+      .update({
+        dados: b,
+        atualizado_em: new Date().toISOString(),
+        atualizado_por: s.session.user.email || null,
+      })
+      .eq("id", 1);
+    if (error) throw error;
     return true;
   } catch (e) {
     console.error("Falha ao salvar a base:", e);
@@ -1010,14 +1026,102 @@ function Segmento({ valor, opcoes, onChange, titulo }) {
   );
 }
 
+/* ------------------------------ Login ------------------------------------*/
+/* Tela simples de e-mail + senha. Só quem consta em Authentication → Users no
+ * painel do Supabase consegue entrar; o resto navega no app em modo leitura. */
+function ModalLogin({ fechar, avisar }) {
+  const [email, setEmail] = useState("");
+  const [senha, setSenha] = useState("");
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState("");
+
+  const entrar = async () => {
+    setCarregando(true); setErro("");
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: senha });
+    setCarregando(false);
+    if (error) { setErro("E-mail ou senha inválidos."); return; }
+    avisar("Entrou como organizador");
+    fechar();
+  };
+
+  return (
+    <div onClick={fechar} className="fixed inset-0 z-30 flex items-center justify-center px-4"
+      style={{ background: "rgba(0,0,0,.65)" }}>
+      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-sm rounded-xl p-5"
+        style={{ background: T.painel, border: `1px solid ${T.borda}`, color: T.texto }}>
+        <div style={{ fontSize: 12, letterSpacing: ".14em", textTransform: "uppercase", color: T.secundario, marginBottom: 12 }}>
+          Entrar como organizador
+        </div>
+        <input type="email" placeholder="e-mail" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus
+          className="w-full rounded-md px-3 py-2" style={{ background: "#0a1b3d", color: T.texto, border: `1px solid ${T.borda}`, marginBottom: 8 }} />
+        <input type="password" placeholder="senha" value={senha} onChange={(e) => setSenha(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && entrar()}
+          className="w-full rounded-md px-3 py-2" style={{ background: "#0a1b3d", color: T.texto, border: `1px solid ${T.borda}`, marginBottom: 12 }} />
+        {erro && <div style={{ color: T.fraco, fontSize: 12, marginBottom: 10 }}>{erro}</div>}
+        <div className="flex justify-end" style={{ gap: 8 }}>
+          <button onClick={fechar} style={{ padding: "8px 14px", color: T.secundario, fontSize: 13 }}>Cancelar</button>
+          <button onClick={entrar} disabled={carregando || !email || !senha}
+            style={{ padding: "8px 16px", borderRadius: 8, background: T.ouro, color: "#0a1b3d", fontWeight: 800, fontSize: 13, opacity: carregando ? 0.6 : 1 }}>
+            {carregando ? "Entrando…" : "Entrar"}
+          </button>
+        </div>
+        <div style={{ fontSize: 11, color: T.secundario, marginTop: 14, lineHeight: 1.4 }}>
+          Sem login, você consegue ver tabela, súmula e classificação, mas não
+          consegue lançar rodadas.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ------------------------------ App -------------------------------------*/
 export default function App() {
   const [base, setBase] = useState(null);
   const [aba, setAba] = useState("tabela");
   const [aviso, setAviso] = useState(null);
+  const [sessao, setSessao] = useState(null);
+  const [mostrarLogin, setMostrarLogin] = useState(false);
+  const pularProximoSalvar = useRef(false);
 
+  // Sessão de autenticação: guarda quem está logado e reage a login/logout.
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSessao(data.session));
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSessao(s));
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  // Carga inicial da base.
   useEffect(() => { (async () => setBase((await carregarBase()) || baseOficial()))(); }, []);
-  useEffect(() => { if (base) { const t = setTimeout(() => salvarBase(base), 250); return () => clearTimeout(t); } }, [base]);
+
+  // Realtime: quando outro organizador salvar, o Supabase avisa aqui e a tela
+  // se atualiza sozinha. A flag `pularProximoSalvar` evita loop de gravação.
+  useEffect(() => {
+    const canal = supabase
+      .channel("base:realtime")
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "base" }, (payload) => {
+        const nova = payload.new?.dados;
+        if (nova && Object.keys(nova).length) {
+          pularProximoSalvar.current = true;
+          setBase(migrarBase(nova));
+          if (payload.new.atualizado_por && payload.new.atualizado_por !== sessao?.user?.email) {
+            setAviso(`Atualizado por ${payload.new.atualizado_por}`);
+          }
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(canal); };
+  }, [sessao?.user?.email]);
+
+  // Salvar automático (só para quem está logado). Pula gravação quando o que
+  // mudou veio de outro celular via realtime.
+  useEffect(() => {
+    if (!base) return;
+    if (pularProximoSalvar.current) { pularProximoSalvar.current = false; return; }
+    if (!sessao) return;
+    const t = setTimeout(() => salvarBase(base), 250);
+    return () => clearTimeout(t);
+  }, [base, sessao]);
+
   useEffect(() => { if (aviso) { const t = setTimeout(() => setAviso(null), 3600); return () => clearTimeout(t); } }, [aviso]);
 
   const dados = useMemo(() => (base ? calcularClassificacao(base) : null), [base]);
@@ -1038,13 +1142,29 @@ export default function App() {
   return (
     <div style={{ minHeight: "100vh", background: FUNDO_APP, color: T.texto, fontVariantNumeric: "tabular-nums", fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif" }}>
       <header className="sticky top-0 z-20 px-4 pb-2 pt-3" style={{ background: "rgba(6,20,48,.94)", backdropFilter: "blur(8px)", borderBottom: `1px solid ${T.borda}` }}>
-        <div className="mx-auto flex max-w-3xl flex-col items-center" style={{ gap: 2 }}>
-          <img src={ESCUDO} alt="Campeonato JPFFS" style={{ height: 46, width: "auto", display: "block", filter: "drop-shadow(0 2px 6px rgba(0,0,0,.55))" }} />
-          <span style={{ fontSize: 10, letterSpacing: ".16em", textTransform: "uppercase", color: T.secundario }}>
-            {dados.rodadasRealizadas}ª rodada · teto {dados.teto} pts
-          </span>
+        <div className="mx-auto flex max-w-3xl items-center justify-between" style={{ gap: 8 }}>
+          <div style={{ width: 68 }} />
+          <div className="flex flex-col items-center" style={{ gap: 2 }}>
+            <img src={ESCUDO} alt="Campeonato JPFFS" style={{ height: 46, width: "auto", display: "block", filter: "drop-shadow(0 2px 6px rgba(0,0,0,.55))" }} />
+            <span style={{ fontSize: 10, letterSpacing: ".16em", textTransform: "uppercase", color: T.secundario }}>
+              {dados.rodadasRealizadas}ª rodada · teto {dados.teto} pts
+            </span>
+          </div>
+          <button
+            onClick={() => sessao ? supabase.auth.signOut() : setMostrarLogin(true)}
+            style={{
+              width: 68, fontSize: 10, fontWeight: 800, letterSpacing: ".08em",
+              textTransform: "uppercase", padding: "6px 8px", borderRadius: 8,
+              border: `1px solid ${sessao ? T.ouro : T.borda}`,
+              color: sessao ? T.ouro : T.secundario, background: "transparent",
+            }}
+            title={sessao ? `Logado como ${sessao.user.email}` : "Entrar como organizador"}>
+            {sessao ? "Sair" : "Entrar"}
+          </button>
         </div>
       </header>
+
+      {mostrarLogin && <ModalLogin fechar={() => setMostrarLogin(false)} avisar={setAviso} />}
 
       {aviso && <div className="fixed left-1/2 z-30 w-11/12 max-w-sm -translate-x-1/2 rounded-lg px-4 py-3 text-center"
         style={{ bottom: 92, background: `linear-gradient(180deg,${T.ouroClaro},${T.ouro})`, color: "#0a1b3d", fontWeight: 800, fontSize: 13.5, boxShadow: "0 8px 28px rgba(0,0,0,.5)" }}>{aviso}</div>}
