@@ -857,61 +857,61 @@ function baixarArquivo(nome, conteudo, tipo = "text/csv;charset=utf-8") {
   URL.revokeObjectURL(url);
 }
 
-/* ==================== SEED: classificação da 20ª rodada ================== */
+/* ==================== SEED: classificação da 21ª rodada ================== */
 const SEED_20 = `
-PIETRO|.|61|20|12|6|2|31|13|1|1|0|1|26|1
-JOÃO VITOR|G|53|20|10|3|7|19|15|0|0|0|0|2|0
-ALEX|.|48|19|9|2|8|22|28|1|0|0|0|8|4
+PIETRO|.|65|21|13|6|2|34|14|1|1|0|1|28|2
+JOÃO VITOR|G|54|21|10|3|8|19|16|0|0|0|0|2|0
+PATRICK|.|51|19|10|2|7|21|14|0|0|0|0|5|3
+ALESSON|.|49|16|9|6|1|31|15|3|0|1|1|11|3
+ALEX|.|49|20|9|2|9|23|30|1|0|0|0|9|4
+VICTOR|.|49|20|7|8|5|21|15|2|0|0|0|6|3
+RICARDINHO|.|49|21|7|7|7|13|13|1|0|0|0|2|4
+WELLK|.|48|14|11|1|2|27|11|1|0|0|0|9|6
 KAIKE|.|48|19|8|6|5|20|14|3|0|0|1|6|1
-RICARDINHO|.|48|20|7|7|6|13|12|1|0|0|0|2|4
-PATRICK|.|47|18|9|2|7|20|14|0|0|0|0|5|3
 HUDSON|.|46|18|8|4|6|16|13|1|0|0|0|2|4
-ALESSON|.|45|15|8|6|1|30|15|3|0|1|1|11|3
-VICTOR|.|45|19|6|8|5|19|14|2|0|0|0|6|2
-WELLK|.|44|13|10|1|2|26|11|1|0|0|0|8|6
-FABIANO|.|42|18|7|3|8|23|22|0|0|0|0|7|3
-RENATO|.|42|18|7|4|7|19|21|2|1|0|1|6|1
-GUENO|.|41|16|8|3|5|25|17|4|0|0|2|5|4
+GUENO|.|45|17|9|3|5|27|18|4|0|0|2|5|5
+EMANUEL|.|45|19|7|5|7|23|24|1|0|0|0|5|3
+LUIS PAULO|.|45|20|6|6|8|15|19|2|0|1|0|2|3
+FABIANO|.|43|19|7|3|9|23|23|0|0|0|0|7|3
+RENATO|.|43|19|7|4|8|20|23|2|1|0|1|6|1
+TILMAR|.|43|20|5|8|7|19|26|1|0|0|0|5|1
+JEAN|.|42|17|8|1|8|18|17|0|0|0|0|1|7
 EDER|.|41|15|7|5|3|16|12|2|0|0|0|2|4
-EMANUEL|.|41|18|6|5|7|22|24|1|0|0|0|5|3
-LUIS PAULO|.|41|19|5|6|8|14|19|2|0|1|0|2|3
-ARANHA|.|40|17|6|5|6|11|14|0|0|0|0|1|3
+ARANHA|.|41|18|6|5|7|11|15|0|0|0|0|1|3
 TERUYA|.|39|16|6|5|5|13|11|1|0|0|0|2|1
-TILMAR|.|39|19|4|8|7|18|26|1|0|0|0|5|0
-JEAN|.|38|16|7|1|8|15|16|0|0|0|0|0|5
+PAULO CÉSAR|.|39|18|6|3|9|15|20|0|0|0|0|1|1
+SAMUEL|.|39|17|6|4|7|18|25|1|1|1|1|2|2
+LÁZARO|.|38|12|8|0|4|16|11|1|0|2|0|4|5
 FLAVINHO|.|38|12|6|4|2|12|10|1|0|4|0|1|2
-PAULO CÉSAR|.|38|17|6|3|8|15|19|0|0|0|0|1|1
-MARKS|G|37|16|5|5|6|15|16|1|0|1|0|0|0
-MATHEUS CUNHA|.|36|17|4|7|6|16|14|0|0|0|0|4|4
-WELLINGTON|.|35|15|5|5|5|10|11|0|0|0|0|2|1
-SAMUEL|.|35|16|5|4|7|15|24|1|1|1|1|1|2
-LÁZARO|.|34|11|7|0|4|15|11|1|0|2|0|3|5
-LEON|.|34|17|4|5|8|18|21|0|0|0|0|2|1
+MARKS|G|38|16|5|5|6|15|16|1|0|2|0|0|0
+MATHEUS CUNHA|.|37|18|4|7|7|17|17|0|0|0|0|4|5
+WELLINGTON|.|36|16|5|5|6|10|12|0|0|0|0|2|1
+LEON|.|35|18|4|5|9|19|24|0|0|0|0|2|1
+BRUNO GORDO|.|34|11|7|2|2|15|9|1|0|0|0|5|3
+DANIEL|.|33|14|6|1|7|14|21|1|0|0|0|1|3
 GILMAR PAQUETÁ|.|33|13|4|8|1|19|9|0|0|0|0|5|5
-DANIEL|.|32|13|6|1|6|14|20|1|0|0|0|1|3
-BRUNO GORDO|.|30|10|6|2|2|13|8|1|0|0|0|4|3
+HENDOR|.|30|11|6|1|4|9|8|0|0|0|0|4|2
 RODRIGO NANTES|G|30|12|5|3|4|16|14|0|0|0|0|0|0
-CARLOS|.|29|14|3|4|7|7|17|0|0|2|0|0|1
+CARLOS|.|30|15|3|4|8|7|18|0|0|2|0|0|1
+GABRIEL|.|28|12|4|3|5|12|15|1|0|1|0|3|2
 RAFAEL DELGADO|.|27|10|5|2|3|15|10|0|0|0|0|3|4
-GABRIEL|.|27|11|4|3|4|11|13|1|0|1|0|3|2
+ANDRÉ|.|27|13|3|4|6|12|13|0|0|1|0|3|1
 JAPA|.|26|9|5|2|2|12|8|0|0|0|0|3|1
-HENDOR|.|26|10|5|1|4|8|8|0|0|0|0|4|2
-ANDRÉ|.|26|12|3|4|5|12|12|0|0|1|0|3|1
 LUCIANO|.|23|11|3|3|5|11|10|0|0|0|0|3|0
-LOTHAR|.|20|14|1|3|10|6|25|1|0|0|0|1|0
+LOTHAR|.|21|15|1|3|11|7|28|1|0|0|0|2|0
 FRED|.|18|10|2|2|6|4|14|1|0|0|0|0|0
 EMERSON TIXA|.|17|11|1|3|7|3|12|2|0|0|0|0|0
-MÁRCIO BOM D+|.|14|10|3|0|7|13|15|0|0|0|5|2|2
+MÁRCIO BOM D+|.|15|11|3|0|8|14|18|0|0|0|5|2|2
+LEOMAR|.|13|5|1|4|0|5|3|0|0|1|0|0|1
 ALEXANDRE|.|12|6|1|3|2|5|5|0|0|0|0|0|1
 BATTISTON|G|10|4|2|0|2|5|3|0|0|0|0|0|0
 ENTONY|.|10|4|2|0|2|3|3|0|0|0|0|2|0
 JUDSON|.|10|6|1|1|4|5|11|0|0|0|0|0|1
 CARLOTA|.|9|5|1|1|3|4|4|0|0|0|0|0|1
-LEOMAR|.|9|4|0|4|0|2|2|0|0|1|0|0|1
-DOUGLAS|.|6|3|1|0|2|4|5|0|0|0|0|0|0
+RODRIGO COSTA|.|9|5|1|1|3|4|7|1|0|0|0|0|0
+DOUGLAS|.|7|4|1|0|3|5|7|0|0|0|0|0|0
 GUSTAVO|.|5|2|1|0|1|5|3|0|0|0|0|1|0
 ESPINOSA|.|5|2|1|0|1|3|5|0|0|0|0|0|1
-RODRIGO COSTA|.|5|4|0|1|3|1|6|1|0|0|0|0|0
 JEFERSON|.|4|1|1|0|0|4|0|0|0|0|0|1|1
 LUIS FERNANDO|.|4|1|1|0|0|2|0|0|0|0|0|0|1
 WESLEY SAFADÃO|.|4|3|0|1|2|2|5|1|0|0|0|1|0
@@ -936,7 +936,7 @@ function baseOficial() {
   return {
     versao: 6, campeonato: "Campeonato JPFFS", temporada: 2026,
     config: { ...CONFIG_PADRAO }, jogadores, rodadas: [], restricoes: [],
-    historicoInicial: { rodadas: 20, data: "2026-07-25", descricao: "Classificação oficial consolidada após a 20ª rodada", jogadores: hist },
+    historicoInicial: { rodadas: 21, data: "2026-08-01", descricao: "Classificação oficial consolidada após a 21ª rodada", jogadores: hist },
   };
 }
 
@@ -2856,7 +2856,7 @@ function TelaConfig({ base, setBase, dados, cfg, avisar }) {
       }}>Restaurar regras-padrão</Botao>
 
       <Botao variante="perigo" className="w-full" onClick={() => {
-        if (confirm("Recarregar a base oficial da 20ª rodada? Todas as rodadas lançadas no app serão perdidas.")) { setBase(baseOficial()); avisar("Base oficial recarregada"); }
+        if (confirm("Recarregar a base oficial da 21ª rodada? Todas as rodadas lançadas no app serão perdidas.")) { setBase(baseOficial()); avisar("Base oficial recarregada"); }
       }}>Restaurar base oficial</Botao>
       <p className="pb-4 text-center" style={{ fontSize: 10, letterSpacing: ".16em", textTransform: "uppercase", color: "rgba(255,255,255,.18)" }}>Campeonato JPFFS · {base.temporada}</p>
     </div>
