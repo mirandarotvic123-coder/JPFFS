@@ -46,7 +46,11 @@ const CONFIG_PADRAO = {
   cartoesPorPonto: 3, pontosPorCicloAmarelo: 1, pontosPorVermelho: 1,
   converterSegundoAmarelo: true,
   // Art. 34º — formação: goleiro é jogador normal, 1 goleiro + 4 de linha
-  jogadoresPorTime: 5, goleirosPorTime: 1, zonaSupercopa: 11,
+  jogadoresPorTime: 5, goleirosPorTime: 1,
+  // Supercopa: N melhores de LINHA + os 2 melhores goleiros classificam. As
+  // vagas de linha incluem os 2 campeões da Copa Hendor de Penalidades (se já
+  // estiverem no N, não muda nada; senão, entram e empurram os últimos).
+  zonaSupercopa: 12, goleirosSupercopa: 2, campeoesHendor: [],
   criteriosDesempate: ["pontos", "vitorias", "saldo", "golsPro", "cartoes", "alfabetica"],
   // motor de sorteio (§12º)
   candidatosSorteio: 3000, buscaLocalTop: 60, rodadasAntiRepeticao: 3,
@@ -210,7 +214,10 @@ function calcularEstatisticas(base) {
         for (const jid of lado.ids) {
           const st = novo[jid]; if (!st) continue;
           const ev = normalizarCartoes(eventoDe(jogo, jid), cfg);
-          if (soCartoes.has(jid)) { st.CA += ev.ca; st.CV += ev.cv; continue; }
+          // Quem entrou só para completar o time não registra NADA: nem
+          // pontos, nem gols, nem assistências, nem cartões. Apenas preenche a
+          // vaga para o jogo acontecer.
+          if (soCartoes.has(jid)) continue;
           st.J += 1; st[res] += 1; st.GP += lado.pro; st.GC += lado.contra;
           st.gols += ev.gols; st.assistencias += ev.assistencias; st.CA += ev.ca; st.CV += ev.cv;
           if (!naRodada[jid]) naRodada[jid] = res;
@@ -286,6 +293,28 @@ function calcularClassificacao(base) {
   const rankLinha = new Map(soLinha.map((l, i) => [l.id, i + 1]));
   const rankGoleiro = new Map(soGoleiros.map((l, i) => [l.id, i + 1]));
 
+  /* Supercopa: classificam os N melhores de LINHA e os 2 melhores GOLEIROS da
+   * tabela geral. Entre as vagas de linha, 2 são reservadas aos campeões da
+   * Copa Hendor de Penalidades: se já estiverem no corte por mérito, nada muda;
+   * se não, entram e empurram os últimos de linha para fora. Goleiros têm corte
+   * próprio (não competem com a linha). */
+  const nLinhaSuper = cfg.zonaSupercopa ?? 12;
+  const nGkSuper = cfg.goleirosSupercopa ?? 2;
+  const hendor = new Set((cfg.campeoesHendor || []).filter(Boolean));
+
+  const linhaClassificada = new Set(soLinha.slice(0, nLinhaSuper).map((l) => l.id));
+  const hendorLinha = soLinha.filter((l) => hendor.has(l.id));
+  for (const campeao of hendorLinha) {
+    if (!linhaClassificada.has(campeao.id)) {
+      linhaClassificada.add(campeao.id);
+      const removivel = [...linhaClassificada].map((id) => soLinha.find((l) => l.id === id))
+        .filter((l) => l && !hendor.has(l.id))
+        .sort((a, b) => rankLinha.get(b.id) - rankLinha.get(a.id))[0];
+      if (removivel) linhaClassificada.delete(removivel.id);
+    }
+  }
+  const gkClassificado = new Set(soGoleiros.slice(0, nGkSuper).map((l) => l.id));
+
   const classificacao = ordenada.map((l, i) => {
     const posicao = i + 1;
     let criterioAplicado = null;
@@ -297,7 +326,8 @@ function calcularClassificacao(base) {
       ...l, posicao, criterioAplicado, ehGoleiro: ehGk, rankCategoria,
       totalCategoria: ehGk ? soGoleiros.length : soLinha.length,
       estrelas: rodadasRealizadas > 0 ? estrelasPorPosicao(rankCategoria) : 1, // §11º: todos começam com 1★
-      supercopa: posicao <= cfg.zonaSupercopa,
+      supercopa: ehGk ? gkClassificado.has(l.id) : linhaClassificada.has(l.id),
+      campeaoHendor: hendor.has(l.id),
     };
   });
 
@@ -932,22 +962,30 @@ async function carregarBase() {
 }
 
 async function salvarBase(b) {
-  try {
+  // Backup local imediato: mesmo sem internet ou se o Supabase falhar, os dados
+  // ficam guardados no dispositivo e são reenviados depois. Nunca se perde o
+  // que foi lançado.
+  try { localStorage.setItem("jpffs:backup", JSON.stringify({ dados: b, em: Date.now() })); } catch {}
+
+  const gravar = async () => {
     const { data: s } = await supabase.auth.getSession();
-    if (!s?.session) return false; // visitante não autenticado: ignora
+    if (!s?.session) return "sem-sessao"; // visitante: não grava no servidor
     const { error } = await supabase
       .from("base")
-      .update({
-        dados: b,
-        atualizado_em: new Date().toISOString(),
-        atualizado_por: s.session.user.email || null,
-      })
+      .update({ dados: b, atualizado_em: new Date().toISOString(), atualizado_por: s.session.user.email || null })
       .eq("id", 1);
     if (error) throw error;
     return true;
+  };
+
+  try {
+    return (await gravar()) === true;
   } catch (e) {
-    console.error("Falha ao salvar a base:", e);
-    return false;
+    // uma re-tentativa após breve espera, antes de desistir
+    console.warn("Falha ao salvar, tentando de novo…", e);
+    await new Promise((r) => setTimeout(r, 1200));
+    try { return (await gravar()) === true; }
+    catch (e2) { console.error("Falha ao salvar a base (persistido só localmente):", e2); return false; }
   }
 }
 const id = () => Math.random().toString(36).slice(2, 10);
@@ -1274,9 +1312,12 @@ export default function App() {
 }
 
 /* =========================== TELA: RODADA ================================*/
-function TelaRodada({ base, setBase, dados, cfg, avisar }) {
+function TelaRodada({ base, setBase, dados, cfg: cfgGlobal, avisar }) {
   const [etapa, setEtapa] = useState("presenca");
   const rodada = base.rodadas.find((r) => r.status === "aberta");
+  // A rodada aberta roda com os ajustes congelados na sua abertura
+  // (configSnapshot). Mudanças feitas nos Ajustes depois não a afetam.
+  const cfg = rodada?.configSnapshot ? { ...CONFIG_PADRAO, ...rodada.configSnapshot } : cfgGlobal;
   const porId = Object.fromEntries(dados.todos.map((l) => [l.id, l]));
   const nomes = Object.fromEntries(base.jogadores.map((j) => [j.id, j.nome]));
   const atualizar = (patch) => setBase({ ...base, rodadas: base.rodadas.map((r) => (r.id === rodada.id ? { ...r, ...patch } : r)) });
@@ -1292,7 +1333,10 @@ function TelaRodada({ base, setBase, dados, cfg, avisar }) {
             {ultima ? `Última no app: rodada ${ultima.numero} (${ultima.data})` : `Base oficial carregada até a ${base.historicoInicial?.rodadas || 0}ª rodada.`}
           </p>
           <Botao className="w-full" onClick={() => {
-            setBase({ ...base, rodadas: [...base.rodadas, { id: id(), numero: proxima, data: new Date().toISOString().slice(0, 10), status: "aberta", presencas: {}, naLinha: {}, times: [], jogos: [], ajustes: [] }] });
+            // Snapshot dos ajustes vigentes NO MOMENTO da abertura. A rodada usa
+            // esses valores até ser fechada; mudanças posteriores nos Ajustes só
+            // valem para as próximas rodadas, nunca para esta nem para as antigas.
+            setBase({ ...base, rodadas: [...base.rodadas, { id: id(), numero: proxima, data: new Date().toISOString().slice(0, 10), status: "aberta", presencas: {}, naLinha: {}, times: [], jogos: [], ajustes: [], configSnapshot: { ...cfg } }] });
             avisar(`Rodada ${proxima} aberta`);
           }}>Abrir rodada {proxima}</Botao>
         </Painel>
@@ -1309,9 +1353,24 @@ function TelaRodada({ base, setBase, dados, cfg, avisar }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between rounded-xl px-4 py-3" style={{ background: T.ouroFraco, border: "1px solid rgba(245,197,24,.34)" }}>
-        <div>
-          <p style={{ fontSize: 11, fontWeight: 900, letterSpacing: ".14em", textTransform: "uppercase", color: T.ouro }}>Rodada {rodada.numero}</p>
-          <p style={{ fontSize: 12, color: T.secundario }}>{rodada.jogos.length} partida(s)</p>
+        <div className="flex items-center" style={{ gap: 10 }}>
+          <button
+            onClick={() => {
+              const temLancamento = (rodada.jogos || []).length > 0 || Object.keys(rodada.presencas || {}).length > 0;
+              const msg = temLancamento
+                ? `Fechar a rodada ${rodada.numero} e voltar? As presenças/partidas ainda não fechadas desta rodada serão descartadas.`
+                : `Voltar para a tela de abertura? A rodada ${rodada.numero} (ainda vazia) será cancelada.`;
+              if (confirm(msg)) {
+                setBase({ ...base, rodadas: base.rodadas.filter((r) => r.id !== rodada.id) });
+                avisar("Voltou para a abertura de rodada");
+              }
+            }}
+            title="Voltar para abrir rodada"
+            style={{ fontSize: 18, fontWeight: 900, color: T.ouro, lineHeight: 1, padding: "2px 6px" }}>‹</button>
+          <div>
+            <p style={{ fontSize: 11, fontWeight: 900, letterSpacing: ".14em", textTransform: "uppercase", color: T.ouro }}>Rodada {rodada.numero}</p>
+            <p style={{ fontSize: 12, color: T.secundario }}>{rodada.jogos.length} partida(s)</p>
+          </div>
         </div>
         <div className="flex items-center gap-1.5">
           <input type="number" value={rodada.numero} onChange={(e) => atualizar({ numero: Number(e.target.value) })} style={{ ...inputStyle, width: 58, padding: "8px 4px", textAlign: "center", fontSize: 13 }} />
@@ -1387,12 +1446,35 @@ function EtapaPresenca({ base, setBase, rodada, atualizar, porId, cfg, dados, av
   const faltamCompletar = faltamLinha + vagasGkAbertas;
   const dist = [5, 4, 3, 2, 1].map((e) => ({ e, n: P.aptos.filter((a) => (a.linha?.estrelas || 1) === e).length })).filter((d) => d.n);
 
+  // Ordenação alfabética e separação em 3 grupos apenas para organizar a
+  // visualização da chamada: A–I, J–R e S–Z. Não altera nenhuma regra.
   const visiveis = base.jogadores.filter((j) => j.ativo !== false)
     .filter((j) => j.nome.toLowerCase().includes(busca.trim().toLowerCase()))
-    .sort((a, b) => (porId[a.id]?.posicao || 999) - (porId[b.id]?.posicao || 999));
+    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  const primeiraLetra = (nome) => (nome || "").trim().charAt(0).toUpperCase();
+  const gruposChamada = [
+    { titulo: "A – I", jogadores: visiveis.filter((j) => primeiraLetra(j.nome) >= "A" && primeiraLetra(j.nome) <= "I") },
+    { titulo: "J – R", jogadores: visiveis.filter((j) => primeiraLetra(j.nome) >= "J" && primeiraLetra(j.nome) <= "R") },
+    { titulo: "S – Z", jogadores: visiveis.filter((j) => primeiraLetra(j.nome) >= "S") },
+  ].filter((g) => g.jogadores.length > 0);
 
   return (
     <div className="space-y-4">
+      {/* Ajustes vigentes nesta rodada (congelados na abertura). */}
+      <Painel className="p-3" style={{ background: "rgba(240,192,64,.06)", borderColor: "rgba(240,192,64,.25)" }}>
+        <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".14em", color: T.ouro, marginBottom: 6 }}>AJUSTES DESTA RODADA</div>
+        <div className="flex flex-wrap" style={{ gap: 6 }}>
+          {[
+            `Teto ${cfg.tetoPorRodada} pts/rodada`,
+            `${cfg.jogadoresPorTime - cfg.goleirosPorTime} de linha + ${cfg.goleirosPorTime} gk por time`,
+            `Supercopa: ${cfg.zonaSupercopa} linha + ${cfg.goleirosSupercopa || 2} gk`,
+            `Cartões: ${cfg.cartoesPorPonto} = 1 ponto`,
+          ].map((t, i) => (
+            <span key={i} style={{ fontSize: 10.5, fontWeight: 700, color: T.secundario, background: "rgba(255,255,255,.05)", padding: "4px 9px", borderRadius: 20 }}>{t}</span>
+          ))}
+        </div>
+      </Painel>
+
       <Painel className="grid grid-cols-5 gap-1.5 p-2">
         <Contador rotulo="Aptos" valor={P.aptos.length} cor={T.verde} />
         <Contador rotulo="Goleiros" valor={P.goleiros.length} cor={T.gk} />
@@ -1426,32 +1508,39 @@ function EtapaPresenca({ base, setBase, rodada, atualizar, porId, cfg, dados, av
 
       <section>
         <Secao titulo="Chamada" detalhe="ausente → presente → atrasado" />
-        <div className="flex flex-wrap gap-2">
-          {visiveis.map((j) => {
-            const s = statusDe(j.id), l = porId[j.id];
-            const nivel = s === "atrasado" ? nivelSeAtrasar(dados.disciplina, rodada, j.id) : 0;
-            const proximo = nivelSeAtrasar(dados.disciplina, rodada, j.id);
-            const susp = nivel >= cfg.atrasosParaSuspensao;
-            const est = susp ? { border: T.vermelho, background: "rgba(255,107,107,.18)", color: T.vermelho }
-              : s === "presente" ? { border: T.verde, background: "rgba(61,214,140,.16)", color: T.verde }
-              : s === "atrasado" ? { border: T.laranja, background: "rgba(255,165,61,.16)", color: T.laranja }
-              : { border: T.borda, background: "rgba(255,255,255,.04)", color: T.secundario };
-            return (
-              <button key={j.id} onClick={() => {
-                const novo = ciclo[s];
-                atualizar({ presencas: { ...rodada.presencas, [j.id]: novo } });
-                if (novo === "atrasado") avisar(`${j.nome}: ${nivelInfo(proximo, cfg).rotulo}`);
-              }} className="flex items-center gap-1.5 rounded-full"
-                style={{ padding: "10px 14px", minHeight: 44, fontSize: 14, fontWeight: 600, border: `1px solid ${est.border}`, background: est.background, color: est.color }}>
-                {susp && "🚫"}
-                {j.posicao === "GOLEIRO" && <IconeGoleiro tam={14} />}
-                {j.nome}
-                <Estrelas n={l?.estrelas || 1} tam={9} goleiro={j.posicao === "GOLEIRO"} />
-                {nivel > 0 && <SeloAtraso nivel={nivel} cfg={cfg} mini />}
-                <Marcadores jogador={j} />
-              </button>
-            );
-          })}
+        <div className="space-y-4">
+          {gruposChamada.map((grupo) => (
+            <div key={grupo.titulo}>
+              <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: ".14em", color: T.ouro, marginBottom: 8, opacity: 0.85 }}>{grupo.titulo}</div>
+              <div className="flex flex-wrap gap-2">
+                {grupo.jogadores.map((j) => {
+                  const s = statusDe(j.id), l = porId[j.id];
+                  const nivel = s === "atrasado" ? nivelSeAtrasar(dados.disciplina, rodada, j.id) : 0;
+                  const proximo = nivelSeAtrasar(dados.disciplina, rodada, j.id);
+                  const susp = nivel >= cfg.atrasosParaSuspensao;
+                  const est = susp ? { border: T.vermelho, background: "rgba(255,107,107,.18)", color: T.vermelho }
+                    : s === "presente" ? { border: T.verde, background: "rgba(61,214,140,.16)", color: T.verde }
+                    : s === "atrasado" ? { border: T.laranja, background: "rgba(255,165,61,.16)", color: T.laranja }
+                    : { border: T.borda, background: "rgba(255,255,255,.04)", color: T.secundario };
+                  return (
+                    <button key={j.id} onClick={() => {
+                      const novo = ciclo[s];
+                      atualizar({ presencas: { ...rodada.presencas, [j.id]: novo } });
+                      if (novo === "atrasado") avisar(`${j.nome}: ${nivelInfo(proximo, cfg).rotulo}`);
+                    }} className="flex items-center gap-1.5 rounded-full"
+                      style={{ padding: "10px 14px", minHeight: 44, fontSize: 14, fontWeight: 600, border: `1px solid ${est.border}`, background: est.background, color: est.color }}>
+                      {susp && "🚫"}
+                      {j.posicao === "GOLEIRO" && <IconeGoleiro tam={14} />}
+                      {j.nome}
+                      <Estrelas n={l?.estrelas || 1} tam={9} goleiro={j.posicao === "GOLEIRO"} />
+                      {nivel > 0 && <SeloAtraso nivel={nivel} cfg={cfg} mini />}
+                      <Marcadores jogador={j} />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -2298,6 +2387,7 @@ function TelaClassificacao({ base, dados, cfg, avisar }) {
 /* Aba de resultados dos jogos (só rodadas feitas no app — 21ª em diante). */
 function Resultados({ base }) {
   const nomes = Object.fromEntries(base.jogadores.map((j) => [j.id, j.nome]));
+  const [aberta, setAberta] = useState(null);
   const rodadas = [...(base.rodadas || [])]
     .filter((r) => (r.jogos || []).some((g) => g.encerrado))
     .sort((a, b) => b.numero - a.numero); // mais recente primeiro
@@ -2311,44 +2401,70 @@ function Resultados({ base }) {
     );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       {rodadas.map((rodada) => {
         const jogos = [...(rodada.jogos || [])].filter((g) => g.encerrado).sort((a, b) => a.numero - b.numero);
+        const estaAberta = aberta === rodada.id;
         return (
-          <div key={rodada.id}>
-            <div className="flex items-baseline justify-between" style={{ marginBottom: 8 }}>
-              <span style={{ fontSize: 14, fontWeight: 900, color: T.ouro }}>{rodada.numero}ª rodada</span>
-              {rodada.data && <span style={{ fontSize: 11, color: T.fraco }}>{new Date(rodada.data + "T12:00:00").toLocaleDateString("pt-BR")}</span>}
-            </div>
-            <div className="space-y-2">
-              {jogos.map((jogo) => {
-                const p = placarDe(jogo, rodada);
-                const tA = (rodada.times || []).find((x) => x.id === jogo.timeA);
-                const tB = (rodada.times || []).find((x) => x.id === jogo.timeB);
-                const gA = (tA?.jogadores || []).filter((j) => !(jogo.soCartoes || []).includes(j.jogadorId));
-                const gB = (tB?.jogadores || []).filter((j) => !(jogo.soCartoes || []).includes(j.jogadorId));
-                const golsDe = (jid) => eventoDe(jogo, jid).gols;
-                const artilheiros = (grupo) => grupo.filter((j) => golsDe(j.jogadorId) > 0)
-                  .map((j) => `${nomes[j.jogadorId] || "?"}${golsDe(j.jogadorId) > 1 ? " " + golsDe(j.jogadorId) : ""}`);
-                const venceuA = p.A > p.B, venceuB = p.B > p.A;
-                return (
-                  <Painel key={jogo.id} className="p-3">
-                    <div className="flex items-center justify-between" style={{ gap: 8 }}>
-                      <span className="flex-1 text-right" style={{ fontSize: 13.5, fontWeight: venceuA ? 900 : 600, color: venceuA ? T.ouro : T.texto }}>Amarelo</span>
-                      <span style={{ fontSize: 18, fontWeight: 900, color: T.texto, minWidth: 58, textAlign: "center", letterSpacing: ".05em" }}>{p.A} <span style={{ color: T.fraco }}>×</span> {p.B}</span>
-                      <span className="flex-1" style={{ fontSize: 13.5, fontWeight: venceuB ? 900 : 600, color: venceuB ? "#7FB0FF" : T.texto }}>Azul</span>
-                    </div>
-                    {(artilheiros(gA).length > 0 || artilheiros(gB).length > 0) && (
-                      <div className="flex justify-between" style={{ gap: 8, marginTop: 6, fontSize: 10.5, color: T.secundario }}>
-                        <span className="flex-1 text-right">{artilheiros(gA).join(", ")}</span>
-                        <span style={{ minWidth: 14, textAlign: "center" }}>⚽</span>
-                        <span className="flex-1">{artilheiros(gB).join(", ")}</span>
+          <div key={rodada.id} className="rounded-xl overflow-hidden" style={{ border: `1px solid ${T.borda}` }}>
+            {/* cabeçalho clicável */}
+            <button onClick={() => setAberta(estaAberta ? null : rodada.id)}
+              className="flex w-full items-center justify-between"
+              style={{ padding: "13px 14px", background: estaAberta ? "rgba(240,192,64,.08)" : "rgba(255,255,255,.03)" }}>
+              <span className="flex items-baseline" style={{ gap: 8 }}>
+                <span style={{ fontSize: 14, fontWeight: 900, color: T.ouro }}>{rodada.numero}ª rodada</span>
+                <span style={{ fontSize: 11, color: T.fraco }}>{jogos.length} jogo(s)</span>
+              </span>
+              <span className="flex items-center" style={{ gap: 10 }}>
+                {rodada.data && <span style={{ fontSize: 11, color: T.fraco }}>{new Date(rodada.data + "T12:00:00").toLocaleDateString("pt-BR")}</span>}
+                <span style={{ fontSize: 12, color: T.secundario, transform: estaAberta ? "rotate(180deg)" : "none", transition: "transform .15s" }}>▾</span>
+              </span>
+            </button>
+
+            {estaAberta && (
+              <div className="space-y-2" style={{ padding: 10, background: "rgba(0,0,0,.15)" }}>
+                {jogos.map((jogo) => {
+                  const p = placarDe(jogo, rodada);
+                  const tA = (rodada.times || []).find((x) => x.id === jogo.timeA);
+                  const tB = (rodada.times || []).find((x) => x.id === jogo.timeB);
+                  const gA = (tA?.jogadores || []).filter((j) => !(jogo.soCartoes || []).includes(j.jogadorId));
+                  const gB = (tB?.jogadores || []).filter((j) => !(jogo.soCartoes || []).includes(j.jogadorId));
+                  const ev = (jid) => eventoDe(jogo, jid);
+                  const linhaEventos = (grupo) => grupo.map((j) => {
+                    const e = ev(j.jogadorId); const marcas = [];
+                    if (e.gols > 0) marcas.push(`⚽${e.gols > 1 ? e.gols : ""}`);
+                    if (e.assistencias > 0) marcas.push(`👟${e.assistencias > 1 ? e.assistencias : ""}`);
+                    if (e.ca > 0) marcas.push("🟨");
+                    if (e.cv > 0) marcas.push("🟥");
+                    return { nome: nomes[j.jogadorId] || "?", marcas };
+                  });
+                  const venceuA = p.A > p.B, venceuB = p.B > p.A;
+                  return (
+                    <Painel key={jogo.id} className="p-3">
+                      <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".12em", color: T.fraco, textAlign: "center", marginBottom: 6 }}>JOGO {jogo.numero}</div>
+                      <div className="flex items-center justify-between" style={{ gap: 8 }}>
+                        <span className="flex-1 text-right" style={{ fontSize: 13.5, fontWeight: venceuA ? 900 : 600, color: venceuA ? T.ouro : T.texto }}>Amarelo</span>
+                        <span style={{ fontSize: 18, fontWeight: 900, color: T.texto, minWidth: 58, textAlign: "center", letterSpacing: ".05em" }}>{p.A} <span style={{ color: T.fraco }}>×</span> {p.B}</span>
+                        <span className="flex-1" style={{ fontSize: 13.5, fontWeight: venceuB ? 900 : 600, color: venceuB ? "#7FB0FF" : T.texto }}>Azul</span>
                       </div>
-                    )}
-                  </Painel>
-                );
-              })}
-            </div>
+                      <div className="flex justify-between" style={{ gap: 10, marginTop: 8, fontSize: 11, lineHeight: 1.7 }}>
+                        <div className="flex-1 text-right" style={{ color: T.secundario }}>
+                          {linhaEventos(gA).map((r, i) => (
+                            <div key={i}>{r.nome} {r.marcas.length > 0 && <span>{r.marcas.join(" ")}</span>}</div>
+                          ))}
+                        </div>
+                        <div style={{ width: 1, background: T.borda }} />
+                        <div className="flex-1" style={{ color: T.secundario }}>
+                          {linhaEventos(gB).map((r, i) => (
+                            <div key={i}>{r.marcas.length > 0 && <span>{r.marcas.join(" ")}</span>} {r.nome}</div>
+                          ))}
+                        </div>
+                      </div>
+                    </Painel>
+                  );
+                })}
+              </div>
+            )}
           </div>
         );
       })}
@@ -2666,7 +2782,7 @@ function TelaConfig({ base, setBase, dados, cfg, avisar }) {
         <Painel className="grid grid-cols-2 gap-2 p-3">
           {[["pontosVitoria", "Pontos por vitória"], ["pontosEmpate", "Pontos por empate"],
             ["pontosPresenca", "Pontos por presença"], ["tetoPorRodada", "Teto por rodada"],
-            ["zonaSupercopa", "Supercopa até o"]].map(([c, r]) => (
+            ["zonaSupercopa", "Supercopa: nº de linha"], ["goleirosSupercopa", "Supercopa: nº de goleiros"]].map(([c, r]) => (
             <Campo key={c} rotulo={r}><input type="number" value={cfg[c]} onChange={(e) => mudar(c, Number(e.target.value))} style={{ ...inputStyle, padding: "10px" }} /></Campo>
           ))}
           <div className="col-span-2">
@@ -2677,6 +2793,33 @@ function TelaConfig({ base, setBase, dados, cfg, avisar }) {
               </select>
             </Campo>
           </div>
+        </Painel>
+      </section>
+
+      <section>
+        <Secao titulo="Campeões Copa Hendor" detalhe="2 vagas garantidas na Supercopa" />
+        <Painel className="space-y-2 p-3">
+          <p style={{ fontSize: 11.5, lineHeight: 1.5, color: T.fraco }}>
+            Os 2 campeões da Copa Hendor de Penalidades entram na zona da Supercopa mesmo se estiverem fora do corte por pontos.
+            Se já estiverem classificados por mérito, nada muda. Deixe em branco enquanto a final não acontece.
+          </p>
+          {[0, 1].map((i) => (
+            <Campo key={i} rotulo={`Campeão ${i + 1}`}>
+              <select
+                value={(cfg.campeoesHendor || [])[i] || ""}
+                onChange={(e) => {
+                  const atual = [...(cfg.campeoesHendor || [])];
+                  atual[i] = e.target.value || null;
+                  mudar("campeoesHendor", atual.filter(Boolean));
+                }}
+                style={{ ...inputStyle, padding: "10px", fontSize: 13 }}>
+                <option value="">— a definir —</option>
+                {base.jogadores.filter((j) => j.posicao !== "GOLEIRO").map((j) => (
+                  <option key={j.id} value={j.id}>{j.nome}</option>
+                ))}
+              </select>
+            </Campo>
+          ))}
         </Painel>
       </section>
 
@@ -2704,6 +2847,13 @@ function TelaConfig({ base, setBase, dados, cfg, avisar }) {
           </p>
         </Painel>
       </section>
+
+      <Botao variante="secundario" className="w-full" onClick={() => {
+        if (confirm("Restaurar todas as regras dos Ajustes para o padrão? Suas rodadas e jogadores NÃO são afetados — só os parâmetros voltam ao original.")) {
+          setBase({ ...base, config: { ...CONFIG_PADRAO } });
+          avisar("Regras restauradas ao padrão");
+        }
+      }}>Restaurar regras-padrão</Botao>
 
       <Botao variante="perigo" className="w-full" onClick={() => {
         if (confirm("Recarregar a base oficial da 20ª rodada? Todas as rodadas lançadas no app serão perdidas.")) { setBase(baseOficial()); avisar("Base oficial recarregada"); }
