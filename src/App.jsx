@@ -2848,15 +2848,34 @@ function TelaConfig({ base, setBase, dados, cfg, avisar }) {
         </Painel>
       </section>
 
-      <Botao variante="secundario" className="w-full" onClick={() => {
-        if (confirm("Restaurar todas as regras dos Ajustes para o padrão? Suas rodadas e jogadores NÃO são afetados — só os parâmetros voltam ao original.")) {
-          setBase({ ...base, config: { ...CONFIG_PADRAO } });
-          avisar("Regras restauradas ao padrão");
-        }
+      <Botao variante="secundario" className="w-full" onClick={async () => {
+        if (!confirm("Restaurar todas as regras dos Ajustes para o padrão? Suas rodadas e jogadores NÃO são afetados — só os parâmetros voltam ao original.")) return;
+        const { data: s } = await supabase.auth.getSession();
+        if (!s?.session) { alert("Você precisa estar logado para restaurar."); return; }
+        const novaBase = { ...base, config: { ...CONFIG_PADRAO } };
+        const { error } = await supabase.from("base")
+          .update({ dados: novaBase, atualizado_em: new Date().toISOString(), atualizado_por: s.session.user.email || null })
+          .eq("id", 1);
+        if (error) { alert("Falha ao restaurar: " + error.message); return; }
+        avisar("Regras restauradas — recarregando…");
+        setTimeout(() => window.location.reload(), 400);
       }}>Restaurar regras-padrão</Botao>
 
-      <Botao variante="perigo" className="w-full" onClick={() => {
-        if (confirm("Recarregar a base oficial da 21ª rodada? Todas as rodadas lançadas no app serão perdidas.")) { setBase(baseOficial()); avisar("Base oficial recarregada"); }
+      <Botao variante="perigo" className="w-full" onClick={async () => {
+        if (!confirm("Recarregar a base oficial da 21ª rodada? Todas as rodadas lançadas no app serão perdidas em TODOS os dispositivos.")) return;
+        const { data: s } = await supabase.auth.getSession();
+        if (!s?.session) { alert("Você precisa estar logado para restaurar."); return; }
+        const oficial = baseOficial();
+        // Grava DIRETO no Supabase, sem passar pelo salvamento com debounce,
+        // que poderia ser sobrescrito pelo sincronizador antes de gravar.
+        const { error } = await supabase.from("base")
+          .update({ dados: oficial, atualizado_em: new Date().toISOString(), atualizado_por: s.session.user.email || null })
+          .eq("id", 1);
+        if (error) { alert("Falha ao restaurar: " + error.message); return; }
+        // Limpa o backup local para não conflitar
+        try { localStorage.removeItem("jpffs:backup"); } catch {}
+        avisar("Base oficial restaurada — recarregando…");
+        setTimeout(() => window.location.reload(), 400);
       }}>Restaurar base oficial</Botao>
       <p className="pb-4 text-center" style={{ fontSize: 10, letterSpacing: ".16em", textTransform: "uppercase", color: "rgba(255,255,255,.18)" }}>Campeonato JPFFS · {base.temporada}</p>
     </div>
