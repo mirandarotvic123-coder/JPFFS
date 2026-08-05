@@ -52,9 +52,8 @@ const CONFIG_PADRAO = {
   // estiverem no N, não muda nada; senão, entram e empurram os últimos).
   zonaSupercopa: 12, goleirosSupercopa: 2, campeoesHendor: [],
   criteriosDesempate: ["pontos", "vitorias", "saldo", "golsPro", "cartoes", "alfabetica"],
-  // motor de sorteio (§12º)
-  candidatosSorteio: 3000, buscaLocalTop: 60, rodadasAntiRepeticao: 3,
-  usarAproveitamento: false, toleranciaEmpate: 0.001,
+  // motor de sorteio (§12º) — busca local otimiza direto a divisão exibida
+  rodadasAntiRepeticao: 3, usarAproveitamento: false,
   pesos: { rigida: 100000, amplitude: 1000, desvio: 300, faixa: 40, varianciaInterna: 60, repeticao: 8, aproveitamento: 15 },
 };
 
@@ -105,7 +104,16 @@ const nivelInfo = (n, cfg = CONFIG_PADRAO) =>
   n <= 0 ? null : { ...NIVEL_ATRASO[Math.min(n, 4)], n, suspende: n >= cfg.atrasosParaSuspensao };
 const mesDe = (data) => String(data || "").slice(0, 7);
 
-/** Art. 34º §8º/§9º — contagem mensal, que só atravessa a virada se houver emenda. */
+/**
+ * Art. 34º §8º/§9º — contagem mensal, que só atravessa a virada se houver
+ * emenda (nenhuma presença pontual entre um mês e outro).
+ *
+ * `contador` é o nível de punição vigente; `contadorMes` é só os atrasos
+ * ocorridos DENTRO do mês corrente. Chegar na hora não apaga os atrasos já
+ * registrados neste mesmo mês — só perdoa o que veio de meses anteriores:
+ * o contador regride para `contadorMes` (nunca direto para zero, a menos
+ * que o mês corrente ainda não tenha nenhum atraso).
+ */
 function disciplinaAtrasos(base) {
   const estado = {}, porRodada = {}, antesDe = {};
   const rodadas = [...base.rodadas].sort((a, b) => (a.data || "").localeCompare(b.data || "") || a.numero - b.numero);
@@ -115,11 +123,23 @@ function disciplinaAtrasos(base) {
     antesDe[r.id] = JSON.parse(JSON.stringify(estado));
     for (const [jid, status] of Object.entries(r.presencas || {})) {
       if (status !== "presente" && status !== "atrasado") continue;
-      const e = (estado[jid] = estado[jid] || { contador: 0, mes: null, emenda: false });
-      if (e.mes && mes !== e.mes && !(e.emenda && status === "atrasado")) e.contador = 0;
+      const e = (estado[jid] = estado[jid] || { contador: 0, contadorMes: 0, mes: null, emenda: false });
+      if (e.mes && mes !== e.mes) {
+        // Mês novo: a contagem do mês zera sempre; o nível de punição só
+        // continua (carryover) se a sequência de atrasos não foi
+        // interrompida por uma presença pontual (emenda).
+        e.contadorMes = 0;
+        if (!e.emenda) e.contador = 0;
+      }
       e.mes = mes;
-      if (status === "atrasado") { e.contador += 1; e.emenda = true; porRodada[r.id][jid] = e.contador; }
-      else e.emenda = false;
+      if (status === "atrasado") {
+        e.contadorMes += 1; e.contador += 1; e.emenda = true;
+        porRodada[r.id][jid] = e.contador;
+      } else {
+        // Chegou na hora: esquece o que veio de meses anteriores, mas
+        // mantém contando os atrasos já registrados neste mesmo mês.
+        e.contador = e.contadorMes; e.emenda = false;
+      }
     }
   }
   return { porRodada, antesDe, estado };
@@ -150,8 +170,10 @@ function normalizarCartoes(ev, cfg) {
 function placarDe(jogo, rodada) {
   const tA = timePorId(rodada, jogo.timeA), tB = timePorId(rodada, jogo.timeB);
   const soma = (t) => idsDoTime(t).reduce((s, jid) => s + eventoDe(jogo, jid).gols, 0);
-  const calcA = soma(tA) + (jogo.golsContraB || 0);
-  const calcB = soma(tB) + (jogo.golsContraA || 0);
+  // Gol não computado: entra no placar da própria equipe sem ser creditado a
+  // nenhum jogador — usado quando quem marcou é alguém que não pontua (§10º).
+  const calcA = soma(tA) + (jogo.golsContraB || 0) + (jogo.golsNaoComputadosA || 0);
+  const calcB = soma(tB) + (jogo.golsContraA || 0) + (jogo.golsNaoComputadosB || 0);
   const m = jogo.placarManual;
   return { A: m ? m.A : calcA, B: m ? m.B : calcB, calcA, calcB, manual: !!m, divergente: !!m && (m.A !== calcA || m.B !== calcB) };
 }
@@ -202,8 +224,9 @@ function calcularEstatisticas(base) {
     }
 
     for (const jogo of encerrados(rodada)) {
-      // Art. 34º §10º — quem completa equipe não pontua nada, mas leva cartão.
-      // completaTime é o nome antigo do mesmo conceito, mantido para bases já gravadas.
+      // Art. 34º §10º — quem completa equipe não pontua NADA: nem presença,
+      // nem gol, nem assistência, nem cartão. completaTime é o nome antigo do
+      // mesmo conceito, mantido para bases já gravadas.
       const soCartoes = new Set([...(jogo.completaTime || []), ...(jogo.soCartoes || [])]);
       const p = placarDe(jogo, rodada);
       for (const lado of [
@@ -441,6 +464,10 @@ function buscaLocal(times, ctx) {
           for (let k = 0; k < times[b].length; k++) {
             const ja = times[a][i], jb = times[b][k];
             if (!!ja.slotGoleiro !== !!jb.slotGoleiro) continue; // vaga de goleiro só troca com vaga de goleiro
+            // Goleiro só troca de LADO dentro da mesma partida, nunca de partida —
+            // senão a busca local, ao perseguir equilíbrio de estrelas, desfaria o
+            // espalhamento proposital dos goleiros entre as partidas (§12º).
+            if (ja.slotGoleiro && ctx.partidaDoTime && ctx.partidaDoTime(a) !== ctx.partidaDoTime(b)) continue;
             if (ctx.travados.has(ja.id) || ctx.travados.has(jb.id)) continue;
             times[a][i] = jb; times[b][k] = ja;
             const nova = avaliarTimes(times, ctx);
@@ -507,55 +534,7 @@ function sortearEquipes(entradas, opcoes = {}) {
   const faltamGk = vagasGk - gkFinal.length;
   const faltamLinha = vagasLinha - linhaFinal.length;
 
-  const emJogo = [...gkFinal, ...linhaFinal];
-  const linhaFora = [...gkSobrando, ...linhaSobrando];
   const nomes = Object.fromEntries(entradas.map((j) => [j.id, j.nome]));
-
-  const ctx = {
-    pesos: cfg.pesos, goleirosPorTime: gkPorTime,
-    goleirosSuficientes: faltamGk === 0,
-    totalCinco: emJogo.filter((j) => j.estrelas === 5).length,
-    duplasRecentes: opcoes.duplasRecentes,
-    restricoes: (opcoes.restricoes || []).filter((r) => emJogo.some((j) => j.id === r.a) && emJogo.some((j) => j.id === r.b)),
-    usarAproveitamento: cfg.usarAproveitamento, travados,
-    nome: (x) => nomes[x] || "?", nomeTime: (i) => `Time ${i + 1}`,
-  };
-
-  const construir = () => {
-    const times = Array.from({ length: nTimes }, () => []);
-    const cap = (j) => (j.slotGoleiro ? gkPorTime : linhaPorTime);
-    const cabe = (t, j) => t.filter((x) => !!x.slotGoleiro === !!j.slotGoleiro).length < cap(j);
-    const alocar = (grupo) => {
-      const livres = [];
-      for (const j of grupo) {
-        const t = travas[j.id];
-        if (t !== undefined && t < nTimes && cabe(times[t], j)) times[t].push(j); else livres.push(j);
-      }
-      let idx = Math.floor(rng() * nTimes);
-      for (const j of embaralharRng(livres, rng)) {
-        let v = 0;
-        while (!cabe(times[idx % nTimes], j) && v < nTimes * 2) { idx++; v++; }
-        times[idx % nTimes].push(j); idx++;
-      }
-    };
-    alocar(gkFinal); alocar(linhaFinal);
-    return times;
-  };
-
-  const candidatos = [];
-  for (let i = 0; i < Math.max(200, cfg.candidatosSorteio); i++) {
-    const t = construir();
-    candidatos.push({ times: t, avaliacao: avaliarTimes(t, ctx) });
-  }
-  candidatos.sort((a, b) => a.avaliacao.custo - b.avaliacao.custo);
-  const refinados = candidatos.slice(0, Math.max(1, cfg.buscaLocalTop)).map((c) => {
-    const copia = c.times.map((t) => [...t]);
-    return { times: copia, avaliacao: buscaLocal(copia, ctx) };
-  });
-  refinados.sort((a, b) => a.avaliacao.custo - b.avaliacao.custo);
-  const melhorCusto = refinados[0].avaliacao.custo;
-  const empatados = refinados.filter((r) => r.avaliacao.custo <= melhorCusto + cfg.toleranciaEmpate);
-  const escolhido = empatados[Math.floor(rng() * empatados.length)];
 
   // Cada equipe passa a ser um conjunto de VAGAS fixas: 1 de goleiro + 4 de
   // linha. Vaga vazia (jogador: null) é o que a interface oferece para
@@ -573,48 +552,37 @@ function sortearEquipes(entradas, opcoes = {}) {
     return { ...cor, vagas, forca: jogadores.reduce((s, j) => s + j.estrelas, 0) };
   };
 
-  /* Regra do campeonato: só a ÚLTIMA partida pode ter vagas em aberto; as
-   * anteriores saem completas. Mas as partidas também devem ter NÍVEL parecido
-   * entre si — não adianta jogar todos os craques na Partida 1 e sobrar os
-   * fracos na última. Por isso distribuímos os jogadores em SERPENTINA entre as
-   * partidas: o melhor vai para a P1, o 2º para a P2, o 3º para a P3, o 4º volta
-   * para a P3, o 5º para a P2, etc. Assim cada partida recebe uma fatia
-   * equilibrada de estrelas. As vagas que faltarem se concentram na última. */
+  /* Regra do campeonato: só a ÚLTIMA partida pode ter vagas de LINHA em
+   * aberto; as anteriores saem completas. Por isso a linha é espalhada em
+   * SERPENTINA entre as partidas, com um "alvo" de vagas por partida: as
+   * primeiras enchem por completo, a última recebe o resto.
+   * Goleiro é uma exceção deliberada a essa regra (§12º): em vez de
+   * concentrar os goleiros de ofício sempre na Partida 1 e deixar as demais
+   * sem nenhum goleiro de verdade — o que esvazia o gol justo nos últimos
+   * jogos do dia, quando quem já jogou fica sem interesse em completar —,
+   * os goleiros presentes são ESPALHADOS entre as partidas antes de dobrar
+   * em qualquer uma delas. */
   // Todos os presentes, sem descartar ninguém. Quem a seleção deixou de fora
   // por excesso volta ao pote (será usado para completar vagas de gol).
   const poteGk = [...gkFinal, ...gkSobrando.map((j) => ({ ...j, slotGoleiro: true }))]
     .sort((a, b) => b.estrelas - a.estrelas);
   const poteLinha = [...linhaFinal, ...linhaSobrando].sort((a, b) => b.estrelas - a.estrelas);
 
-  /* Distribuição: monta N partidas de 10, concentrando as vagas vazias na
-   * ÚLTIMA e equilibrando o nível entre as partidas.
-   *  - Goleiros de ofício ocupam o gol (2 por partida). O sorteio NUNCA coloca
-   *    jogador de linha no gol: faltando goleiro, a vaga de meta fica ABERTA e
-   *    é concentrada na última partida, para ser completada na mão.
-   *  - A linha é espalhada em serpentina por nível, com um "alvo" de vagas por
-   *    partida: as primeiras enchem por completo; a última recebe o resto. */
-  const capGk = gkPorTime * 2;
   const capLn = linhaPorTime * 2;
-  const gksPorPartida = Array.from({ length: partidas }, () => []);
+  // cada posição guarda até gkPorTime×2 goleiros — pode ficar com buracos
+  const gksPorPartida = Array.from({ length: partidas }, () => Array(gkPorTime * 2).fill(null));
   const lnsPorPartida = Array.from({ length: partidas }, () => []);
 
   const filaG = [...poteGk];
   const filaL = [...poteLinha];
 
-  // 1) goleiros de ofício preenchem as vagas de gol. Quantas vagas de gol cada
-  //    partida terá é definido por um "alvo": as vagas de gol que faltarem
-  //    (por falta de goleiro) são tiradas da última partida para trás, ficando
-  //    abertas ali para completar na mão. Linha NUNCA vai para o gol aqui.
-  const alvoGk = Array(partidas).fill(capGk);
-  let faltamGkVagas = partidas * capGk - filaG.length;
-  for (let p = partidas - 1; p >= 0 && faltamGkVagas > 0; p--) {
-    const tira = Math.min(faltamGkVagas, capGk);
-    alvoGk[p] -= tira; faltamGkVagas -= tira;
-  }
-  for (let p = 0; p < partidas; p++) {
-    while (gksPorPartida[p].length < alvoGk[p] && filaG.length) {
-      gksPorPartida[p].push({ ...filaG.shift(), slotGoleiro: true });
-    }
+  // 1) goleiros: preenchidos em VOLTAS — cada volta passa uma vez por todas as
+  //    partidas no lado amarelo (ida) e depois por todas de novo no lado azul
+  //    (volta). Assim, faltando goleiro, quem sobra fica sem meta espalhado
+  //    pelas partidas, em vez de esvaziar sempre as últimas.
+  for (let volta = 0; volta < gkPorTime && filaG.length; volta++) {
+    for (let p = 0; p < partidas && filaG.length; p++) gksPorPartida[p][volta * 2] = { ...filaG.shift(), slotGoleiro: true };
+    for (let p = partidas - 1; p >= 0 && filaG.length; p--) gksPorPartida[p][volta * 2 + 1] = { ...filaG.shift(), slotGoleiro: true };
   }
 
   // 2) linha: define quantas vagas de linha cada partida terá de fato. As vagas
@@ -654,9 +622,36 @@ function sortearEquipes(entradas, opcoes = {}) {
     return [A, B];
   };
 
-  const blocos = [];
+  const times = [];
   for (let p = 0; p < partidas; p++) {
     const [A, B] = repartir(gksPorPartida[p] || [], lnsPorPartida[p] || []);
+    times.push(A, B);
+  }
+
+  /* A distribuição acima já respeita vagas/posições e é um bom ponto de
+   * partida, mas sozinha não garante o melhor equilíbrio possível. Antes o
+   * sorteio calculava uma divisão bem otimizada (avaliarTimes/buscaLocal) só
+   * para EXIBIR um diagnóstico bonito e depois construía as partidas de
+   * verdade com essa distribuição simples, ignorando a otimização — por isso
+   * o equilíbrio real ficava pior do que o anunciado. Agora a busca local
+   * roda sobre as equipes que de fato serão exibidas/gravadas, trocando
+   * jogadores ENTRE elas até minimizar o mesmo custo do diagnóstico. */
+  const assentados = times.flat();
+  const ctx = {
+    pesos: cfg.pesos, goleirosPorTime: gkPorTime,
+    goleirosSuficientes: false, // goleiro pode faltar em mais de uma partida, de propósito (§12º)
+    totalCinco: assentados.filter((j) => j.estrelas === 5).length,
+    duplasRecentes: opcoes.duplasRecentes,
+    restricoes: (opcoes.restricoes || []).filter((r) => assentados.some((j) => j.id === r.a) && assentados.some((j) => j.id === r.b)),
+    usarAproveitamento: cfg.usarAproveitamento, travados,
+    partidaDoTime: (i) => Math.floor(i / 2),
+    nome: (x) => nomes[x] || "?", nomeTime: (i) => `Time ${i + 1}`,
+  };
+  const avaliacaoFinal = buscaLocal(times, ctx);
+
+  const blocos = [];
+  for (let p = 0; p < partidas; p++) {
+    const A = times[p * 2], B = times[p * 2 + 1];
     blocos.push({
       numero: p + 1, extra: false,
       preenchimento: A.length + B.length,
@@ -681,13 +676,13 @@ function sortearEquipes(entradas, opcoes = {}) {
   if (ctx.totalCinco > nTimes) avisos.push(`${ctx.totalCinco} jogadores 5★ para ${nTimes} equipes — o excedente foi espalhado, mas uma equipe fica com 2.`);
   const gkDeFora = naoAlocados.filter((j) => j.ehGoleiro);
   if (gkDeFora.length) avisos.push(`${gkDeFora.map((g) => g.nome).join(", ")} — sem vaga nesta rodada (mais presentes que vagas).`);
-  for (const v of escolhido.avaliacao.violacoes) avisos.push(v.texto);
+  for (const v of avaliacaoFinal.violacoes) avisos.push(v.texto);
 
   return {
     erro: null, seed,
     partidas: blocos,
     sobressalentes: naoAlocados,
-    diagnostico: { ...escolhido.avaliacao, alternativas: empatados.length, avisos },
+    diagnostico: { ...avaliacaoFinal, alternativas: 1, avisos },
   };
 }
 
@@ -718,11 +713,12 @@ function csvSumula(rodada, nomes, niveis) {
     linhas.push([`PARTIDA ${jogo.numero}`, "AMARELO", p.A, "×", p.B, "AZUL", jogo.encerrado ? "encerrada" : "em aberto"]);
     if (p.divergente) linhas.push(["Divergência", `soma dos gols ${p.calcA}×${p.calcB}`, `placar lançado ${p.A}×${p.B}`]);
     linhas.push(["Gol contra", "AMARELO", jogo.golsContraA || 0, "AZUL", jogo.golsContraB || 0]);
+    linhas.push(["Gol não computado", "AMARELO", jogo.golsNaoComputadosA || 0, "AZUL", jogo.golsNaoComputadosB || 0]);
     linhas.push(["Equipe", "Jogador", "Função", "Gols", "Assist.", "CA", "CV", "Atraso", "Observação"]);
     for (const t of [tA, tB]) for (const j of t.jogadores || []) {
       const ev = eventoDe(jogo, j.jogadorId);
       const obs = [...(jogo.completaTime || []), ...(jogo.soCartoes || [])].includes(j.jogadorId)
-        ? "Completou equipe (§10º) — não pontua, só cartão" : "";
+        ? "Completou equipe (§10º) — não pontua nada, nem cartão" : "";
       linhas.push([t.cor, nomes[j.jogadorId] || j.jogadorId, j.atuaComoGoleiro ? "Goleiro" : "Linha",
         ev.gols, ev.assistencias, ev.ca, ev.cv, niveis?.[j.jogadorId] ? `${niveis[j.jogadorId]}º` : "", obs]);
     }
@@ -997,7 +993,7 @@ function migrarBase(base) {
   b.jogadores = (b.jogadores || []).map((j) => ({ ...j, posicao: /goleiro/i.test(j.posicao || "") ? "GOLEIRO" : "LINHA", convidado: !!j.convidado }));
   b.rodadas = (b.rodadas || []).map((r) => ({
     ...r, ajustes: r.ajustes || [], times: r.times || [],
-    jogos: (r.jogos || []).map((g) => ({ ...g, soCartoes: g.soCartoes || [] })),
+    jogos: (r.jogos || []).map((g) => ({ ...g, soCartoes: g.soCartoes || [], golsNaoComputadosA: g.golsNaoComputadosA || 0, golsNaoComputadosB: g.golsNaoComputadosB || 0 })),
   }));
   return b;
 }
@@ -1577,7 +1573,12 @@ function EtapaPresenca({ base, setBase, rodada, atualizar, porId, cfg, dados, av
 
 /* --------------------- Etapa 2: sorteio ----------------------------------*/
 function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nomes, ir }) {
-  const [sorteio, setSorteio] = useState(null);
+  // O rascunho do sorteio (antes de "Gravar partidas") mora na própria rodada,
+  // não num useState local — assim ele sobrevive a trocar de aba (Presença ⇄
+  // Sorteio) e até a fechar o app. Sem isso, só olhar quem chegou atrasado na
+  // etapa Presença jogava fora o time inteiro que já estava sendo montado.
+  const sorteio = rodada.sorteioRascunho || null;
+  const setSorteio = (valor) => atualizar({ sorteioRascunho: valor });
   const [travas, setTravas] = useState({});
   const [sel, setSel] = useState(null);
   const [nPartidas, setNPartidas] = useState(0);
@@ -1585,6 +1586,32 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
   const P = poolsDoDia(base, rodada, porId, dados, cfg);
   const maxPartidas = partidasPossiveis(P.linha.length, P.goleiros.length, cfg);
   const alvo = nPartidas || maxPartidas;
+
+  /* Reconciliação: se alguém do rascunho deixou de estar apto (marcado
+   * ausente, ou virou suspenso por atraso) enquanto o usuário estava em outra
+   * etapa, a vaga dessa pessoa esvazia sozinha ao voltar — sem mexer em mais
+   * ninguém. Chegadas novas (presente/atrasado) não entram sozinhas: ficam
+   * disponíveis para escolher manualmente em qualquer vaga aberta. */
+  useEffect(() => {
+    if (!sorteio) return;
+    const aptosIds = new Set(P.aptos.map((e) => e.jogador.id));
+    let mudou = false;
+    const partidas = sorteio.partidas.map((p) => {
+      const limpar = (lado) => {
+        let alterado = false;
+        const vagas = lado.vagas.map((v) => {
+          if (v.jogador && !aptosIds.has(v.jogador.id)) { alterado = true; return { ...v, jogador: null }; }
+          return v;
+        });
+        if (!alterado) return lado;
+        mudou = true;
+        return { ...lado, vagas, forca: vagas.reduce((s, v) => s + (v.jogador?.estrelas || 0), 0) };
+      };
+      return { ...p, amarelo: limpar(p.amarelo), azul: limpar(p.azul) };
+    });
+    if (mudou) { setSorteio({ ...sorteio, partidas }); avisar("Alguém saiu da chamada — a vaga dela(e) no sorteio ficou em aberto"); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rodada.presencas]);
 
   // quantas vezes cada um já apareceu em partidas gravadas nesta rodada
   const aparicoes = {};
@@ -1733,8 +1760,8 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
 
   /** Preenche as vagas em aberto de uma partida. Primeiro usa quem ainda não
    *  entrou em nenhuma partida; se acabarem, completa REUTILIZANDO quem já
-   *  jogou (priorizando quem apareceu menos vezes). Quem repete não pontua de
-   *  novo — só cartão conta —, o que é tratado na hora de gravar/pontuar. */
+   *  jogou (priorizando quem apareceu menos vezes). Quem repete não pontua
+   *  nada — nem cartão —, o que é tratado na hora de gravar/pontuar. */
   function completarAutomaticamente(numeroPartida) {
     let preencheu = 0;
     mexer((partidas) => {
@@ -1821,16 +1848,23 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
             jogadorId: v.jogador.id, estrelaNoSorteio: v.jogador.estrelas,
             atuaComoGoleiro: v.papel === "GOLEIRO",
           })),
+          // Vagas que sobraram sem jogador: ficam registradas no time gravado
+          // para serem completadas depois, na etapa Partidas — sem precisar
+          // desfazer o sorteio (Art. 34º §14º/§17º).
+          vagasAbertas: lado.vagas.filter((v) => !v.jogador).map((v) => v.papel),
         };
         times.push(t); return t.id;
       };
       const a = criar(p.amarelo), b = criar(p.azul);
       jogos.push({ id: id(), numero: i + 1, timeA: a, timeB: b,
-        golsContraA: 0, golsContraB: 0, placarManual: null, encerrado: false, completaTime: [], soCartoes: [], eventos: {} });
+        golsContraA: 0, golsContraB: 0, golsNaoComputadosA: 0, golsNaoComputadosB: 0, placarManual: null, encerrado: false, completaTime: [], soCartoes: [], eventos: {} });
     });
     const nova = { ...rodada, times, jogos };
-    atualizar({ times: nova.times, jogos: marcarReaproveitamentos(nova) });
-    setSorteio(null); setTravas({});
+    // Um único atualizar(): sorteioRascunho precisa ir junto no mesmo patch,
+    // senão essa segunda chamada (feita com o `rodada` desta renderização,
+    // já desatualizado) apagaria o times/jogos gravados pela primeira.
+    atualizar({ times: nova.times, jogos: marcarReaproveitamentos(nova), sorteioRascunho: null });
+    setTravas({});
     avisar(`${sorteio.partidas.length} partida(s) gravada(s)`);
     ir();
   }
@@ -1909,7 +1943,7 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
                   {noGol && <IconeGoleiro tam={13} />}
                   <span className="truncate">{j.nome}</span>
                   {travado && <span title="Está na partida em que pontua — bloqueado para não desfazer a escalação que vale" style={{ fontSize: 11 }}>🔒</span>}
-                  {repetido && <span title="Já jogou nesta rodada — aqui só o cartão conta" style={{ fontSize: 8, fontWeight: 800, color: T.laranja }}>CART</span>}
+                  {repetido && <span title="Já jogou nesta rodada — aqui só preenche a vaga, não pontua nada" style={{ fontSize: 8, fontWeight: 800, color: T.laranja }}>REPETE</span>}
                   {j.convidado && <span style={{ fontSize: 8, color: T.roxo }}>CONV</span>}
                 </span>
                 <span className="flex shrink-0 items-center gap-1">
@@ -1938,8 +1972,8 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
           <button
             onClick={() => {
               if (confirm("Apagar todas as partidas desta rodada? Placares e cartões lançados serão perdidos.")) {
-                atualizar({ times: [], jogos: [] });
-                setSorteio(null); setTravas({});
+                atualizar({ times: [], jogos: [], sorteioRascunho: null });
+                setTravas({});
                 avisar("Partidas da rodada apagadas");
               }
             }}
@@ -1987,7 +2021,7 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
               {vazias > 0 && (
                 <p className="mb-1.5 rounded px-2 py-1.5" style={{ background: "rgba(255,165,61,.12)", border: `1px solid rgba(255,165,61,.4)`, fontSize: 10.5, lineHeight: 1.45, color: T.laranja }}>
                   Esta partida tem {vazias} vaga(s) em aberto. Complete com quem está presente —
-                  quem já jogou entra só com o cartão contando, sem pontuar de novo.
+                  quem já jogou entra só para preencher a vaga, sem pontuar nada (nem cartão).
                 </p>
               )}
               <div className="grid grid-cols-2 gap-2">
@@ -2027,9 +2061,15 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
           )}
 
           <div className="grid grid-cols-2 gap-2">
-            <Botao disabled={vaziasTotal > 0} onClick={gravar}>
-              {vaziasTotal > 0 ? `${vaziasTotal} vaga(s) em aberto` : "Gravar partidas"}
+            <Botao onClick={gravar}>
+              {vaziasTotal > 0 ? `Gravar · ${vaziasTotal} vaga(s) ficam em aberto` : "Gravar partidas"}
             </Botao>
+            {vaziasTotal > 0 && (
+              <p className="col-span-2 text-center" style={{ fontSize: 10.5, lineHeight: 1.4, color: T.fraco }}>
+                As partidas completas já podem ser jogadas. As vagas em aberto se completam depois,
+                na etapa Partidas, conforme mais gente for chegando.
+              </p>
+            )}
             <Botao variante="secundario" onClick={async () => {
               const txt = textoWhatsApp(sorteio.partidas, rodada, diag, sorteio.seed);
               try {
@@ -2070,7 +2110,7 @@ function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId 
       {[...rodada.jogos].sort((a, b) => a.numero - b.numero).map((jogo) => (
         <div key={jogo.id}>
           <FaixaPartida n={jogo.numero} />
-          <Sumula {...{ jogo, rodada, base, cfg, atualizar, avisar, niveis, porId }} />
+          <Sumula {...{ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, porId }} />
         </div>
       ))}
 
@@ -2097,13 +2137,49 @@ function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId 
 }
 
 /* --------------------------- Súmula da partida ---------------------------*/
-function Sumula({ jogo, rodada, base, cfg, atualizar, avisar, niveis, porId }) {
+function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, porId }) {
   const jog = Object.fromEntries(base.jogadores.map((j) => [j.id, j]));
   const tA = timePorId(rodada, jogo.timeA), tB = timePorId(rodada, jogo.timeB);
   const p = placarDe(jogo, rodada);
   const soCartoes = new Set([...(jogo.completaTime || []), ...(jogo.soCartoes || [])]);
   const mudar = (patch) => atualizar({ jogos: rodada.jogos.map((g) => (g.id === jogo.id ? { ...g, ...patch } : g)) });
   if (!tA || !tB) return null;
+
+  /* Vaga em aberto (Art. 34º §14º/§17º): quem chega atrasado, ou quem sobrou
+   * do sorteio, completa aqui — sem precisar apagar e refazer o sorteio.
+   * Os candidatos são todos os presentes/atrasados aptos que ainda não estão
+   * NESTA partida (podem já ter jogado outra, aí só preenchem sem pontuar). */
+  const jaNestaPartida = new Set([...idsDoTime(tA), ...idsDoTime(tB)]);
+  const candidatos = dados
+    ? poolsDoDia(base, rodada, porId, dados, cfg).aptos.filter((e) => !jaNestaPartida.has(e.jogador.id))
+    : [];
+  const apareceuEmOutroJogo = (jid) => (rodada.jogos || []).some((g) => g.id !== jogo.id &&
+    [g.timeA, g.timeB].some((tid) => idsDoTime(timePorId(rodada, tid)).includes(jid)));
+
+  const preencherVaga = (timeId, papel, jogadorId) => {
+    if (!jogadorId) return;
+    const repete = apareceuEmOutroJogo(jogadorId);
+    const l = porId[jogadorId];
+    const cand = candidatos.find((e) => e.jogador.id === jogadorId);
+    const novoTimes = (rodada.times || []).map((t) => {
+      if (t.id !== timeId) return t;
+      const idxVaga = (t.vagasAbertas || []).indexOf(papel);
+      const vagasAbertas = idxVaga === -1 ? (t.vagasAbertas || [])
+        : [...t.vagasAbertas.slice(0, idxVaga), ...t.vagasAbertas.slice(idxVaga + 1)];
+      return {
+        ...t, vagasAbertas,
+        jogadores: [...(t.jogadores || []), {
+          jogadorId, estrelaNoSorteio: cand?.jogador?.convidado ? (cand.jogador.estrelasIniciais || 1) : (l?.estrelas || 1),
+          atuaComoGoleiro: papel === "GOLEIRO",
+        }],
+      };
+    });
+    const novoJogos = repete
+      ? (rodada.jogos || []).map((g) => (g.id === jogo.id ? { ...g, soCartoes: [...new Set([...(g.soCartoes || []), jogadorId])] } : g))
+      : rodada.jogos;
+    atualizar({ times: novoTimes, jogos: novoJogos });
+    avisar(repete ? `${jog[jogadorId]?.nome} completou a equipe — já jogou, não pontua de novo` : `${jog[jogadorId]?.nome} entrou na vaga`);
+  };
 
   const setEvento = (jid, campo, d) => {
     const at = { ...evVazio, ...(jogo.eventos[jid] || {}) };
@@ -2127,8 +2203,11 @@ function Sumula({ jogo, rodada, base, cfg, atualizar, avisar, niveis, porId }) {
           const bruto = { ...evVazio, ...(jogo.eventos[jid] || {}) };
           const ev = normalizarCartoes(bruto, cfg);
           const virouVermelho = ev.cv !== bruto.cv;
-          // completou equipe: não pontua nada, só o cartão conta (§10º)
+          // completou equipe: não pontua NADA, nem cartão (§10º)
           const soCartao = soCartoes.has(jid);
+          // já tomou o 2º amarelo nesta partida (virou vermelho automático,
+          // Art. 81º §Único): não faz sentido continuar somando cartão dele.
+          const semMaisCartao = bruto.ca >= 2;
           return (
             <div key={jid} className="rounded-lg p-1.5" style={{
               background: atuaComoGoleiro ? "rgba(79,163,255,.09)" : "rgba(0,0,0,.26)",
@@ -2141,24 +2220,29 @@ function Sumula({ jogo, rodada, base, cfg, atualizar, avisar, niveis, porId }) {
                 <button onClick={() => mudar({
                     completaTime: (jogo.completaTime || []).filter((x) => x !== jid),
                     soCartoes: soCartao ? (jogo.soCartoes || []).filter((x) => x !== jid) : [...new Set([...(jogo.soCartoes || []), jid])],
-                  })} title="Art. 34º §10º — entrou só para completar equipe: não pontua, mas leva cartão"
+                  })} title="Art. 34º §10º — entrou só para completar equipe: não pontua nada, nem cartão"
                   style={{ flexShrink: 0, borderRadius: 3, padding: "1px 4px", fontSize: 9, fontWeight: 800,
                     background: soCartao ? "rgba(255,165,61,.22)" : "rgba(255,255,255,.07)",
                     color: soCartao ? T.laranja : T.fraco }}>
                   §10
                 </button>
               </div>
-              {soCartao && <p style={{ fontSize: 9.5, color: T.laranja, marginBottom: 4 }}>completou equipe — só o cartão conta</p>}
-              {virouVermelho && <p style={{ fontSize: 9.5, color: T.vermelho, marginBottom: 4 }}>2º amarelo → vermelho (Art. 81º)</p>}
+              {soCartao && <p style={{ fontSize: 9.5, color: T.laranja, marginBottom: 4 }}>completou equipe — não pontua nada, nem cartão</p>}
+              {virouVermelho && <p style={{ fontSize: 9.5, color: T.vermelho, marginBottom: 4 }}>2º amarelo → vermelho (Art. 81º){!soCartao && " · cartões bloqueados nesta partida"}</p>}
               <div className="grid grid-cols-2 gap-1">
                 {[["gols", "GOL"], ["assistencias", "ASS"], ["ca", "CA"], ["cv", "CV"]].map(([campo, rot]) => {
-                  const desativado = soCartao && campo !== "ca" && campo !== "cv";
+                  // §10º: quem só completou o time não pontua nada, nem cartão.
+                  const desativado = soCartao;
+                  // Art. 81º §Único: depois do 2º amarelo (virou vermelho), não
+                  // dá pra somar mais cartão nesta partida — só desfazer (−).
+                  const travaSoma = !soCartao && (campo === "ca" || campo === "cv") && semMaisCartao;
                   return (
                     <div key={campo} className="flex items-center justify-between rounded" style={{ background: "rgba(255,255,255,.06)", padding: 2, opacity: desativado ? 0.3 : 1 }}>
                       <button onClick={() => !desativado && setEvento(jid, campo, -1)} style={{ padding: "4px 6px", color: T.fraco, fontSize: 15 }}>−</button>
                       <span style={{ fontSize: 9, color: T.fraco }}>{rot}</span>
                       <span style={{ width: 12, textAlign: "center", fontSize: 12.5, fontWeight: 800, color: campo === "cv" && ev.cv ? T.vermelho : T.texto }}>{bruto[campo]}</span>
-                      <button onClick={() => !desativado && setEvento(jid, campo, 1)} style={{ padding: "4px 6px", color: T.ouro, fontSize: 15 }}>+</button>
+                      <button onClick={() => !desativado && !travaSoma && setEvento(jid, campo, 1)} title={travaSoma ? "Já tomou o 2º amarelo (vermelho automático) — não dá pra somar mais cartão" : undefined}
+                        style={{ padding: "4px 6px", color: T.ouro, fontSize: 15, opacity: travaSoma ? 0.35 : 1 }}>+</button>
                     </div>
                   );
                 })}
@@ -2166,6 +2250,38 @@ function Sumula({ jogo, rodada, base, cfg, atualizar, avisar, niveis, porId }) {
             </div>
           );
         })}
+        {(time.vagasAbertas || []).map((papel, vi) => {
+          const jaEscolhidos = new Set([...idsDoTime(tA), ...idsDoTime(tB)]);
+          const opcoes = candidatos.filter((e) => !jaEscolhidos.has(e.jogador.id));
+          return (
+            <div key={`va${vi}`} className="rounded" style={{ background: "rgba(255,165,61,.1)", border: `1px dashed ${T.laranja}`, padding: 5 }}>
+              <div className="mb-1 flex items-center gap-1">
+                {papel === "GOLEIRO" ? <IconeGoleiro tam={12} /> : <span style={{ fontSize: 10, color: T.laranja }}>▢</span>}
+                <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".06em", color: T.laranja }}>VAGA DE {papel} · quem chegou</span>
+              </div>
+              <select value="" onChange={(e) => preencherVaga(time.id, papel, e.target.value)}
+                style={{ ...inputStyle, padding: "7px 4px", fontSize: 11.5 }}>
+                <option value="">— escolher quem completa —</option>
+                {opcoes.map(({ jogador: o, linha: l }) => (
+                  <option key={o.id} value={o.id}>
+                    {o.nome}{o.posicao === "GOLEIRO" ? " (GK)" : ""} · {l?.estrelas || 1}★
+                    {apareceuEmOutroJogo(o.id) ? " · já jogou, não pontua" : ""}
+                  </option>
+                ))}
+              </select>
+              {opcoes.length === 0 && <p style={{ fontSize: 9.5, color: T.fraco, marginTop: 3 }}>Ninguém presente disponível ainda — marque a chegada na etapa Presença.</p>}
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-1 flex items-center justify-between rounded px-2" style={{ background: "rgba(255,165,61,.08)" }}
+        title="Gol de quem não pontua (§10º) ou que ninguém viu quem fez — soma no placar da própria equipe sem ir pra estatística de ninguém">
+        <span style={{ fontSize: 9.5, letterSpacing: ".06em", textTransform: "uppercase", color: T.laranja }}>Gol não computado</span>
+        <div className="flex items-center">
+          <button onClick={() => mudar({ [`golsNaoComputados${lado}`]: Math.max(0, (jogo[`golsNaoComputados${lado}`] || 0) - 1) })} style={{ padding: "6px 8px", color: T.fraco }}>−</button>
+          <span style={{ width: 12, textAlign: "center", fontSize: 12.5, fontWeight: 800 }}>{jogo[`golsNaoComputados${lado}`] || 0}</span>
+          <button onClick={() => mudar({ [`golsNaoComputados${lado}`]: (jogo[`golsNaoComputados${lado}`] || 0) + 1 })} style={{ padding: "6px 8px", color: T.laranja }}>+</button>
+        </div>
       </div>
       <div className="mt-1 flex items-center justify-between rounded px-2" style={{ background: "rgba(255,255,255,.06)" }}>
         <span style={{ fontSize: 9.5, letterSpacing: ".06em", textTransform: "uppercase", color: T.fraco }}>Gol contra</span>
@@ -2198,7 +2314,7 @@ function Sumula({ jogo, rodada, base, cfg, atualizar, avisar, niveis, porId }) {
 
       <p className="px-3 pb-2 text-center" style={{ fontSize: 10.5, lineHeight: 1.5, color: p.divergente ? T.laranja : T.fraco }}>
         {p.manual ? <>Placar lançado à mão{p.divergente && ` · a soma dos gols dá ${p.calcA}×${p.calcB}`} · <button onClick={() => mudar({ placarManual: null })} style={{ textDecoration: "underline" }}>voltar ao automático</button></>
-          : "Placar somado dos gols individuais + gols contra. Toque em +/− para sobrescrever."}
+          : "Placar somado dos gols individuais + gols contra + gols não computados. Toque em +/− para sobrescrever."}
       </p>
 
       <div className="grid grid-cols-2 gap-2 px-2 py-2" style={{ borderTop: `1px solid ${T.borda}` }}>
@@ -2741,8 +2857,7 @@ function TelaConfig({ base, setBase, dados, cfg, avisar }) {
               {cfg.usarAproveitamento ? "☑ " : "☐ "}Equilibrar também o aproveitamento %
             </button>
           </div>
-          {[["candidatosSorteio", "Candidatos gerados"], ["buscaLocalTop", "Busca local no top N"],
-            ["rodadasAntiRepeticao", "Anti-repetição (rodadas)"], ["jogadoresPorTime", "Jogadores por equipe"],
+          {[["rodadasAntiRepeticao", "Anti-repetição (rodadas)"], ["jogadoresPorTime", "Jogadores por equipe"],
             ["goleirosPorTime", "Goleiros por equipe"]].map(([c, r]) => (
             <Campo key={c} rotulo={r}><input type="number" value={cfg[c]} onChange={(e) => mudar(c, Number(e.target.value))} style={{ ...inputStyle, padding: "10px" }} /></Campo>
           ))}
