@@ -90,7 +90,7 @@ function embaralharRng(arr, rng) {
 
 /* --- core/estrelas -------------------------------------------------------*/
 function estrelasPorPosicao(p) {
-  if (p <= 2) return 5; if (p <= 4) return 4; if (p <= 7) return 3; if (p <= 10) return 2; return 1;
+  if (p <= 3) return 5; if (p <= 6) return 4; if (p <= 9) return 3; if (p <= 14) return 2; return 1;
 }
 
 /* --- core/disciplina -----------------------------------------------------*/
@@ -314,8 +314,8 @@ function calcularClassificacao(base) {
   });
 
   /* Art. 34º §2º — a classe sai da posição GERAL na tabela, numa escala única
-   * para todo mundo (goleiro entra na mesma fila que a linha): 1º-2º = 5★,
-   * 3º-4º = 4★, 5º-7º = 3★, 8º-10º = 2★, 11º+ = 1★. Isso evita que um goleiro
+   * para todo mundo (goleiro entra na mesma fila que a linha): 1º-3º = 5★,
+   * 4º-6º = 4★, 7º-9º = 3★, 10º-14º = 2★, 15º+ = 1★. Isso evita que um goleiro
    * vire "5★ isolado" só por ser o melhor entre poucos goleiros — o que
    * desequilibrava o sorteio mesmo com a soma de estrelas batendo. rankLinha/
    * rankGoleiro continuam existindo só para exibir "X° entre os goleiros" e
@@ -2617,7 +2617,7 @@ function TelaClassificacao({ base, dados, cfg, avisar }) {
         <b style={{ color: T.ouro }}>Pontuação</b> · P = J + (3 × V) + E + P⁺ − P⁻ · % = P ÷ ({cfg.baseAproveitamento === "previstas" ? cfg.rodadasPrevistas : dados.rodadasRealizadas} × {cfg.tetoPorRodada}) = ÷ {dados.teto}<br />
         <b style={{ color: T.ouro }}>Cartões</b> · {cfg.cartoesPorPonto} amarelos/azuis = −{cfg.pontosPorCicloAmarelo} ponto (contagem reinicia, Art. 82º §2º) · cada vermelho = −{cfg.pontosPorVermelho}<br />
         <b style={{ color: T.ouro }}>Atrasos</b> · 1º alerta · 2º amarelo · 3º perde a presença · 4º suspensão. Zera na virada do mês, salvo emenda (§9º)<br />
-        <b style={{ color: T.ouro }}>Classe</b> · 1º-2º = 5★ · 3º-4º = 4★ · 5º-7º = 3★ · 8º-10º = 2★ · 11º+ = 1★<br />
+        <b style={{ color: T.ouro }}>Classe</b> · 1º-3º = 5★ · 4º-6º = 4★ · 7º-9º = 3★ · 10º-14º = 2★ · 15º+ = 1★<br />
         <span style={{ color: T.fraco }}>Escala única: a classe sai da posição geral na tabela, goleiro (<span style={{ color: T.gk }}>★ azul</span>) e linha (<span style={{ color: T.ouro }}>★ ouro</span>) na mesma fila — a cor é só identificação visual. Toque na linha para ver o rank dentro da categoria.</span><br />
         <span style={{ color: T.ouro }}>▌</span> Zona Supercopa · <IconeGoleiro tam={13} /> goleiro · <span style={{ color: T.vermelho }}>$</span> pendência · (*) a confirmar
       </Painel>
