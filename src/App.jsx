@@ -2257,6 +2257,16 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
   const apareceuEmOutroJogo = (jid) => (rodada.jogos || []).some((g) => g.id !== jogo.id &&
     [g.timeA, g.timeB].some((tid) => idsDoTime(timePorId(rodada, tid)).includes(jid)));
 
+  // Estrelas de cada equipe (força no sorteio) e um índice de equilíbrio, nos
+  // mesmos moldes da etapa Sorteio — assim dá pra ver, aqui em Partidas, se a
+  // divisão (inclusive depois de um reequilíbrio automático) ficou justa.
+  const forcaDe = (t) => (t.jogadores || []).reduce((s, j) => s + (j.estrelaNoSorteio || 0), 0);
+  const forcaA = forcaDe(tA), forcaB = forcaDe(tB);
+  const temVagaAberta = (tA.vagasAbertas || []).length > 0 || (tB.vagasAbertas || []).length > 0;
+  const mediaForca = (forcaA + forcaB) / 2;
+  const diffForca = Math.abs(forcaA - forcaB);
+  const indiceEquilibrio = mediaForca > 0 ? Math.max(0, Math.min(100, Math.round(100 - (diffForca / mediaForca) * 70))) : 100;
+
   const preencherVaga = (timeId, papel, jogadorId) => {
     if (!jogadorId) return;
     const repete = apareceuEmOutroJogo(jogadorId);
@@ -2415,6 +2425,7 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
             {i === 1 && <span style={{ fontSize: 24, fontWeight: 200, color: "rgba(255,255,255,.2)" }}>×</span>}
             <div className="text-center">
               <p style={{ marginBottom: 4, fontSize: 10.5, fontWeight: 900, letterSpacing: ".12em", color: corDe((lado === "A" ? tA : tB).chave).hex }}>{(lado === "A" ? tA : tB).cor}</p>
+              <p style={{ marginBottom: 4, fontSize: 12, fontWeight: 800, color: T.ouro }}>{lado === "A" ? forcaA : forcaB}★</p>
               <div className="flex items-center justify-center gap-1.5">
                 <button onClick={() => setPlacar(lado, -1)} style={{ width: 40, height: 40, borderRadius: 9, background: "rgba(255,255,255,.08)", color: T.secundario, fontSize: 20 }}>−</button>
                 <span style={{ width: 42, fontSize: 40, fontWeight: 900, lineHeight: 1 }}>{p[lado]}</span>
@@ -2423,6 +2434,13 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
             </div>
           </React.Fragment>
         ))}
+      </div>
+
+      <div className="mx-3 mb-2 flex items-center justify-center gap-2 rounded-lg px-3 py-1.5" style={{ background: "rgba(0,0,0,.22)" }}>
+        <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", color: T.fraco }}>Equilíbrio</span>
+        <span style={{ fontSize: 13, fontWeight: 900, color: indiceEquilibrio >= 90 ? T.verde : indiceEquilibrio >= 75 ? T.ouro : T.laranja }}>{indiceEquilibrio}%</span>
+        <span style={{ fontSize: 10.5, color: T.secundario }}>· Δ {diffForca}★</span>
+        {temVagaAberta && <span style={{ fontSize: 10, color: T.laranja }}>· parcial (tem vaga aberta)</span>}
       </div>
 
       <p className="px-3 pb-2 text-center" style={{ fontSize: 10.5, lineHeight: 1.5, color: p.divergente ? T.laranja : T.fraco }}>
