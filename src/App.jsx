@@ -154,13 +154,15 @@ function nivelSeAtrasar(disciplina, rodada, jid) {
 }
 
 /* --- core/pontuacao ------------------------------------------------------*/
-const evVazio = { gols: 0, assistencias: 0, ca: 0, cv: 0 };
+const evVazio = { gols: 0, assistencias: 0, ca: 0, cv: 0, cz: 0 };
 const eventoDe = (jogo, jid) => ({ ...evVazio, ...((jogo.eventos || {})[jid] || {}) });
 const timePorId = (r, tid) => (r.times || []).find((t) => t.id === tid);
 const idsDoTime = (t) => (t?.jogadores || []).map((j) => j.jogadorId);
-const HIST_ZERO = { P: 0, J: 0, V: 0, E: 0, D: 0, GP: 0, GC: 0, CA: 0, CV: 0, Pmais: 0, Pmenos: 0, gols: 0, assistencias: 0 };
+const HIST_ZERO = { P: 0, J: 0, V: 0, E: 0, D: 0, GP: 0, GC: 0, CA: 0, CV: 0, CZ: 0, Pmais: 0, Pmenos: 0, gols: 0, assistencias: 0 };
 
-/** Art. 81º §Único — 2º amarelo/azul na mesma partida vira vermelho. */
+/** Art. 81º §Único — 2º amarelo na mesma partida vira vermelho. O azul (§82º)
+ *  é uma cautela independente: nunca converte sozinho nem combinado com o
+ *  amarelo, só pesa nos pontos (mesmo peso do amarelo, Art. 82º §2º). */
 function normalizarCartoes(ev, cfg) {
   if (!cfg.converterSegundoAmarelo) return ev;
   if ((ev.ca || 0) >= 2) return { ...ev, ca: ev.ca - 1, cv: (ev.cv || 0) + 1 };
@@ -206,7 +208,7 @@ function calcularEstatisticas(base) {
   const disc = disciplinaAtrasos(base);
   const novo = {};
   for (const j of base.jogadores)
-    novo[j.id] = { J: 0, V: 0, E: 0, D: 0, GP: 0, GC: 0, CA: 0, CV: 0, gols: 0, assistencias: 0, bonus: 0, penalidadeManual: 0, pontosAtraso: 0, atrasos: 0, sequencia: [] };
+    novo[j.id] = { J: 0, V: 0, E: 0, D: 0, GP: 0, GC: 0, CA: 0, CV: 0, CZ: 0, gols: 0, assistencias: 0, bonus: 0, penalidadeManual: 0, pontosAtraso: 0, atrasos: 0, sequencia: [] };
 
   const rodadas = [...base.rodadas].sort((a, b) => (a.data || "").localeCompare(b.data || "") || a.numero - b.numero);
   const encerrados = (r) => (r.jogos || []).filter((g) => g.encerrado);
@@ -242,7 +244,7 @@ function calcularEstatisticas(base) {
           // vaga para o jogo acontecer.
           if (soCartoes.has(jid)) continue;
           st.J += 1; st[res] += 1; st.GP += lado.pro; st.GC += lado.contra;
-          st.gols += ev.gols; st.assistencias += ev.assistencias; st.CA += ev.ca; st.CV += ev.cv;
+          st.gols += ev.gols; st.assistencias += ev.assistencias; st.CA += ev.ca; st.CV += ev.cv; st.CZ += ev.cz;
           if (!naRodada[jid]) naRodada[jid] = res;
         }
       }
@@ -262,8 +264,12 @@ function calcularEstatisticas(base) {
   const lista = base.jogadores.map((j) => {
     const st = novo[j.id];
     const h = { ...HIST_ZERO, ...(hist.jogadores?.[j.id] || {}) };
-    const CA = h.CA + st.CA, CV = h.CV + st.CV;
-    const penalAmarelo = (Math.floor(CA / cfg.cartoesPorPonto) - Math.floor(h.CA / cfg.cartoesPorPonto)) * cfg.pontosPorCicloAmarelo;
+    const CA = h.CA + st.CA, CV = h.CV + st.CV, CZ = h.CZ + st.CZ;
+    // Art. 82º §2º — amarelo e azul dividem o mesmo ciclo de punição (cada
+    // cartoesPorPonto cautelas, de qualquer uma das duas cores, tira 1 ponto).
+    // O azul não aparece na tabela, mas pesa exatamente como um amarelo aqui.
+    const cautelas = CA + CZ, cautelasHist = h.CA + h.CZ;
+    const penalAmarelo = (Math.floor(cautelas / cfg.cartoesPorPonto) - Math.floor(cautelasHist / cfg.cartoesPorPonto)) * cfg.pontosPorCicloAmarelo;
     const penalVermelho = st.CV * cfg.pontosPorVermelho;
     const PmenosNovo = st.penalidadeManual + st.pontosAtraso + penalAmarelo + penalVermelho;
     const pontosNovos = st.J * cfg.pontosPresenca + st.V * cfg.pontosVitoria + st.E * cfg.pontosEmpate +
@@ -273,11 +279,11 @@ function calcularEstatisticas(base) {
     return {
       id: j.id, nome: j.nome, jogador: j,
       J: h.J + st.J, V: h.V + st.V, E: h.E + st.E, D: h.D + st.D,
-      GP, GC, SG: GP - GC, CA, CV, cartoes: CA + CV,
+      GP, GC, SG: GP - GC, CA, CV, CZ, cartoes: CA + CV,
       gols: h.gols + st.gols, assistencias: h.assistencias + st.assistencias,
       Pmais: h.Pmais + st.bonus, Pmenos: h.Pmenos + PmenosNovo, histPmenos: h.Pmenos,
       penalidadeManual: st.penalidadeManual, pontosAtraso: st.pontosAtraso, penalAmarelo, penalVermelho,
-      cartoesNoCiclo: CA % cfg.cartoesPorPonto,
+      cartoesNoCiclo: cautelas % cfg.cartoesPorPonto,
       pontos: h.P + pontosNovos, atrasos: st.atrasos, atrasosNoMes: estadoAtraso.contador,
       nivelAtraso: nivelInfo(estadoAtraso.contador, cfg),
       aproveitamento: teto > 0 ? Math.round(((h.P + pontosNovos) / teto) * 100) : 0,
@@ -307,10 +313,13 @@ function calcularClassificacao(base) {
     return 0;
   });
 
-  /* Art. 34º §2º — a classe sai da posição na tabela, mas cada categoria tem
-   * escala independente: goleiro não ocupa faixa de estrela de jogador de linha
-   * e vice-versa. Alex é 3º geral e 2º entre os de linha, logo 5★, porque o 2º
-   * lugar geral é um goleiro e não consome a faixa dele. */
+  /* Art. 34º §2º — a classe sai da posição GERAL na tabela, numa escala única
+   * para todo mundo (goleiro entra na mesma fila que a linha): 1º-2º = 5★,
+   * 3º-4º = 4★, 5º-7º = 3★, 8º-10º = 2★, 11º+ = 1★. Isso evita que um goleiro
+   * vire "5★ isolado" só por ser o melhor entre poucos goleiros — o que
+   * desequilibrava o sorteio mesmo com a soma de estrelas batendo. rankLinha/
+   * rankGoleiro continuam existindo só para exibir "X° entre os goleiros" e
+   * para o corte da Supercopa, que aí sim é por categoria. */
   const soLinha = ordenada.filter((l) => l.jogador.posicao !== "GOLEIRO");
   const soGoleiros = ordenada.filter((l) => l.jogador.posicao === "GOLEIRO");
   const rankLinha = new Map(soLinha.map((l, i) => [l.id, i + 1]));
@@ -319,8 +328,9 @@ function calcularClassificacao(base) {
   /* Supercopa: classificam os N melhores de LINHA e os 2 melhores GOLEIROS da
    * tabela geral. Entre as vagas de linha, 2 são reservadas aos campeões da
    * Copa Hendor de Penalidades: se já estiverem no corte por mérito, nada muda;
-   * se não, entram e empurram os últimos de linha para fora. Goleiros têm corte
-   * próprio (não competem com a linha). */
+   * se não, entram e empurram o pior colocado da própria categoria para fora.
+   * Goleiros têm corte próprio (não competem com a linha) — um goleiro campeão
+   * da Hendor disputa vaga com os outros GOLEIROS, nunca com a linha. */
   const nLinhaSuper = cfg.zonaSupercopa ?? 12;
   const nGkSuper = cfg.goleirosSupercopa ?? 2;
   const hendor = new Set((cfg.campeoesHendor || []).filter(Boolean));
@@ -337,6 +347,16 @@ function calcularClassificacao(base) {
     }
   }
   const gkClassificado = new Set(soGoleiros.slice(0, nGkSuper).map((l) => l.id));
+  const hendorGk = soGoleiros.filter((l) => hendor.has(l.id));
+  for (const campeao of hendorGk) {
+    if (!gkClassificado.has(campeao.id)) {
+      gkClassificado.add(campeao.id);
+      const removivel = [...gkClassificado].map((id) => soGoleiros.find((l) => l.id === id))
+        .filter((l) => l && !hendor.has(l.id))
+        .sort((a, b) => rankGoleiro.get(b.id) - rankGoleiro.get(a.id))[0];
+      if (removivel) gkClassificado.delete(removivel.id);
+    }
+  }
 
   const classificacao = ordenada.map((l, i) => {
     const posicao = i + 1;
@@ -348,7 +368,7 @@ function calcularClassificacao(base) {
     return {
       ...l, posicao, criterioAplicado, ehGoleiro: ehGk, rankCategoria,
       totalCategoria: ehGk ? soGoleiros.length : soLinha.length,
-      estrelas: rodadasRealizadas > 0 ? estrelasPorPosicao(rankCategoria) : 1, // §11º: todos começam com 1★
+      estrelas: rodadasRealizadas > 0 ? estrelasPorPosicao(posicao) : 1, // §11º: todos começam com 1★ · §2º: escala única (posição geral)
       supercopa: ehGk ? gkClassificado.has(l.id) : linhaClassificada.has(l.id),
       campeaoHendor: hendor.has(l.id),
     };
@@ -705,6 +725,10 @@ function csvSumula(rodada, nomes, niveis) {
     linhas.push([]); linhas.push(["ATRASOS (Art. 34º §8º)", "Jogador", "Nível", "Punição"]);
     for (const [jid, n] of atrasados) linhas.push(["", nomes[jid] || jid, `${n}º`, nivelInfo(n)?.rotulo || ""]);
   }
+  if ((rodada.ajustes || []).length) {
+    linhas.push([]); linhas.push(["AJUSTES P+ / P−", "Jogador", "Valor", "Motivo"]);
+    for (const aj of rodada.ajustes) linhas.push(["", nomes[aj.jogadorId] || aj.jogadorId, aj.valor, aj.motivo || ""]);
+  }
   for (const jogo of rodada.jogos || []) {
     const tA = timePorId(rodada, jogo.timeA), tB = timePorId(rodada, jogo.timeB);
     if (!tA || !tB) continue;
@@ -714,13 +738,13 @@ function csvSumula(rodada, nomes, niveis) {
     if (p.divergente) linhas.push(["Divergência", `soma dos gols ${p.calcA}×${p.calcB}`, `placar lançado ${p.A}×${p.B}`]);
     linhas.push(["Gol contra", "AMARELO", jogo.golsContraA || 0, "AZUL", jogo.golsContraB || 0]);
     linhas.push(["Gol não computado", "AMARELO", jogo.golsNaoComputadosA || 0, "AZUL", jogo.golsNaoComputadosB || 0]);
-    linhas.push(["Equipe", "Jogador", "Função", "Gols", "Assist.", "CA", "CV", "Atraso", "Observação"]);
+    linhas.push(["Equipe", "Jogador", "Função", "Gols", "Assist.", "CA", "CV", "CAzul", "Atraso", "Observação"]);
     for (const t of [tA, tB]) for (const j of t.jogadores || []) {
       const ev = eventoDe(jogo, j.jogadorId);
       const obs = [...(jogo.completaTime || []), ...(jogo.soCartoes || [])].includes(j.jogadorId)
         ? "Completou equipe (§10º) — não pontua nada, nem cartão" : "";
       linhas.push([t.cor, nomes[j.jogadorId] || j.jogadorId, j.atuaComoGoleiro ? "Goleiro" : "Linha",
-        ev.gols, ev.assistencias, ev.ca, ev.cv, niveis?.[j.jogadorId] ? `${niveis[j.jogadorId]}º` : "", obs]);
+        ev.gols, ev.assistencias, ev.ca, ev.cv, ev.cz, niveis?.[j.jogadorId] ? `${niveis[j.jogadorId]}º` : "", obs]);
     }
   }
   return paraCSV(linhas);
@@ -1000,10 +1024,11 @@ function migrarBase(base) {
 
 /* ============================== INTERFACE ================================ */
 
-/** Estrelas em ouro para jogadores de linha e em azul para goleiros, porque as
- *  duas categorias são ranqueadas em escalas separadas. */
+/** Estrelas em ouro para jogadores de linha e em azul para goleiros — é só
+ *  identificação visual da posição; a escala (§2º) é única para todo mundo,
+ *  baseada na posição geral da tabela. */
 const Estrelas = ({ n, tam = 12, goleiro }) => (
-  <span title={goleiro ? "Classe entre os goleiros" : "Classe entre os jogadores de linha"}
+  <span title={goleiro ? "Classe (goleiro) — escala geral" : "Classe (linha) — escala geral"}
     style={{ fontSize: tam, letterSpacing: -1, color: goleiro ? T.gk : T.ouro, whiteSpace: "nowrap" }}>
     {"★".repeat(Math.max(0, n))}<span style={{ color: "rgba(255,255,255,.16)" }}>{"★".repeat(Math.max(0, 5 - n))}</span>
   </span>
@@ -2093,6 +2118,82 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
 /* --------------------- Etapa 3: partidas e súmulas -----------------------*/
 function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId }) {
   const niveis = dados.disciplina.porRodada[rodada.id] || {};
+
+  /* Reequilíbrio automático da(s) partida(s) ainda intocadas (sem placar, sem
+   * cartão, sem gol lançado) que tenham vaga em aberto: sempre que a chamada
+   * muda — alguém chega atrasado, ou é tirado da lista —, essas partidas são
+   * re-sorteadas do zero entre quem sobrou pra elas + quem chegou agora, SEM
+   * mexer em nenhuma partida já em andamento. Isso evita o cenário de "time A
+   * com dois 5★ porque o atrasado só coube ali": ninguém fica travado numa
+   * escalação ruim só por ordem de chegada. */
+  useEffect(() => {
+    const gkPorTime = cfg.goleirosPorTime, linhaPorTime = cfg.jogadoresPorTime - gkPorTime;
+    const P = poolsDoDia(base, rodada, porId, dados, cfg);
+    const idsEmUso = new Set();
+    for (const t of rodada.times || []) for (const jj of t.jogadores || []) idsEmUso.add(jj.jogadorId);
+    const sobraIds = P.aptos.map((e) => e.jogador.id).filter((id) => !idsEmUso.has(id));
+    const entradaDe = (jid) => {
+      const j = base.jogadores.find((x) => x.id === jid);
+      if (!j) return null;
+      const l = porId[jid];
+      return { id: jid, nome: j.nome, ehGoleiro: j.posicao === "GOLEIRO", estrelas: j.convidado ? (j.estrelasIniciais || 1) : (l?.estrelas || 1) };
+    };
+
+    let mudou = false;
+    const novosTimes = (rodada.times || []).map((t) => ({ ...t }));
+
+    for (const jogo of rodada.jogos || []) {
+      if (jogo.encerrado) continue;
+      const intocada = Object.keys(jogo.eventos || {}).length === 0 && !jogo.placarManual &&
+        !(jogo.golsContraA || jogo.golsContraB || jogo.golsNaoComputadosA || jogo.golsNaoComputadosB);
+      if (!intocada) continue;
+      const tA = novosTimes.find((t) => t.id === jogo.timeA), tB = novosTimes.find((t) => t.id === jogo.timeB);
+      if (!tA || !tB) continue;
+      if (!(tA.vagasAbertas || []).length && !(tB.vagasAbertas || []).length) continue;
+
+      const idsAntes = new Set([...idsDoTime(tA), ...idsDoTime(tB)]);
+      const poolIds = [...idsAntes, ...sobraIds];
+      const pool = poolIds.map(entradaDe).filter(Boolean);
+      const gkPool = pool.filter((e) => e.ehGoleiro).sort((a, b) => b.estrelas - a.estrelas).slice(0, gkPorTime * 2);
+      const lnPool = pool.filter((e) => !e.ehGoleiro).sort((a, b) => b.estrelas - a.estrelas).slice(0, linhaPorTime * 2);
+
+      const A = [], B = [];
+      gkPool.forEach((j, i) => (i % 2 === 0 ? A : B).push({ ...j, slotGoleiro: true }));
+      lnPool.forEach((j, i) => (i % 4 === 0 || i % 4 === 3 ? A : B).push({ ...j, slotGoleiro: false }));
+      const times2 = [A, B];
+      const todos2 = [...A, ...B];
+      buscaLocal(times2, {
+        pesos: cfg.pesos, goleirosPorTime: gkPorTime, goleirosSuficientes: false,
+        totalCinco: todos2.filter((j) => j.estrelas === 5).length, duplasRecentes: null,
+        restricoes: (base.restricoes || []).filter((r) => todos2.some((j) => j.id === r.a) && todos2.some((j) => j.id === r.b)),
+        usarAproveitamento: cfg.usarAproveitamento, travados: new Set(),
+        nome: (x) => nomes[x] || "?", nomeTime: (i) => (i === 0 ? "Amarelo" : "Azul"),
+      });
+
+      const idsDepois = new Set(todos2.map((j) => j.id));
+      const igual = idsAntes.size === idsDepois.size && [...idsAntes].every((id) => idsDepois.has(id));
+      if (igual) continue;
+
+      const vagasDe = (jogadores) => {
+        const gk = jogadores.filter((j) => j.slotGoleiro), ln = jogadores.filter((j) => !j.slotGoleiro);
+        const jogadoresFinal = [
+          ...gk.slice(0, gkPorTime).map((j) => ({ jogadorId: j.id, estrelaNoSorteio: j.estrelas, atuaComoGoleiro: true })),
+          ...ln.slice(0, linhaPorTime).map((j) => ({ jogadorId: j.id, estrelaNoSorteio: j.estrelas, atuaComoGoleiro: false })),
+        ];
+        const vagasAbertas = [
+          ...Array(Math.max(0, gkPorTime - gk.length)).fill("GOLEIRO"),
+          ...Array(Math.max(0, linhaPorTime - ln.length)).fill("LINHA"),
+        ];
+        return { jogadores: jogadoresFinal, vagasAbertas };
+      };
+      Object.assign(tA, vagasDe(A)); Object.assign(tB, vagasDe(B));
+      mudou = true;
+    }
+
+    if (mudou) { atualizar({ times: novosTimes }); avisar("A última partida em aberto foi reequilibrada com quem está presente"); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rodada.presencas]);
+
   if (!rodada.jogos.length)
     return <Painel className="p-6 text-center" style={{ borderStyle: "dashed", fontSize: 14, color: T.secundario }}>Nenhuma partida sorteada ainda. Volte para a etapa Sorteio.</Painel>;
 
@@ -2205,9 +2306,10 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
           const virouVermelho = ev.cv !== bruto.cv;
           // completou equipe: não pontua NADA, nem cartão (§10º)
           const soCartao = soCartoes.has(jid);
-          // já tomou o 2º amarelo nesta partida (virou vermelho automático,
-          // Art. 81º §Único): não faz sentido continuar somando cartão dele.
-          const semMaisCartao = bruto.ca >= 2;
+          // Já foi expulso nesta partida — por vermelho direto ou por 2º
+          // amarelo convertido (Art. 81º §Único). Dali pra frente não dá pra
+          // somar mais nenhum cartão (o azul não converte, mas também trava).
+          const expulso = bruto.cv > 0 || bruto.ca >= 2;
           return (
             <div key={jid} className="rounded-lg p-1.5" style={{
               background: atuaComoGoleiro ? "rgba(79,163,255,.09)" : "rgba(0,0,0,.26)",
@@ -2228,21 +2330,32 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
                 </button>
               </div>
               {soCartao && <p style={{ fontSize: 9.5, color: T.laranja, marginBottom: 4 }}>completou equipe — não pontua nada, nem cartão</p>}
-              {virouVermelho && <p style={{ fontSize: 9.5, color: T.vermelho, marginBottom: 4 }}>2º amarelo → vermelho (Art. 81º){!soCartao && " · cartões bloqueados nesta partida"}</p>}
+              {!soCartao && virouVermelho && <p style={{ fontSize: 9.5, color: T.vermelho, marginBottom: 4 }}>2º amarelo → vermelho (Art. 81º) · cartões bloqueados nesta partida</p>}
+              {!soCartao && !virouVermelho && bruto.cv > 0 && <p style={{ fontSize: 9.5, color: T.vermelho, marginBottom: 4 }}>Vermelho direto · cartões bloqueados nesta partida</p>}
               <div className="grid grid-cols-2 gap-1">
-                {[["gols", "GOL"], ["assistencias", "ASS"], ["ca", "CA"], ["cv", "CV"]].map(([campo, rot]) => {
+                {[["gols", "GOL"], ["assistencias", "ASS"]].map(([campo, rot]) => (
+                  <div key={campo} className="flex items-center justify-between rounded" style={{ background: "rgba(255,255,255,.06)", padding: 2, opacity: soCartao ? 0.3 : 1 }}>
+                    <button onClick={() => !soCartao && setEvento(jid, campo, -1)} style={{ padding: "4px 6px", color: T.fraco, fontSize: 15 }}>−</button>
+                    <span style={{ fontSize: 9, color: T.fraco }}>{rot}</span>
+                    <span style={{ width: 12, textAlign: "center", fontSize: 12.5, fontWeight: 800, color: T.texto }}>{bruto[campo]}</span>
+                    <button onClick={() => !soCartao && setEvento(jid, campo, 1)} style={{ padding: "4px 6px", color: T.ouro, fontSize: 15 }}>+</button>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-1 grid grid-cols-3 gap-1">
+                {[["ca", "CA", T.laranja], ["cv", "CV", T.vermelho], ["cz", "CA", T.gk]].map(([campo, rot, cor]) => {
                   // §10º: quem só completou o time não pontua nada, nem cartão.
                   const desativado = soCartao;
-                  // Art. 81º §Único: depois do 2º amarelo (virou vermelho), não
-                  // dá pra somar mais cartão nesta partida — só desfazer (−).
-                  const travaSoma = !soCartao && (campo === "ca" || campo === "cv") && semMaisCartao;
+                  // Depois de expulso (vermelho direto ou 2º amarelo), não dá
+                  // pra somar mais nenhum cartão nesta partida — só desfazer (−).
+                  const travaSoma = !soCartao && expulso;
                   return (
-                    <div key={campo} className="flex items-center justify-between rounded" style={{ background: "rgba(255,255,255,.06)", padding: 2, opacity: desativado ? 0.3 : 1 }}>
+                    <div key={campo} className="flex items-center justify-between rounded" style={{ background: `${cor}1F`, padding: 2, opacity: desativado ? 0.3 : 1 }}>
                       <button onClick={() => !desativado && setEvento(jid, campo, -1)} style={{ padding: "4px 6px", color: T.fraco, fontSize: 15 }}>−</button>
-                      <span style={{ fontSize: 9, color: T.fraco }}>{rot}</span>
-                      <span style={{ width: 12, textAlign: "center", fontSize: 12.5, fontWeight: 800, color: campo === "cv" && ev.cv ? T.vermelho : T.texto }}>{bruto[campo]}</span>
-                      <button onClick={() => !desativado && !travaSoma && setEvento(jid, campo, 1)} title={travaSoma ? "Já tomou o 2º amarelo (vermelho automático) — não dá pra somar mais cartão" : undefined}
-                        style={{ padding: "4px 6px", color: T.ouro, fontSize: 15, opacity: travaSoma ? 0.35 : 1 }}>+</button>
+                      <span style={{ fontSize: 9, color: cor, fontWeight: 800 }}>{rot}</span>
+                      <span style={{ width: 12, textAlign: "center", fontSize: 12.5, fontWeight: 800, color: T.texto }}>{bruto[campo]}</span>
+                      <button onClick={() => !desativado && !travaSoma && setEvento(jid, campo, 1)} title={travaSoma ? "Já foi expulso nesta partida — não dá pra somar mais cartão" : undefined}
+                        style={{ padding: "4px 6px", color: cor, fontSize: 15, opacity: travaSoma ? 0.35 : 1 }}>+</button>
                     </div>
                   );
                 })}
@@ -2402,7 +2515,7 @@ function TelaClassificacao({ base, dados, cfg, avisar }) {
         ))}
       </div>
 
-      {vista === "resultados" ? <Resultados base={base} /> : (<>
+      {vista === "resultados" ? <Resultados base={base} cfg={cfg} /> : (<>
       <Secao titulo="Classificação geral" detalhe={`Supercopa: 1º ao ${cfg.zonaSupercopa}º`} /></>)}
 
       {vista === "classificacao" && (<>
@@ -2487,7 +2600,7 @@ function TelaClassificacao({ base, dados, cfg, avisar }) {
         <b style={{ color: T.ouro }}>Cartões</b> · {cfg.cartoesPorPonto} amarelos/azuis = −{cfg.pontosPorCicloAmarelo} ponto (contagem reinicia, Art. 82º §2º) · cada vermelho = −{cfg.pontosPorVermelho}<br />
         <b style={{ color: T.ouro }}>Atrasos</b> · 1º alerta · 2º amarelo · 3º perde a presença · 4º suspensão. Zera na virada do mês, salvo emenda (§9º)<br />
         <b style={{ color: T.ouro }}>Classe</b> · 1º-2º = 5★ · 3º-4º = 4★ · 5º-7º = 3★ · 8º-10º = 2★ · 11º+ = 1★<br />
-        <span style={{ color: T.fraco }}>Escalas separadas: a faixa de linha conta só entre jogadores de linha (<span style={{ color: T.ouro }}>★ ouro</span>) e a de goleiro só entre goleiros (<span style={{ color: T.gk }}>★ azul</span>). Toque na linha para ver o rank na categoria.</span><br />
+        <span style={{ color: T.fraco }}>Escala única: a classe sai da posição geral na tabela, goleiro (<span style={{ color: T.gk }}>★ azul</span>) e linha (<span style={{ color: T.ouro }}>★ ouro</span>) na mesma fila — a cor é só identificação visual. Toque na linha para ver o rank dentro da categoria.</span><br />
         <span style={{ color: T.ouro }}>▌</span> Zona Supercopa · <IconeGoleiro tam={13} /> goleiro · <span style={{ color: T.vermelho }}>$</span> pendência · (*) a confirmar
       </Painel>
 
@@ -2501,7 +2614,7 @@ function TelaClassificacao({ base, dados, cfg, avisar }) {
 }
 
 /* Aba de resultados dos jogos (só rodadas feitas no app — 21ª em diante). */
-function Resultados({ base }) {
+function Resultados({ base, cfg }) {
   const nomes = Object.fromEntries(base.jogadores.map((j) => [j.id, j.nome]));
   const [aberta, setAberta] = useState(null);
   const rodadas = [...(base.rodadas || [])]
@@ -2546,12 +2659,18 @@ function Resultados({ base }) {
                   const gA = (tA?.jogadores || []).filter((j) => !(jogo.soCartoes || []).includes(j.jogadorId));
                   const gB = (tB?.jogadores || []).filter((j) => !(jogo.soCartoes || []).includes(j.jogadorId));
                   const ev = (jid) => eventoDe(jogo, jid);
+                  // Deixa explícito qual dos 3 cenários aconteceu: amarelo
+                  // isolado, vermelho direto, ou 2º amarelo convertido em
+                  // vermelho (Art. 81º §Único) — mais o azul, que nunca
+                  // converte, só soma peso de amarelo nos pontos (Art. 82º).
                   const linhaEventos = (grupo) => grupo.map((j) => {
                     const e = ev(j.jogadorId); const marcas = [];
                     if (e.gols > 0) marcas.push(`⚽${e.gols > 1 ? e.gols : ""}`);
                     if (e.assistencias > 0) marcas.push(`👟${e.assistencias > 1 ? e.assistencias : ""}`);
-                    if (e.ca > 0) marcas.push("🟨");
-                    if (e.cv > 0) marcas.push("🟥");
+                    if (e.ca >= 2) marcas.push(cfg.converterSegundoAmarelo ? "🟨🟨→🟥 (2º amarelo)" : `🟨×${e.ca}`);
+                    else if (e.ca === 1) marcas.push("🟨");
+                    if (e.cv > 0) marcas.push(`🟥${e.ca >= 2 && cfg.converterSegundoAmarelo ? " extra" : " direto"}${e.cv > 1 ? ` ×${e.cv}` : ""}`);
+                    if (e.cz > 0) marcas.push(`🟦${e.cz > 1 ? ` ×${e.cz}` : ""}`);
                     return { nome: nomes[j.jogadorId] || "?", marcas };
                   });
                   const venceuA = p.A > p.B, venceuB = p.B > p.A;
@@ -2579,6 +2698,19 @@ function Resultados({ base }) {
                     </Painel>
                   );
                 })}
+                {(rodada.ajustes || []).length > 0 && (
+                  <Painel className="p-3" style={{ fontSize: 11.5, color: T.secundario }}>
+                    <b style={{ color: T.ouro }}>Ajustes P+ / P− da rodada:</b>
+                    <div className="mt-1.5 space-y-1">
+                      {rodada.ajustes.map((aj) => (
+                        <div key={aj.id} className="flex items-center justify-between gap-2">
+                          <span className="truncate">{nomes[aj.jogadorId] || aj.jogadorId} <span style={{ color: T.fraco }}>· {aj.motivo || "sem motivo"}</span></span>
+                          <b style={{ flexShrink: 0, color: aj.valor >= 0 ? T.verde : T.vermelho }}>{aj.valor >= 0 ? "+" : ""}{aj.valor}</b>
+                        </div>
+                      ))}
+                    </div>
+                  </Painel>
+                )}
               </div>
             )}
           </div>
@@ -2916,7 +3048,8 @@ function TelaConfig({ base, setBase, dados, cfg, avisar }) {
         <Painel className="space-y-2 p-3">
           <p style={{ fontSize: 11.5, lineHeight: 1.5, color: T.fraco }}>
             Os 2 campeões da Copa Hendor de Penalidades entram na zona da Supercopa mesmo se estiverem fora do corte por pontos.
-            Se já estiverem classificados por mérito, nada muda. Deixe em branco enquanto a final não acontece.
+            Se já estiverem classificados por mérito, nada muda. Vale para qualquer jogador — inclusive goleiro, que aí disputa
+            a vaga extra com os outros goleiros, nunca com a linha. Deixe em branco enquanto a final não acontece.
           </p>
           {[0, 1].map((i) => (
             <Campo key={i} rotulo={`Campeão ${i + 1}`}>
@@ -2925,12 +3058,15 @@ function TelaConfig({ base, setBase, dados, cfg, avisar }) {
                 onChange={(e) => {
                   const atual = [...(cfg.campeoesHendor || [])];
                   atual[i] = e.target.value || null;
-                  mudar("campeoesHendor", atual.filter(Boolean));
+                  // Mantém os 2 índices fixos (Campeão 1 / Campeão 2) mesmo com
+                  // buracos — compactar aqui trocaria o Campeão 2 de lugar caso
+                  // o Campeão 1 fosse limpo.
+                  mudar("campeoesHendor", atual);
                 }}
                 style={{ ...inputStyle, padding: "10px", fontSize: 13 }}>
                 <option value="">— a definir —</option>
-                {base.jogadores.filter((j) => j.posicao !== "GOLEIRO").map((j) => (
-                  <option key={j.id} value={j.id}>{j.nome}</option>
+                {base.jogadores.filter((j) => !j.convidado).map((j) => (
+                  <option key={j.id} value={j.id}>{j.nome}{j.posicao === "GOLEIRO" ? " (GK)" : ""}</option>
                 ))}
               </select>
             </Campo>
