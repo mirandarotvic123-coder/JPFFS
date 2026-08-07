@@ -378,6 +378,27 @@ function calcularClassificacao(base) {
     };
   });
 
+  /* Art. 34º §2º-A — garante que todo classificado à Supercopa (12 de linha +
+   * 2 goleiros) tenha pelo menos 2★. Pela escala única (posição geral), um
+   * goleiro pode entrar entre os 2 melhores da própria categoria e mesmo
+   * assim cair na faixa de 15º+ = 1★ da tabela geral — o que o deixa fraco
+   * demais pro nível da Supercopa. Só o PIOR colocado goleiro entre os
+   * classificados sobe, e só se estiver mesmo em 1★; para não inflar a
+   * contagem de 2★, o último jogador (de qualquer posição) que estava em 2★
+   * desce pra 1★ no lugar dele — a troca é 1 por 1. */
+  if (rodadasRealizadas > 0) {
+    const gkSupercopaPior = classificacao
+      .filter((l) => l.ehGoleiro && l.supercopa)
+      .sort((a, b) => b.posicao - a.posicao)[0];
+    if (gkSupercopaPior && gkSupercopaPior.estrelas === 1) {
+      const ultimoDoisEstrelas = classificacao
+        .filter((l) => l.estrelas === 2 && l.id !== gkSupercopaPior.id)
+        .sort((a, b) => b.posicao - a.posicao)[0];
+      gkSupercopaPior.estrelas = 2;
+      if (ultimoDoisEstrelas) ultimoDoisEstrelas.estrelas = 1;
+    }
+  }
+
   const convFinal = convidados.map((l) => ({
     ...l, posicao: null, criterioAplicado: null, ehGoleiro: l.jogador.posicao === "GOLEIRO",
     rankCategoria: null, totalCategoria: 0,
@@ -588,8 +609,13 @@ function sortearEquipes(entradas, opcoes = {}) {
    * em qualquer uma delas. */
   // Todos os presentes, sem descartar ninguém. Quem a seleção deixou de fora
   // por excesso volta ao pote (será usado para completar vagas de gol).
-  const poteGk = [...gkFinal, ...gkSobrando.map((j) => ({ ...j, slotGoleiro: true }))]
-    .sort((a, b) => b.estrelas - a.estrelas);
+  // Embaralhado (não ordenado por estrela): ordenar por estrela aqui fazia o
+  // goleiro mais forte ser SEMPRE o primeiro da fila — e como a distribuição
+  // em volta sempre começa pela Partida 1, ele ficava fixo lá (e sempre no
+  // mesmo time, ver repartir() abaixo) em todo sorteio, não importa a seed.
+  const poteGk = embaralharRng(
+    [...gkFinal, ...gkSobrando.map((j) => ({ ...j, slotGoleiro: true }))], rng
+  );
   const poteLinha = [...linhaFinal, ...linhaSobrando].sort((a, b) => b.estrelas - a.estrelas);
 
   const capLn = linhaPorTime * 2;
@@ -648,7 +674,16 @@ function sortearEquipes(entradas, opcoes = {}) {
 
   const times = [];
   for (let p = 0; p < partidas; p++) {
-    const [A, B] = repartir(gksPorPartida[p] || [], lnsPorPartida[p] || []);
+    // Dentro de cada par de vagas de goleiro (slot 2v / 2v+1) sorteia qual
+    // delas vai pro Amarelo e qual vai pro Azul — sem isso o slot 0 caía
+    // sempre no Amarelo por causa de como repartir() monta os times, e
+    // quando só existe 1 goleiro real disponível (vaga aberta do outro lado)
+    // ele acabava sempre do mesmo lado, partida após partida.
+    const gks = [...(gksPorPartida[p] || [])];
+    for (let v = 0; v < gkPorTime; v++) {
+      if (rng() < 0.5) { const t = gks[v * 2]; gks[v * 2] = gks[v * 2 + 1]; gks[v * 2 + 1] = t; }
+    }
+    const [A, B] = repartir(gks, lnsPorPartida[p] || []);
     times.push(A, B);
   }
 
@@ -1462,7 +1497,9 @@ function partidasPossiveis(nLinha, nGoleiros, cfg) {
   const porGk = gkPorTime * 2;         // 2 goleiros por partida
   const necessariasLinha = Math.ceil(nLinha / porLinha);
   const necessariasGk = Math.ceil(nGoleiros / porGk);
-  return Math.min(3, Math.max(necessariasLinha, necessariasGk));
+  // Sem teto artificial: quantos presentes tiver, tantas partidas quanto for
+  // preciso pra acomodar todo mundo (linha ou goleiro, o que exigir mais).
+  return Math.max(necessariasLinha, necessariasGk);
 }
 
 /* --------------------- Etapa 1: presença ---------------------------------*/
