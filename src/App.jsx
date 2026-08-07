@@ -1492,14 +1492,15 @@ function poolsDoDia(base, rodada, porId, dados, cfg) {
  *  Ex.: 18L+2G → máx(⌈18/8⌉,⌈2/2⌉)=3 · 12L+3G → máx(2,2)=2 · 20L+4G → 3. */
 function partidasPossiveis(nLinha, nGoleiros, cfg) {
   const linhaPorTime = cfg.jogadoresPorTime - cfg.goleirosPorTime; // 4
-  const gkPorTime = cfg.goleirosPorTime;                            // 1
   const porLinha = linhaPorTime * 2;   // 8 de linha por partida
-  const porGk = gkPorTime * 2;         // 2 goleiros por partida
-  const necessariasLinha = Math.ceil(nLinha / porLinha);
-  const necessariasGk = Math.ceil(nGoleiros / porGk);
-  // Sem teto artificial: quantos presentes tiver, tantas partidas quanto for
-  // preciso pra acomodar todo mundo (linha ou goleiro, o que exigir mais).
-  return Math.max(necessariasLinha, necessariasGk);
+  // Só a LINHA decide quantas partidas o dia tem — sem teto artificial, mas
+  // também sem o goleiro sozinho inflando o número de partidas. Goleiro
+  // sobrando (mais do que 1 por time nas partidas que já existem) só abre
+  // confronto de goleiro dentro dessas partidas, ou vira sobressalente se
+  // nem isso couber; goleiro faltando só deixa a vaga de meta em aberto.
+  // Do contrário, partida nova sem gente de linha suficiente pra preencher
+  // nascia inteira em aberto, exigindo escalar tudo na mão.
+  return Math.ceil(nLinha / porLinha);
 }
 
 /* --------------------- Etapa 1: presença ---------------------------------*/
