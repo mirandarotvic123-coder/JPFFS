@@ -160,12 +160,13 @@ const timePorId = (r, tid) => (r.times || []).find((t) => t.id === tid);
 const idsDoTime = (t) => (t?.jogadores || []).map((j) => j.jogadorId);
 const HIST_ZERO = { P: 0, J: 0, V: 0, E: 0, D: 0, GP: 0, GC: 0, CA: 0, CV: 0, CZ: 0, Pmais: 0, Pmenos: 0, gols: 0, assistencias: 0 };
 
-/** Art. 81º §Único — 2º amarelo na mesma partida vira vermelho. O azul (§82º)
- *  é uma cautela independente: nunca converte sozinho nem combinado com o
- *  amarelo, só pesa nos pontos (mesmo peso do amarelo, Art. 82º §2º). */
+/** Art. 81º §Único — vira vermelho automático em dois casos: 2º amarelo na
+ *  mesma partida, OU 1 amarelo + 1 azul juntos. Dois azuis sozinhos não
+ *  convertem — o azul só converte quando combinado com um amarelo. */
 function normalizarCartoes(ev, cfg) {
   if (!cfg.converterSegundoAmarelo) return ev;
   if ((ev.ca || 0) >= 2) return { ...ev, ca: ev.ca - 1, cv: (ev.cv || 0) + 1 };
+  if ((ev.ca || 0) >= 1 && (ev.cz || 0) >= 1) return { ...ev, ca: ev.ca - 1, cz: ev.cz - 1, cv: (ev.cv || 0) + 1 };
   return ev;
 }
 
@@ -1284,7 +1285,7 @@ export default function App() {
   return (
     <div style={{ minHeight: "100vh", background: FUNDO_APP, color: T.texto, fontVariantNumeric: "tabular-nums", fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif" }}>
       <header className="sticky top-0 z-20 px-4 pb-2 pt-3" style={{ background: "rgba(6,20,48,.94)", backdropFilter: "blur(8px)", borderBottom: `1px solid ${T.borda}` }}>
-        <div className="mx-auto flex max-w-3xl items-center justify-between" style={{ gap: 8 }}>
+        <div className="mx-auto flex max-w-5xl items-center justify-between" style={{ gap: 8 }}>
           <div style={{ width: 68 }} />
           <div className="flex flex-col items-center" style={{ gap: 2 }}>
             <img src={ESCUDO} alt="Campeonato JPFFS" style={{ height: 46, width: "auto", display: "block", filter: "drop-shadow(0 2px 6px rgba(0,0,0,.55))" }} />
@@ -1311,7 +1312,7 @@ export default function App() {
       {aviso && <div className="fixed left-1/2 z-30 w-11/12 max-w-sm -translate-x-1/2 rounded-lg px-4 py-3 text-center"
         style={{ bottom: 92, background: `linear-gradient(180deg,${T.ouroClaro},${T.ouro})`, color: "#0a1b3d", fontWeight: 800, fontSize: 13.5, boxShadow: "0 8px 28px rgba(0,0,0,.5)" }}>{aviso}</div>}
 
-      <main className="mx-auto max-w-3xl px-3 pt-4" style={{ paddingBottom: 104 }}>
+      <main className="mx-auto max-w-5xl px-3 pt-4" style={{ paddingBottom: 104 }}>
         {aba === "rodada" && sessao && <TelaRodada {...{ base, setBase, dados, cfg, avisar: setAviso }} />}
         {aba === "tabela" && <TelaClassificacao {...{ base, dados, cfg, avisar: setAviso }} />}
         {aba === "elenco" && sessao && <TelaElenco {...{ base, setBase, dados, cfg, avisar: setAviso }} />}
@@ -1319,7 +1320,7 @@ export default function App() {
       </main>
 
       <nav className="fixed bottom-0 left-0 right-0 z-20" style={{ background: "rgba(6,20,48,.97)", borderTop: `1px solid ${T.borda}` }}>
-        <div className="mx-auto flex max-w-3xl">
+        <div className="mx-auto flex max-w-5xl">
           {abas.map((a) => (
             <button key={a.id} onClick={() => setAba(a.id)} className="flex flex-1 flex-col items-center"
               style={{ gap: 3, padding: "11px 0 13px", color: aba === a.id ? T.ouro : T.fraco, fontSize: 10, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase" }}>
@@ -2132,6 +2133,7 @@ function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId 
     const idsEmUso = new Set();
     for (const t of rodada.times || []) for (const jj of t.jogadores || []) idsEmUso.add(jj.jogadorId);
     const sobraIds = P.aptos.map((e) => e.jogador.id).filter((id) => !idsEmUso.has(id));
+    const sobraSet = new Set(sobraIds);
     const entradaDe = (jid) => {
       const j = base.jogadores.find((x) => x.id === jid);
       if (!j) return null;
@@ -2162,10 +2164,26 @@ function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId 
       lnPool.forEach((j, i) => (i % 4 === 0 || i % 4 === 3 ? A : B).push({ ...j, slotGoleiro: false }));
       const times2 = [A, B];
       const todos2 = [...A, ...B];
+
+      /* Balanço de quem ainda disputa pontos: quem chegou agora (sobraSet) não
+       * pode ficar amontoado do mesmo lado só porque calhou de cair perto na
+       * ordenação por estrela. Emparelha os recém-chegados dois a dois (do
+       * mais forte pro mais fraco) e força cada par em lados OPOSTOS — 2
+       * pessoas → 1 de cada lado; 4 → 2 de cada lado — usando a mesma restrição
+       * "separados" que já existe para pares fixos, então o custo continua
+       * sendo minimizado com essa separação como regra rígida. */
+      const novosNaLinha = lnPool.filter((j) => sobraSet.has(j.id)).sort((a, b) => b.estrelas - a.estrelas);
+      const separacoesNovos = [];
+      for (let i = 0; i + 1 < novosNaLinha.length; i += 2)
+        separacoesNovos.push({ a: novosNaLinha[i].id, b: novosNaLinha[i + 1].id, tipo: "separados" });
+
       buscaLocal(times2, {
         pesos: cfg.pesos, goleirosPorTime: gkPorTime, goleirosSuficientes: false,
         totalCinco: todos2.filter((j) => j.estrelas === 5).length, duplasRecentes: null,
-        restricoes: (base.restricoes || []).filter((r) => todos2.some((j) => j.id === r.a) && todos2.some((j) => j.id === r.b)),
+        restricoes: [
+          ...(base.restricoes || []).filter((r) => todos2.some((j) => j.id === r.a) && todos2.some((j) => j.id === r.b)),
+          ...separacoesNovos,
+        ],
         usarAproveitamento: cfg.usarAproveitamento, travados: new Set(),
         nome: (x) => nomes[x] || "?", nomeTime: (i) => (i === 0 ? "Amarelo" : "Azul"),
       });
@@ -2260,7 +2278,9 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
   // Estrelas de cada equipe (força no sorteio) e um índice de equilíbrio, nos
   // mesmos moldes da etapa Sorteio — assim dá pra ver, aqui em Partidas, se a
   // divisão (inclusive depois de um reequilíbrio automático) ficou justa.
-  const forcaDe = (t) => (t.jogadores || []).reduce((s, j) => s + (j.estrelaNoSorteio || 0), 0);
+  // Quem só completou o time (§10º) não pontua e não entra nessa conta — ele
+  // não está de fato disputando a partida, só preenchendo a vaga.
+  const forcaDe = (t) => (t.jogadores || []).filter((j) => !soCartoes.has(j.jogadorId)).reduce((s, j) => s + (j.estrelaNoSorteio || 0), 0);
   const forcaA = forcaDe(tA), forcaB = forcaDe(tB);
   const temVagaAberta = (tA.vagasAbertas || []).length > 0 || (tB.vagasAbertas || []).length > 0;
   const mediaForca = (forcaA + forcaB) / 2;
@@ -2295,8 +2315,10 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
   const setEvento = (jid, campo, d) => {
     const at = { ...evVazio, ...(jogo.eventos[jid] || {}) };
     const novo = { ...at, [campo]: Math.max(0, at[campo] + d) };
-    if (campo === "ca" && d > 0 && novo.ca >= 2 && cfg.converterSegundoAmarelo)
-      avisar(`${jog[jid]?.nome}: 2º amarelo vira vermelho (Art. 81º §Único)`);
+    if (d > 0 && cfg.converterSegundoAmarelo && (campo === "ca" || campo === "cz")) {
+      if (novo.ca >= 2) avisar(`${jog[jid]?.nome}: 2º amarelo vira vermelho (Art. 81º §Único)`);
+      else if (novo.ca >= 1 && novo.cz >= 1) avisar(`${jog[jid]?.nome}: amarelo + azul vira vermelho (Art. 81º §Único)`);
+    }
     mudar({ eventos: { ...jogo.eventos, [jid]: novo } });
   };
   const setPlacar = (lado, d) => {
@@ -2316,10 +2338,10 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
           const virouVermelho = ev.cv !== bruto.cv;
           // completou equipe: não pontua NADA, nem cartão (§10º)
           const soCartao = soCartoes.has(jid);
-          // Já foi expulso nesta partida — por vermelho direto ou por 2º
-          // amarelo convertido (Art. 81º §Único). Dali pra frente não dá pra
-          // somar mais nenhum cartão (o azul não converte, mas também trava).
-          const expulso = bruto.cv > 0 || bruto.ca >= 2;
+          // Já foi expulso nesta partida — vermelho direto, 2º amarelo, ou
+          // amarelo + azul juntos (Art. 81º §Único). Dali pra frente não dá
+          // pra somar mais nenhum cartão.
+          const expulso = bruto.cv > 0 || bruto.ca >= 2 || (bruto.ca >= 1 && bruto.cz >= 1);
           return (
             <div key={jid} className="rounded-lg p-1.5" style={{
               background: atuaComoGoleiro ? "rgba(79,163,255,.09)" : "rgba(0,0,0,.26)",
@@ -2340,7 +2362,8 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
                 </button>
               </div>
               {soCartao && <p style={{ fontSize: 9.5, color: T.laranja, marginBottom: 4 }}>completou equipe — não pontua nada, nem cartão</p>}
-              {!soCartao && virouVermelho && <p style={{ fontSize: 9.5, color: T.vermelho, marginBottom: 4 }}>2º amarelo → vermelho (Art. 81º) · cartões bloqueados nesta partida</p>}
+              {!soCartao && virouVermelho && bruto.ca >= 2 && <p style={{ fontSize: 9.5, color: T.vermelho, marginBottom: 4 }}>2º amarelo → vermelho (Art. 81º) · cartões bloqueados nesta partida</p>}
+              {!soCartao && virouVermelho && bruto.ca < 2 && <p style={{ fontSize: 9.5, color: T.vermelho, marginBottom: 4 }}>Amarelo + azul → vermelho (Art. 81º) · cartões bloqueados nesta partida</p>}
               {!soCartao && !virouVermelho && bruto.cv > 0 && <p style={{ fontSize: 9.5, color: T.vermelho, marginBottom: 4 }}>Vermelho direto · cartões bloqueados nesta partida</p>}
               <div className="grid grid-cols-2 gap-1">
                 {[["gols", "GOL"], ["assistencias", "ASS"]].map(([campo, rot]) => (
@@ -2547,25 +2570,25 @@ function TelaClassificacao({ base, dados, cfg, avisar }) {
 
       {vista === "classificacao" && (<>
       <div className="overflow-x-auto rounded-xl" style={{ border: `1px solid ${T.borda}` }}>
-        <table style={{ width: "100%", minWidth: 760, textAlign: "right", fontSize: 12, borderCollapse: "collapse" }}>
+        <table style={{ width: "100%", textAlign: "right", fontSize: 10.5, borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "rgba(0,0,0,.3)", borderBottom: `2px solid ${T.ouro}` }}>
-              <th style={{ padding: "9px 8px", textAlign: "center", fontSize: 10, color: T.fraco }}>#</th>
-              <th style={{ padding: "9px 8px", textAlign: "left", fontSize: 10, color: T.fraco }}>JOGADOR</th>
-              <th style={{ padding: "9px 8px", textAlign: "center", fontSize: 10, color: T.fraco }}>CLASSE</th>
-              {cols.map(([r]) => <th key={r} style={{ padding: "9px 8px", fontSize: 10, color: T.fraco }}>{r}</th>)}
-              <th style={{ padding: "9px 8px", textAlign: "center", fontSize: 10, color: T.fraco }}>ÚLT. 5</th>
+              <th style={{ padding: "7px 3px", textAlign: "center", fontSize: 9, color: T.fraco }}>#</th>
+              <th style={{ padding: "7px 4px", textAlign: "left", fontSize: 9, color: T.fraco }}>JOGADOR</th>
+              <th style={{ padding: "7px 3px", textAlign: "center", fontSize: 9, color: T.fraco }}>CLASSE</th>
+              {cols.map(([r]) => <th key={r} style={{ padding: "7px 3px", fontSize: 9, color: T.fraco }}>{r}</th>)}
+              <th style={{ padding: "7px 3px", textAlign: "center", fontSize: 9, color: T.fraco }}>ÚLT. 5</th>
             </tr>
           </thead>
           <tbody>
             {visiveis.map((l, i) => (
               <tr key={l.id} onClick={() => setDetalhe(detalhe === l.id ? null : l.id)}
                 style={{ background: l.supercopa ? T.ouroFraco : i % 2 ? T.linhaPar : "transparent", borderBottom: "1px solid rgba(255,255,255,.05)", cursor: "pointer" }}>
-                <td style={{ padding: "10px 8px", textAlign: "center", fontWeight: 900, color: l.supercopa ? T.ouro : T.fraco, borderLeft: l.supercopa ? `4px solid ${T.ouro}` : "4px solid transparent" }}>{l.posicao}</td>
-                <td style={{ padding: "10px 8px", textAlign: "left" }}>
+                <td style={{ padding: "7px 3px", textAlign: "center", fontWeight: 900, color: l.supercopa ? T.ouro : T.fraco, borderLeft: l.supercopa ? `4px solid ${T.ouro}` : "4px solid transparent" }}>{l.posicao}</td>
+                <td style={{ padding: "7px 4px", textAlign: "left" }}>
                   <div className="flex items-center gap-1.5" style={{ whiteSpace: "nowrap" }}>
                     {l.jogador.posicao === "GOLEIRO" && <IconeGoleiro />}
-                    <span style={{ color: T.texto, fontWeight: 600, fontSize: 13 }}>{l.nome}</span>
+                    <span style={{ color: T.texto, fontWeight: 600, fontSize: 12 }}>{l.nome}</span>
                     {l.nivelAtraso && <SeloAtraso nivel={l.atrasosNoMes} cfg={cfg} mini />}
                     <Marcadores jogador={l.jogador} />
                   </div>
@@ -2584,16 +2607,16 @@ function TelaClassificacao({ base, dados, cfg, avisar }) {
                     </p>
                   )}
                 </td>
-                <td style={{ padding: "10px 8px", textAlign: "center" }}><Estrelas n={l.estrelas} tam={11} goleiro={l.ehGoleiro} /></td>
+                <td style={{ padding: "7px 3px", textAlign: "center" }}><Estrelas n={l.estrelas} tam={10} goleiro={l.ehGoleiro} /></td>
                 {cols.map(([r, k]) => (
-                  <td key={r} style={{ padding: "10px 8px", color: cor(k, l), fontWeight: k === "pontos" ? 900 : 400, fontSize: k === "pontos" ? 14 : 12 }}>
+                  <td key={r} style={{ padding: "7px 3px", color: cor(k, l), fontWeight: k === "pontos" ? 900 : 400, fontSize: k === "pontos" ? 12.5 : 10.5 }}>
                     {k === "aproveitamento" ? `${l[k]}%` : k === "SG" ? `${l.SG > 0 ? "+" : ""}${l.SG}` : (k === "Pmais" || k === "Pmenos") ? (l[k] || "") : l[k]}
                   </td>
                 ))}
-                <td style={{ padding: "10px 8px" }}>
+                <td style={{ padding: "7px 3px" }}>
                   <div className="flex justify-center gap-0.5">
                     {l.ultimos5.map((r, k) => (
-                      <span key={k} style={{ display: "inline-block", width: 17, height: 17, borderRadius: 3, fontSize: 9.5, fontWeight: 800, lineHeight: "17px", textAlign: "center",
+                      <span key={k} style={{ display: "inline-block", width: 15, height: 15, borderRadius: 3, fontSize: 8.5, fontWeight: 800, lineHeight: "15px", textAlign: "center",
                         background: r === "V" ? T.verde : r === "E" ? "#5A76A8" : r === "D" ? T.vermelho : "rgba(255,255,255,.07)",
                         color: r === "V" || r === "D" ? "#06122b" : r === "E" ? "#fff" : "rgba(255,255,255,.25)" }}>{r}</span>
                     ))}
@@ -2670,12 +2693,17 @@ function Resultados({ base, cfg }) {
 
             {estaAberta && (
               <div className="space-y-2" style={{ padding: 10, background: "rgba(0,0,0,.15)" }}>
+                <div className="flex flex-wrap items-center" style={{ gap: "6px 12px", fontSize: 10, color: T.fraco, paddingBottom: 2 }}>
+                  <span>⚽ gol · 👟 assistência · 🟨 amarelo · 🟦 azul · 🟥 vermelho</span>
+                  <span style={{ color: T.laranja, fontStyle: "italic" }}>● nome em laranja itálico = completou a equipe (§10º), não pontuou</span>
+                </div>
                 {jogos.map((jogo) => {
                   const p = placarDe(jogo, rodada);
                   const tA = (rodada.times || []).find((x) => x.id === jogo.timeA);
                   const tB = (rodada.times || []).find((x) => x.id === jogo.timeB);
-                  const gA = (tA?.jogadores || []).filter((j) => !(jogo.soCartoes || []).includes(j.jogadorId));
-                  const gB = (tB?.jogadores || []).filter((j) => !(jogo.soCartoes || []).includes(j.jogadorId));
+                  const soCartoesJogo = new Set([...(jogo.completaTime || []), ...(jogo.soCartoes || [])]);
+                  const gA = tA?.jogadores || [];
+                  const gB = tB?.jogadores || [];
                   const ev = (jid) => eventoDe(jogo, jid);
                   // Deixa explícito qual dos 3 cenários aconteceu: amarelo
                   // isolado, vermelho direto, ou 2º amarelo convertido em
@@ -2685,11 +2713,19 @@ function Resultados({ base, cfg }) {
                     const e = ev(j.jogadorId); const marcas = [];
                     if (e.gols > 0) marcas.push(`⚽${e.gols > 1 ? e.gols : ""}`);
                     if (e.assistencias > 0) marcas.push(`👟${e.assistencias > 1 ? e.assistencias : ""}`);
-                    if (e.ca >= 2) marcas.push(cfg.converterSegundoAmarelo ? "🟨🟨→🟥 (2º amarelo)" : `🟨×${e.ca}`);
-                    else if (e.ca === 1) marcas.push("🟨");
-                    if (e.cv > 0) marcas.push(`🟥${e.ca >= 2 && cfg.converterSegundoAmarelo ? " extra" : " direto"}${e.cv > 1 ? ` ×${e.cv}` : ""}`);
-                    if (e.cz > 0) marcas.push(`🟦${e.cz > 1 ? ` ×${e.cz}` : ""}`);
-                    return { nome: nomes[j.jogadorId] || "?", marcas };
+                    // Art. 81º §Único: 2º amarelo OU amarelo+azul viram vermelho automático.
+                    const doisAmarelos = cfg.converterSegundoAmarelo && e.ca >= 2;
+                    const amareloAzul = cfg.converterSegundoAmarelo && !doisAmarelos && e.ca >= 1 && e.cz >= 1;
+                    if (doisAmarelos) marcas.push("🟨🟨→🟥 (2º amarelo)");
+                    else if (amareloAzul) marcas.push("🟨🟦→🟥 (amarelo+azul)");
+                    else if (e.ca > 0) marcas.push(`🟨${e.ca > 1 ? `×${e.ca}` : ""}`);
+                    if (e.cv > 0) marcas.push(`🟥${(doisAmarelos || amareloAzul) ? " extra" : " direto"}${e.cv > 1 ? ` ×${e.cv}` : ""}`);
+                    if (e.cz > 0 && !amareloAzul) marcas.push(`🟦${e.cz > 1 ? ` ×${e.cz}` : ""}`);
+                    // Quem só completou o time (§10º) não pontuou nada — mas
+                    // continua aparecendo aqui, só que destacado em outra cor,
+                    // pra ficar claro quem realmente disputou a partida.
+                    const completou = soCartoesJogo.has(j.jogadorId);
+                    return { nome: nomes[j.jogadorId] || "?", marcas, completou };
                   });
                   const venceuA = p.A > p.B, venceuB = p.B > p.A;
                   return (
@@ -2703,13 +2739,17 @@ function Resultados({ base, cfg }) {
                       <div className="flex justify-between" style={{ gap: 10, marginTop: 8, fontSize: 11, lineHeight: 1.7 }}>
                         <div className="flex-1 text-right" style={{ color: T.secundario }}>
                           {linhaEventos(gA).map((r, i) => (
-                            <div key={i}>{r.nome} {r.marcas.length > 0 && <span>{r.marcas.join(" ")}</span>}</div>
+                            <div key={i} style={{ color: r.completou ? T.laranja : T.secundario, fontStyle: r.completou ? "italic" : "normal" }}>
+                              {r.nome} {r.marcas.length > 0 && <span>{r.marcas.join(" ")}</span>}
+                            </div>
                           ))}
                         </div>
                         <div style={{ width: 1, background: T.borda }} />
                         <div className="flex-1" style={{ color: T.secundario }}>
                           {linhaEventos(gB).map((r, i) => (
-                            <div key={i}>{r.marcas.length > 0 && <span>{r.marcas.join(" ")}</span>} {r.nome}</div>
+                            <div key={i} style={{ color: r.completou ? T.laranja : T.secundario, fontStyle: r.completou ? "italic" : "normal" }}>
+                              {r.marcas.length > 0 && <span>{r.marcas.join(" ")}</span>} {r.nome}
+                            </div>
                           ))}
                         </div>
                       </div>
@@ -2982,7 +3022,7 @@ function TelaConfig({ base, setBase, dados, cfg, avisar }) {
             <Campo key={c} rotulo={r} dica={d}><input type="number" value={cfg[c]} onChange={(e) => mudar(c, Number(e.target.value))} style={{ ...inputStyle, padding: "10px" }} /></Campo>
           ))}
           {[["amareloNoSegundoAtraso", "2º atraso gera cartão amarelo na classificação"],
-            ["converterSegundoAmarelo", "2º amarelo na mesma partida vira vermelho (Art. 81º §Único)"],
+            ["converterSegundoAmarelo", "2º amarelo, ou amarelo + azul, vira vermelho na mesma partida (Art. 81º §Único)"],
             ["perdePontoNoQuartoAtraso", "Cobrar ponto extra do suspenso (premissa em aberto)"]].map(([c, r]) => (
             <div key={c} className="col-span-2">
               <button onClick={() => mudar(c, !cfg[c])} className="w-full rounded-lg p-3 text-left"
