@@ -2260,7 +2260,7 @@ function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId 
         </div>
       ))}
 
-      <Ajustes rodada={rodada} base={base} onMudar={atualizar} />
+      <Ajustes rodada={rodada} base={base} dados={dados} onMudar={atualizar} />
 
       {rodada.jogos.some((g) => g.encerrado) && (
         <Botao variante="secundario" className="w-full" onClick={() => { atualizar({ status: "fechada" }); avisar(`Rodada ${rodada.numero} fechada · estrelas recalculadas`); }}>
@@ -2531,9 +2531,15 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
 }
 
 /* --------------------------- Ajustes P+ / P− -----------------------------*/
-function Ajustes({ rodada, base, onMudar }) {
+function Ajustes({ rodada, base, dados, onMudar }) {
   const [jid, setJid] = useState(""); const [valor, setValor] = useState(1); const [motivo, setMotivo] = useState("");
   const nomes = Object.fromEntries(base.jogadores.map((j) => [j.id, j.nome]));
+  // Lista suspensa vem da própria tabela de classificação (já ordenada por
+  // posição), não da lista crua de jogadores — assim ninguém que está
+  // classificado fica de fora, e a ordem já ajuda a achar o jogador.
+  const opcoesJogadores = (dados?.classificacao || []).length
+    ? dados.classificacao.map((l) => ({ id: l.id, nome: l.nome }))
+    : base.jogadores.map((j) => ({ id: j.id, nome: j.nome }));
   return (
     <section>
       <Secao titulo="Ajustes P+ / P−" detalhe="lançamentos manuais" />
@@ -2550,7 +2556,7 @@ function Ajustes({ rodada, base, onMudar }) {
         ))}
         <div className="flex gap-2">
           <select value={jid} onChange={(e) => setJid(e.target.value)} style={{ ...inputStyle, flex: 1, padding: "10px 8px", fontSize: 13 }}>
-            <option value="">Jogador…</option>{base.jogadores.map((j) => <option key={j.id} value={j.id}>{j.nome}</option>)}
+            <option value="">Jogador…</option>{opcoesJogadores.map((j) => <option key={j.id} value={j.id}>{j.nome}</option>)}
           </select>
           <input type="number" value={valor} onChange={(e) => setValor(e.target.value)} style={{ ...inputStyle, width: 64, padding: "10px 4px", textAlign: "center", fontSize: 13 }} />
         </div>
