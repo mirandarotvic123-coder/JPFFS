@@ -84,7 +84,7 @@ function novaSeed() {
 }
 function embaralharRng(arr, rng) {
   const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1));[a[i], a[j]] = [a[j], a[i]]; }
   return a;
 }
 
@@ -720,7 +720,7 @@ function paraCSV(l) {
 function csvClassificacao(cl) {
   const cab = ["Pos", "Jogador", "Posição", "Estrelas", "P", "%", "J", "V", "E", "D", "GP", "GC", "SG", "Gols", "Ass", "CA", "CV", "P+", "P-", "Atrasos no mês", "Últimos 5"];
   return paraCSV([cab, ...cl.map((l) => [l.posicao, l.nome, l.jogador.posicao, l.estrelas, l.pontos,
-    `${l.aproveitamento}%`, l.J, l.V, l.E, l.D, l.GP, l.GC, l.SG, l.gols, l.assistencias, l.CA, l.CV, l.Pmais, l.Pmenos, l.atrasosNoMes, l.ultimos5.join(" ")])]);
+  `${l.aproveitamento}%`, l.J, l.V, l.E, l.D, l.GP, l.GC, l.SG, l.gols, l.assistencias, l.CA, l.CV, l.Pmais, l.Pmenos, l.atrasosNoMes, l.ultimos5.join(" ")])]);
 }
 function csvSumula(rodada, nomes, niveis) {
   const linhas = [["Rodada", rodada.numero, "Data", rodada.data]];
@@ -748,7 +748,7 @@ function csvSumula(rodada, nomes, niveis) {
       const obs = [...(jogo.completaTime || []), ...(jogo.soCartoes || [])].includes(j.jogadorId)
         ? "Completou equipe (§10º) — não pontua nada, nem cartão" : "";
       linhas.push([t.cor, nomes[j.jogadorId] || j.jogadorId, j.atuaComoGoleiro ? "Goleiro" : "Linha",
-        ev.gols, ev.assistencias, ev.ca, ev.cv, ev.cz, niveis?.[j.jogadorId] ? `${niveis[j.jogadorId]}º` : "", obs]);
+      ev.gols, ev.assistencias, ev.ca, ev.cv, ev.cz, niveis?.[j.jogadorId] ? `${niveis[j.jogadorId]}º` : "", obs]);
     }
   }
   return paraCSV(linhas);
@@ -791,85 +791,85 @@ function imagemTabela(cl, cfg, meta) {
   logo.src = ESCUDO;
 
   function desenhar(escudo) {
-  const cv = document.createElement("canvas");
-  cv.width = larg * esc; cv.height = alt * esc;
-  const x = cv.getContext("2d");
-  x.scale(esc, esc); x.textBaseline = "middle";
-  const g = x.createLinearGradient(0, 0, 0, alt);
-  g.addColorStop(0, T.fundoTopo); g.addColorStop(0.45, "#0a2557"); g.addColorStop(1, T.fundoBase);
-  x.fillStyle = g; x.fillRect(0, 0, larg, alt);
+    const cv = document.createElement("canvas");
+    cv.width = larg * esc; cv.height = alt * esc;
+    const x = cv.getContext("2d");
+    x.scale(esc, esc); x.textBaseline = "middle";
+    const g = x.createLinearGradient(0, 0, 0, alt);
+    g.addColorStop(0, T.fundoTopo); g.addColorStop(0.45, "#0a2557"); g.addColorStop(1, T.fundoBase);
+    x.fillStyle = g; x.fillRect(0, 0, larg, alt);
 
-  const hEscudo = 70;
-  if (escudo) {
-    const wEscudo = escudo.width * (hEscudo / escudo.height);
-    x.drawImage(escudo, pad, 18, wEscudo, hEscudo);
-  }
-  const xTexto = pad + (escudo ? escudo.width * (hEscudo / escudo.height) + 18 : 0);
-  x.textAlign = "left";
-  x.fillStyle = T.ouro; x.font = "900 26px system-ui, sans-serif";
-  x.fillText("CAMPEONATO JPFFS", xTexto, 40);
-  x.fillStyle = T.texto; x.font = "700 15px system-ui, sans-serif";
-  x.fillText("CLASSIFICAÇÃO GERAL", xTexto, 64);
-  x.fillStyle = T.secundario; x.font = "400 12px system-ui, sans-serif";
-  x.fillText(`${meta.rodadas} rodadas · teto ${meta.teto} pts · P = J + 3V + E + P⁺ − P⁻`, xTexto, 86);
-  x.textAlign = "right"; x.fillText(new Date().toLocaleDateString("pt-BR"), larg - pad, 86);
-
-  let y = hCab;
-  x.fillStyle = "rgba(255,255,255,0.06)"; x.fillRect(0, y, larg, hHead);
-  x.fillStyle = T.ouro; x.fillRect(0, y + hHead - 2, larg, 2);
-  x.font = "800 11px system-ui, sans-serif"; x.fillStyle = T.secundario;
-  let cx = pad;
-  for (const c of cols) {
-    x.textAlign = c.al === "center" ? "center" : c.al;
-    x.fillText(c.r, c.al === "left" ? cx : c.al === "center" ? cx + c.w / 2 : cx + c.w - 6, y + hHead / 2);
-    cx += c.w;
-  }
-  y += hHead;
-  cl.forEach((l, i) => {
-    if (i % 2 === 1) { x.fillStyle = "rgba(255,255,255,0.04)"; x.fillRect(0, y, larg, hLinha); }
-    if (l.supercopa) { x.fillStyle = T.ouroFraco; x.fillRect(0, y, larg, hLinha); x.fillStyle = T.ouro; x.fillRect(0, y, 4, hLinha); }
-    let cx2 = pad;
-    for (const c of cols) {
-      const cy = y + hLinha / 2;
-      x.textAlign = c.al === "center" ? "center" : c.al;
-      const px = c.al === "left" ? cx2 : c.al === "center" ? cx2 + c.w / 2 : cx2 + c.w - 6;
-      if (c.k === "estrelas") {
-        x.font = "13px system-ui, sans-serif"; x.fillStyle = T.ouro;
-        x.fillText("★".repeat(l.estrelas), px, cy);
-      } else if (c.k === "ultimos5") {
-        const w = 16, gap = 3;
-        let sx = cx2 + (c.w - (l.ultimos5.length * (w + gap) - gap)) / 2;
-        for (const r of l.ultimos5) {
-          x.fillStyle = r === "V" ? T.verde : r === "E" ? "#5A76A8" : r === "D" ? T.vermelho : "rgba(255,255,255,.08)";
-          x.fillRect(sx, cy - 8, w, 16);
-          x.fillStyle = r === "V" || r === "D" ? "#06122b" : T.texto;
-          x.font = "800 10px system-ui, sans-serif"; x.textAlign = "center";
-          x.fillText(r, sx + w / 2, cy); sx += w + gap;
-        }
-      } else {
-        let v = l[c.k];
-        if (c.k === "aproveitamento") v = `${v}%`;
-        if (c.k === "SG") v = (l.SG > 0 ? "+" : "") + l.SG;
-        x.font = c.k === "pontos" ? "800 15px system-ui, sans-serif" : c.k === "nome" ? "600 13px system-ui, sans-serif" : "400 12px system-ui, sans-serif";
-        x.fillStyle = c.k === "pontos" ? T.ouro : c.k === "posicao" ? (l.supercopa ? T.ouro : T.fraco)
-          : c.k === "nome" ? T.texto : c.k === "SG" ? (l.SG > 0 ? T.verde : l.SG < 0 ? T.vermelho : T.fraco) : T.secundario;
-        if (c.k === "nome" && l.jogador.posicao === "GOLEIRO") {
-          x.fillStyle = T.gk; x.font = "800 10px system-ui, sans-serif"; x.fillText("G", px, cy);
-          x.fillStyle = T.texto; x.font = "600 13px system-ui, sans-serif"; x.fillText(String(v), px + 14, cy);
-        } else x.fillText(String(v), px, cy);
-      }
-      cx2 += c.w;
+    const hEscudo = 70;
+    if (escudo) {
+      const wEscudo = escudo.width * (hEscudo / escudo.height);
+      x.drawImage(escudo, pad, 18, wEscudo, hEscudo);
     }
-    y += hLinha;
-  });
-  x.textAlign = "left"; x.fillStyle = T.fraco; x.font = "400 11px system-ui, sans-serif";
-  x.fillText(`Faixa dourada: zona de classificação da Supercopa (1º ao ${cfg.zonaSupercopa}º)  ·  G = goleiro`, pad, y + 26);
-  cv.toBlob((b) => {
-    const url = URL.createObjectURL(b);
-    const a = document.createElement("a");
-    a.href = url; a.download = "jpffs-classificacao.png"; a.click();
-    URL.revokeObjectURL(url);
-  });
+    const xTexto = pad + (escudo ? escudo.width * (hEscudo / escudo.height) + 18 : 0);
+    x.textAlign = "left";
+    x.fillStyle = T.ouro; x.font = "900 26px system-ui, sans-serif";
+    x.fillText("CAMPEONATO JPFFS", xTexto, 40);
+    x.fillStyle = T.texto; x.font = "700 15px system-ui, sans-serif";
+    x.fillText("CLASSIFICAÇÃO GERAL", xTexto, 64);
+    x.fillStyle = T.secundario; x.font = "400 12px system-ui, sans-serif";
+    x.fillText(`${meta.rodadas} rodadas · teto ${meta.teto} pts · P = J + 3V + E + P⁺ − P⁻`, xTexto, 86);
+    x.textAlign = "right"; x.fillText(new Date().toLocaleDateString("pt-BR"), larg - pad, 86);
+
+    let y = hCab;
+    x.fillStyle = "rgba(255,255,255,0.06)"; x.fillRect(0, y, larg, hHead);
+    x.fillStyle = T.ouro; x.fillRect(0, y + hHead - 2, larg, 2);
+    x.font = "800 11px system-ui, sans-serif"; x.fillStyle = T.secundario;
+    let cx = pad;
+    for (const c of cols) {
+      x.textAlign = c.al === "center" ? "center" : c.al;
+      x.fillText(c.r, c.al === "left" ? cx : c.al === "center" ? cx + c.w / 2 : cx + c.w - 6, y + hHead / 2);
+      cx += c.w;
+    }
+    y += hHead;
+    cl.forEach((l, i) => {
+      if (i % 2 === 1) { x.fillStyle = "rgba(255,255,255,0.04)"; x.fillRect(0, y, larg, hLinha); }
+      if (l.supercopa) { x.fillStyle = T.ouroFraco; x.fillRect(0, y, larg, hLinha); x.fillStyle = T.ouro; x.fillRect(0, y, 4, hLinha); }
+      let cx2 = pad;
+      for (const c of cols) {
+        const cy = y + hLinha / 2;
+        x.textAlign = c.al === "center" ? "center" : c.al;
+        const px = c.al === "left" ? cx2 : c.al === "center" ? cx2 + c.w / 2 : cx2 + c.w - 6;
+        if (c.k === "estrelas") {
+          x.font = "13px system-ui, sans-serif"; x.fillStyle = T.ouro;
+          x.fillText("★".repeat(l.estrelas), px, cy);
+        } else if (c.k === "ultimos5") {
+          const w = 16, gap = 3;
+          let sx = cx2 + (c.w - (l.ultimos5.length * (w + gap) - gap)) / 2;
+          for (const r of l.ultimos5) {
+            x.fillStyle = r === "V" ? T.verde : r === "E" ? "#5A76A8" : r === "D" ? T.vermelho : "rgba(255,255,255,.08)";
+            x.fillRect(sx, cy - 8, w, 16);
+            x.fillStyle = r === "V" || r === "D" ? "#06122b" : T.texto;
+            x.font = "800 10px system-ui, sans-serif"; x.textAlign = "center";
+            x.fillText(r, sx + w / 2, cy); sx += w + gap;
+          }
+        } else {
+          let v = l[c.k];
+          if (c.k === "aproveitamento") v = `${v}%`;
+          if (c.k === "SG") v = (l.SG > 0 ? "+" : "") + l.SG;
+          x.font = c.k === "pontos" ? "800 15px system-ui, sans-serif" : c.k === "nome" ? "600 13px system-ui, sans-serif" : "400 12px system-ui, sans-serif";
+          x.fillStyle = c.k === "pontos" ? T.ouro : c.k === "posicao" ? (l.supercopa ? T.ouro : T.fraco)
+            : c.k === "nome" ? T.texto : c.k === "SG" ? (l.SG > 0 ? T.verde : l.SG < 0 ? T.vermelho : T.fraco) : T.secundario;
+          if (c.k === "nome" && l.jogador.posicao === "GOLEIRO") {
+            x.fillStyle = T.gk; x.font = "800 10px system-ui, sans-serif"; x.fillText("G", px, cy);
+            x.fillStyle = T.texto; x.font = "600 13px system-ui, sans-serif"; x.fillText(String(v), px + 14, cy);
+          } else x.fillText(String(v), px, cy);
+        }
+        cx2 += c.w;
+      }
+      y += hLinha;
+    });
+    x.textAlign = "left"; x.fillStyle = T.fraco; x.font = "400 11px system-ui, sans-serif";
+    x.fillText(`Faixa dourada: zona de classificação da Supercopa (1º ao ${cfg.zonaSupercopa}º)  ·  G = goleiro`, pad, y + 26);
+    cv.toBlob((b) => {
+      const url = URL.createObjectURL(b);
+      const a = document.createElement("a");
+      a.href = url; a.download = "jpffs-classificacao.png"; a.click();
+      URL.revokeObjectURL(url);
+    });
   }
 }
 
@@ -953,8 +953,10 @@ function baseOficial() {
   for (const l of SEED_20.split("\n")) {
     const [nome, g, P, J, V, E, D, GP, GC, CA, CV, Pmais, Pmenos, gols, ass] = l.split("|");
     const jid = slug(nome);
-    jogadores.push({ id: jid, nome, posicao: g === "G" ? "GOLEIRO" : "LINHA", ativo: true, convidado: false,
-      estrelasIniciais: 1, pendenciaFinanceira: false, pontuacaoPendente: false, posicaoInferida: false });
+    jogadores.push({
+      id: jid, nome, posicao: g === "G" ? "GOLEIRO" : "LINHA", ativo: true, convidado: false,
+      estrelasIniciais: 1, pendenciaFinanceira: false, pontuacaoPendente: false, posicaoInferida: false
+    });
     hist[jid] = { P: +P, J: +J, V: +V, E: +E, D: +D, GP: +GP, GC: +GC, CA: +CA, CV: +CV, Pmais: +Pmais, Pmenos: +Pmenos, gols: +gols, assistencias: +ass };
   }
   return {
@@ -989,7 +991,7 @@ async function salvarBase(b) {
   // Backup local imediato: mesmo sem internet ou se o Supabase falhar, os dados
   // ficam guardados no dispositivo e são reenviados depois. Nunca se perde o
   // que foi lançado.
-  try { localStorage.setItem("jpffs:backup", JSON.stringify({ dados: b, em: Date.now() })); } catch {}
+  try { localStorage.setItem("jpffs:backup", JSON.stringify({ dados: b, em: Date.now() })); } catch { }
 
   const gravar = async () => {
     const { data: s } = await supabase.auth.getSession();
@@ -1039,14 +1041,18 @@ const Estrelas = ({ n, tam = 12, goleiro }) => (
 );
 
 const IconeGoleiro = ({ tam = 15 }) => (
-  <span title="Goleiro" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: tam, height: tam,
-    borderRadius: 4, background: T.gk, color: "#04142f", fontSize: tam * 0.66, fontWeight: 900, flexShrink: 0 }}>G</span>
+  <span title="Goleiro" style={{
+    display: "inline-flex", alignItems: "center", justifyContent: "center", width: tam, height: tam,
+    borderRadius: 4, background: T.gk, color: "#04142f", fontSize: tam * 0.66, fontWeight: 900, flexShrink: 0
+  }}>G</span>
 );
 
 const SeloAtraso = ({ nivel, cfg, mini }) => {
   const i = nivelInfo(nivel, cfg); if (!i) return null;
-  return <span title={i.rotulo} style={{ background: `${i.cor}28`, color: i.cor, border: `1px solid ${i.cor}66`, borderRadius: 4,
-    padding: mini ? "0 3px" : "1px 5px", fontSize: mini ? 9 : 10, fontWeight: 800, whiteSpace: "nowrap", flexShrink: 0 }}>
+  return <span title={i.rotulo} style={{
+    background: `${i.cor}28`, color: i.cor, border: `1px solid ${i.cor}66`, borderRadius: 4,
+    padding: mini ? "0 3px" : "1px 5px", fontSize: mini ? 9 : 10, fontWeight: 800, whiteSpace: "nowrap", flexShrink: 0
+  }}>
     {mini ? i.curto : i.rotulo}</span>;
 };
 
@@ -1112,8 +1118,10 @@ function Interruptor({ ligado, onChange, titulo, descricao, cor = T.ouro }) {
     <button onClick={onChange} className="flex w-full items-center gap-3 rounded-lg text-left"
       style={{ padding: "10px 12px", minHeight: 52, background: ligado ? `${cor}1F` : "rgba(0,0,0,.22)", border: `1px solid ${ligado ? cor : T.borda}` }}>
       <span style={{ position: "relative", width: 42, height: 24, borderRadius: 12, flexShrink: 0, background: ligado ? cor : "rgba(255,255,255,.16)", transition: "background .15s" }}>
-        <span style={{ position: "absolute", top: 3, left: ligado ? 21 : 3, width: 18, height: 18, borderRadius: 9,
-          background: ligado ? "#07204a" : "#fff", transition: "left .15s", boxShadow: "0 1px 3px rgba(0,0,0,.4)" }} />
+        <span style={{
+          position: "absolute", top: 3, left: ligado ? 21 : 3, width: 18, height: 18, borderRadius: 9,
+          background: ligado ? "#07204a" : "#fff", transition: "left .15s", boxShadow: "0 1px 3px rgba(0,0,0,.4)"
+        }} />
       </span>
       <span className="min-w-0 flex-1">
         <span style={{ display: "block", fontSize: 13.5, fontWeight: 700, color: ligado ? cor : T.secundario }}>{titulo}</span>
@@ -1136,9 +1144,11 @@ function Segmento({ valor, opcoes, onChange, titulo }) {
           const ativo = valor === o.valor;
           return (
             <button key={o.valor} onClick={() => onChange(o.valor)} className="flex-1 rounded"
-              style={{ padding: "10px 4px", minHeight: 44, fontSize: 13, fontWeight: 800,
+              style={{
+                padding: "10px 4px", minHeight: 44, fontSize: 13, fontWeight: 800,
                 background: ativo ? (o.cor || T.ouro) : "transparent",
-                color: ativo ? "#07204a" : T.secundario }}>
+                color: ativo ? "#07204a" : T.secundario
+              }}>
               {o.rotulo}
             </button>
           );
@@ -1281,8 +1291,8 @@ export default function App() {
   const abas = [
     { id: "tabela", rotulo: "Tabela", icone: "≡" }, { id: "rodada", rotulo: "Rodada", icone: "◉" },
     { id: "elenco", rotulo: "Elenco", icone: "⚑" }, { id: "config", rotulo: "Ajustes", icone: "⚙" },
-  // Jogador comum (sem login) só enxerga a Tabela. As telas de gestão só
-  // aparecem para organizadores autenticados.
+    // Jogador comum (sem login) só enxerga a Tabela. As telas de gestão só
+    // aparecem para organizadores autenticados.
   ].filter((a) => sessao || a.id === "tabela");
 
   return (
@@ -1406,8 +1416,10 @@ function TelaRodada({ base, setBase, dados, cfg: cfgGlobal, avisar }) {
       <div className="flex gap-1 rounded-lg p-1" style={{ background: "rgba(0,0,0,.3)" }}>
         {etapas.map((e) => (
           <button key={e.id} onClick={() => setEtapa(e.id)} className="flex-1 rounded"
-            style={{ padding: "11px 4px", fontSize: 11.5, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase",
-              background: etapa === e.id ? `linear-gradient(180deg,${T.ouroClaro},${T.ouro})` : "transparent", color: etapa === e.id ? "#0a1b3d" : T.secundario }}>{e.r}</button>
+            style={{
+              padding: "11px 4px", fontSize: 11.5, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase",
+              background: etapa === e.id ? `linear-gradient(180deg,${T.ouroClaro},${T.ouro})` : "transparent", color: etapa === e.id ? "#0a1b3d" : T.secundario
+            }}>{e.r}</button>
         ))}
       </div>
 
@@ -1545,8 +1557,8 @@ function EtapaPresenca({ base, setBase, rodada, atualizar, porId, cfg, dados, av
                   const susp = nivel >= cfg.atrasosParaSuspensao;
                   const est = susp ? { border: T.vermelho, background: "rgba(255,107,107,.18)", color: T.vermelho }
                     : s === "presente" ? { border: T.verde, background: "rgba(61,214,140,.16)", color: T.verde }
-                    : s === "atrasado" ? { border: T.laranja, background: "rgba(255,165,61,.16)", color: T.laranja }
-                    : { border: T.borda, background: "rgba(255,255,255,.04)", color: T.secundario };
+                      : s === "atrasado" ? { border: T.laranja, background: "rgba(255,165,61,.16)", color: T.laranja }
+                        : { border: T.borda, background: "rgba(255,255,255,.04)", color: T.secundario };
                   return (
                     <button key={j.id} onClick={() => {
                       const novo = ciclo[s];
@@ -1904,8 +1916,10 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
       // mas o organizador decidiu que não pontua) já entra gravado como
       // soCartoes — marcarReaproveitamentos só ACRESCENTA a isso, nunca apaga.
       const soCartoesManual = [p.amarelo, p.azul].flatMap((e) => e.vagas.filter((v) => v.jogador?.naoPontua).map((v) => v.jogador.id));
-      jogos.push({ id: id(), numero: i + 1, timeA: a, timeB: b,
-        golsContraA: 0, golsContraB: 0, golsNaoComputadosA: 0, golsNaoComputadosB: 0, placarManual: null, encerrado: false, completaTime: [], soCartoes: soCartoesManual, eventos: {} });
+      jogos.push({
+        id: id(), numero: i + 1, timeA: a, timeB: b,
+        golsContraA: 0, golsContraB: 0, golsNaoComputadosA: 0, golsNaoComputadosB: 0, placarManual: null, encerrado: false, completaTime: [], soCartoes: soCartoesManual, eventos: {}
+      });
     });
     const nova = { ...rodada, times, jogos };
     // Um único atualizar(): sorteioRascunho precisa ir junto no mesmo patch,
@@ -1987,10 +2001,12 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
                 onDragOver={(e) => e.preventDefault()}
                 onClick={() => { if (travado) return; sel === null ? setSel(j.id) : sel === j.id ? setSel(null) : trocar(sel, j.id); }}
                 className={`flex items-center justify-between gap-1 rounded ${travado ? "" : "cursor-pointer"}`}
-                style={{ padding: "7px 6px", fontSize: 12.5, minHeight: 36,
+                style={{
+                  padding: "7px 6px", fontSize: 12.5, minHeight: 36,
                   background: sel === j.id ? T.ouroFraco : noGol ? T.gkFraco : "transparent",
                   outline: sel === j.id ? `1px solid ${T.ouro}` : noGol ? `1px solid ${T.gk}` : "none",
-                  opacity: travado ? 0.92 : 1 }}>
+                  opacity: travado ? 0.92 : 1
+                }}>
                 <span className="flex min-w-0 items-center gap-1" style={{ color: semPontuar ? T.fraco : T.texto, fontStyle: semPontuar ? "italic" : "normal" }}>
                   {noGol && <IconeGoleiro tam={13} />}
                   <span className="truncate">{j.nome}</span>
@@ -2069,26 +2085,26 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
           {sorteio.partidas.map((p, pi) => {
             const vazias = contarVazias(p);
             return (
-            <div key={p.numero}>
-              <FaixaPartida n={p.numero} extra={vazias > 0} />
-              {vazias > 0 && (
-                <p className="mb-1.5 rounded px-2 py-1.5" style={{ background: "rgba(255,165,61,.12)", border: `1px solid rgba(255,165,61,.4)`, fontSize: 10.5, lineHeight: 1.45, color: T.laranja }}>
-                  Esta partida tem {vazias} vaga(s) em aberto. Complete com quem está presente —
-                  quem já jogou entra só para preencher a vaga, sem pontuar nada (nem cartão).
-                </p>
-              )}
-              <div className="grid grid-cols-2 gap-2">
-                <CardTime p={p} pi={pi} lado="amarelo" />
-                <CardTime p={p} pi={pi} lado="azul" />
-              </div>
-              {vazias > 0 && (
-                <div className="mt-2 flex gap-2">
-                  <Botao variante="secundario" className="flex-1" style={{ minHeight: 42, fontSize: 11.5 }} onClick={() => completarAutomaticamente(p.numero)}>
-                    Completar automaticamente
-                  </Botao>
+              <div key={p.numero}>
+                <FaixaPartida n={p.numero} extra={vazias > 0} />
+                {vazias > 0 && (
+                  <p className="mb-1.5 rounded px-2 py-1.5" style={{ background: "rgba(255,165,61,.12)", border: `1px solid rgba(255,165,61,.4)`, fontSize: 10.5, lineHeight: 1.45, color: T.laranja }}>
+                    Esta partida tem {vazias} vaga(s) em aberto. Complete com quem está presente —
+                    quem já jogou entra só para preencher a vaga, sem pontuar nada (nem cartão).
+                  </p>
+                )}
+                <div className="grid grid-cols-2 gap-2">
+                  <CardTime p={p} pi={pi} lado="amarelo" />
+                  <CardTime p={p} pi={pi} lado="azul" />
                 </div>
-              )}
-            </div>
+                {vazias > 0 && (
+                  <div className="mt-2 flex gap-2">
+                    <Botao variante="secundario" className="flex-1" style={{ minHeight: 42, fontSize: 11.5 }} onClick={() => completarAutomaticamente(p.numero)}>
+                      Completar automaticamente
+                    </Botao>
+                  </div>
+                )}
+              </div>
             );
           })}
 
@@ -2388,19 +2404,22 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
           return (
             <div key={jid} className="rounded-lg p-1.5" style={{
               background: atuaComoGoleiro ? "rgba(79,163,255,.09)" : "rgba(0,0,0,.26)",
-              border: soCartao ? `1px dashed ${T.laranja}` : "1px solid transparent" }}>
+              border: soCartao ? `1px dashed ${T.laranja}` : "1px solid transparent"
+            }}>
               <div className="mb-1 flex items-start justify-between gap-1">
                 <span className="flex min-w-0 items-center gap-1" style={{ fontSize: 12.5, color: soCartao ? T.fraco : T.texto, fontStyle: soCartao ? "italic" : "normal" }}>
                   {atuaComoGoleiro && <IconeGoleiro tam={12} />}<span className="truncate">{jog[jid]?.nome || "?"}</span>
                   {niveis?.[jid] && <SeloAtraso nivel={niveis[jid]} cfg={cfg} mini />}
                 </span>
                 <button onClick={() => mudar({
-                    completaTime: (jogo.completaTime || []).filter((x) => x !== jid),
-                    soCartoes: soCartao ? (jogo.soCartoes || []).filter((x) => x !== jid) : [...new Set([...(jogo.soCartoes || []), jid])],
-                  })} title="Art. 34º §10º — entrou só para completar equipe: não pontua nada, nem cartão"
-                  style={{ flexShrink: 0, borderRadius: 3, padding: "1px 4px", fontSize: 9, fontWeight: 800,
+                  completaTime: (jogo.completaTime || []).filter((x) => x !== jid),
+                  soCartoes: soCartao ? (jogo.soCartoes || []).filter((x) => x !== jid) : [...new Set([...(jogo.soCartoes || []), jid])],
+                })} title="Art. 34º §10º — entrou só para completar equipe: não pontua nada, nem cartão"
+                  style={{
+                    flexShrink: 0, borderRadius: 3, padding: "1px 4px", fontSize: 9, fontWeight: 800,
                     background: soCartao ? "rgba(255,165,61,.22)" : "rgba(255,255,255,.07)",
-                    color: soCartao ? T.laranja : T.fraco }}>
+                    color: soCartao ? T.laranja : T.fraco
+                  }}>
                   §10
                 </button>
               </div>
@@ -2537,9 +2556,10 @@ function Ajustes({ rodada, base, dados, onMudar }) {
   // Lista suspensa vem da própria tabela de classificação (já ordenada por
   // posição), não da lista crua de jogadores — assim ninguém que está
   // classificado fica de fora, e a ordem já ajuda a achar o jogador.
-  const opcoesJogadores = (dados?.classificacao || []).length
+  const opcoesJogadores = ((dados?.classificacao || []).length
     ? dados.classificacao.map((l) => ({ id: l.id, nome: l.nome }))
-    : base.jogadores.map((j) => ({ id: j.id, nome: j.nome }));
+    : base.jogadores.map((j) => ({ id: j.id, nome: j.nome })))
+    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
   return (
     <section>
       <Secao titulo="Ajustes P+ / P−" detalhe="lançamentos manuais" />
@@ -2580,15 +2600,15 @@ function TelaClassificacao({ base, dados, cfg, avisar }) {
   const [busca, setBusca] = useState("");
   const [filtro, setFiltro] = useState("todos");
   const cols = [["P", "pontos"], ["%", "aproveitamento"], ["J", "J"], ["V", "V"], ["E", "E"], ["D", "D"],
-    ["GP", "GP"], ["GC", "GC"], ["SG", "SG"], ["G", "gols"], ["A", "assistencias"], ["CA", "CA"], ["CV", "CV"], ["P+", "Pmais"], ["P−", "Pmenos"]];
+  ["GP", "GP"], ["GC", "GC"], ["SG", "SG"], ["G", "gols"], ["A", "assistencias"], ["CA", "CA"], ["CV", "CV"], ["P+", "Pmais"], ["P−", "Pmenos"]];
 
   const visiveis = dados.classificacao
     .filter((l) => l.nome.toLowerCase().includes(busca.trim().toLowerCase()))
     .filter((l) => filtro === "todos" ? true
       : filtro === "linha" ? l.jogador.posicao !== "GOLEIRO"
-      : filtro === "goleiros" ? l.jogador.posicao === "GOLEIRO"
-      : filtro === "supercopa" ? l.supercopa
-      : l.atrasosNoMes > 0 || l.jogador.pendenciaFinanceira || l.jogador.pontuacaoPendente || l.cartoes > 0);
+        : filtro === "goleiros" ? l.jogador.posicao === "GOLEIRO"
+          : filtro === "supercopa" ? l.supercopa
+            : l.atrasosNoMes > 0 || l.jogador.pendenciaFinanceira || l.jogador.pontuacaoPendente || l.cartoes > 0);
 
   const cor = (k, l) => k === "pontos" ? T.ouro : k === "SG" ? (l.SG > 0 ? T.verde : l.SG < 0 ? T.vermelho : T.fraco)
     : k === "Pmais" ? T.verde : k === "Pmenos" ? T.vermelho : k === "aproveitamento" ? T.texto : T.secundario;
@@ -2599,105 +2619,109 @@ function TelaClassificacao({ base, dados, cfg, avisar }) {
       <div className="flex rounded-xl p-1" style={{ background: "rgba(255,255,255,.06)", border: `1px solid ${T.borda}` }}>
         {[["classificacao", "Classificação"], ["resultados", "Resultados"]].map(([v, r]) => (
           <button key={v} onClick={() => setVista(v)} className="flex-1 rounded-lg"
-            style={{ padding: "10px 0", fontSize: 12.5, fontWeight: 800, letterSpacing: ".04em",
+            style={{
+              padding: "10px 0", fontSize: 12.5, fontWeight: 800, letterSpacing: ".04em",
               background: vista === v ? `linear-gradient(180deg,${T.ouroClaro},${T.ouro})` : "transparent",
-              color: vista === v ? "#0a1b3d" : T.secundario }}>{r}</button>
+              color: vista === v ? "#0a1b3d" : T.secundario
+            }}>{r}</button>
         ))}
       </div>
 
       {vista === "resultados" ? <Resultados base={base} cfg={cfg} /> : (<>
-      <Secao titulo="Classificação geral" detalhe={`Supercopa: 1º ao ${cfg.zonaSupercopa}º`} /></>)}
+        <Secao titulo="Classificação geral" detalhe={`Supercopa: 1º ao ${cfg.zonaSupercopa}º`} /></>)}
 
       {vista === "classificacao" && (<>
-      <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar jogador…" style={inputStyle} />
-      <div className="flex gap-1.5 overflow-x-auto pb-1">
-        {[["todos", "Todos"], ["linha", "Linha"], ["goleiros", "Goleiros"], ["supercopa", "Supercopa"], ["alerta", "Alertas"]].map(([f, r]) => (
-          <button key={f} onClick={() => setFiltro(f)} className="shrink-0 rounded-full"
-            style={{ padding: "9px 15px", fontSize: 12, fontWeight: 800, background: filtro === f ? `linear-gradient(180deg,${T.ouroClaro},${T.ouro})` : "rgba(255,255,255,.07)", color: filtro === f ? "#0a1b3d" : T.secundario }}>{r}</button>
-        ))}
-      </div></>)}
+        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar jogador…" style={inputStyle} />
+        <div className="flex gap-1.5 overflow-x-auto pb-1">
+          {[["todos", "Todos"], ["linha", "Linha"], ["goleiros", "Goleiros"], ["supercopa", "Supercopa"], ["alerta", "Alertas"]].map(([f, r]) => (
+            <button key={f} onClick={() => setFiltro(f)} className="shrink-0 rounded-full"
+              style={{ padding: "9px 15px", fontSize: 12, fontWeight: 800, background: filtro === f ? `linear-gradient(180deg,${T.ouroClaro},${T.ouro})` : "rgba(255,255,255,.07)", color: filtro === f ? "#0a1b3d" : T.secundario }}>{r}</button>
+          ))}
+        </div></>)}
 
       {vista === "classificacao" && (<>
-      <div className="overflow-x-auto rounded-xl" style={{ border: `1px solid ${T.borda}` }}>
-        <table style={{ width: "100%", textAlign: "right", fontSize: 11, borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ background: "rgba(0,0,0,.3)", borderBottom: `2px solid ${T.ouro}` }}>
-              <th style={{ padding: "8px 5px", textAlign: "center", fontSize: 9.5, color: T.fraco }}>#</th>
-              <th style={{ padding: "8px 6px", textAlign: "left", fontSize: 9.5, color: T.fraco }}>JOGADOR</th>
-              <th style={{ padding: "8px 5px", textAlign: "center", fontSize: 9.5, color: T.fraco }}>CLASSE</th>
-              {cols.map(([r]) => <th key={r} style={{ padding: "8px 5px", fontSize: 9.5, color: T.fraco }}>{r}</th>)}
-              <th style={{ padding: "8px 5px", textAlign: "center", fontSize: 9.5, color: T.fraco }}>ÚLT. 5</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visiveis.map((l, i) => (
-              <tr key={l.id} onClick={() => setDetalhe(detalhe === l.id ? null : l.id)}
-                style={{ background: l.supercopa ? T.ouroFraco : i % 2 ? T.linhaPar : "transparent", borderBottom: "1px solid rgba(255,255,255,.05)", cursor: "pointer" }}>
-                <td style={{ padding: "8px 5px", textAlign: "center", fontWeight: 900, color: l.supercopa ? T.ouro : T.fraco, borderLeft: l.supercopa ? `4px solid ${T.ouro}` : "4px solid transparent" }}>{l.posicao}</td>
-                <td style={{ padding: "8px 6px", textAlign: "left" }}>
-                  <div className="flex items-center gap-1.5" style={{ whiteSpace: "nowrap" }}>
-                    {l.jogador.posicao === "GOLEIRO" && <IconeGoleiro />}
-                    <span style={{ color: T.texto, fontWeight: 600, fontSize: 12.5 }}>{l.nome}</span>
-                    {l.nivelAtraso && <SeloAtraso nivel={l.atrasosNoMes} cfg={cfg} mini />}
-                    <Marcadores jogador={l.jogador} />
-                  </div>
-                  {detalhe === l.id && (
-                    <p style={{ marginTop: 3, fontSize: 10.5, lineHeight: 1.5, fontWeight: 400, color: T.ouroClaro, whiteSpace: "normal" }}>
-                      {l.criterioAplicado ? `Desempate: ${ROTULO_CRITERIO[l.criterioAplicado]}` : "Líder da tabela"}
-                      {l.rankCategoria && ` · ${l.rankCategoria}º entre ${l.totalCategoria} ${l.ehGoleiro ? "goleiros" : "de linha"} → ${l.estrelas}★`}
-                      <span style={{ display: "block", color: T.secundario }}>
-                        Ciclo de amarelos: {l.cartoesNoCiclo}/{cfg.cartoesPorPonto} · atrasos no mês: {l.atrasosNoMes}
-                        {l.nivelAtraso && ` — ${l.nivelAtraso.rotulo}`}
-                      </span>
-                      {l.Pmenos > 0 && <span style={{ display: "block", color: T.vermelho }}>
-                        P−: {l.histPmenos} histórico + {l.pontosAtraso} atraso + {l.penalAmarelo} amarelos + {l.penalVermelho} vermelho + {l.penalidadeManual} manual
-                      </span>}
-                      {l.jogador.posicaoInferida && <span style={{ display: "block", color: T.gk }}>Goleiro inferido da tabela oficial — confirme no Elenco.</span>}
-                    </p>
-                  )}
-                </td>
-                <td style={{ padding: "8px 5px", textAlign: "center" }}><Estrelas n={l.estrelas} tam={10.5} goleiro={l.ehGoleiro} /></td>
-                {cols.map(([r, k]) => (
-                  <td key={r} style={{ padding: "8px 5px", color: cor(k, l), fontWeight: k === "pontos" ? 900 : 400, fontSize: k === "pontos" ? 13 : 11 }}>
-                    {k === "aproveitamento" ? `${l[k]}%` : k === "SG" ? `${l.SG > 0 ? "+" : ""}${l.SG}` : (k === "Pmais" || k === "Pmenos") ? (l[k] || "") : l[k]}
-                  </td>
-                ))}
-                <td style={{ padding: "8px 5px" }}>
-                  <div className="flex justify-center gap-0.5">
-                    {l.ultimos5.map((r, k) => (
-                      <span key={k} style={{ display: "inline-block", width: 16, height: 16, borderRadius: 3, fontSize: 9, fontWeight: 800, lineHeight: "16px", textAlign: "center",
-                        background: r === "V" ? T.verde : r === "E" ? "#5A76A8" : r === "D" ? T.vermelho : "rgba(255,255,255,.07)",
-                        color: r === "V" || r === "D" ? "#06122b" : r === "E" ? "#fff" : "rgba(255,255,255,.25)" }}>{r}</span>
-                    ))}
-                  </div>
-                </td>
+        <div className="overflow-x-auto rounded-xl" style={{ border: `1px solid ${T.borda}` }}>
+          <table style={{ width: "100%", textAlign: "right", fontSize: 11, borderCollapse: "collapse" }}>
+            <thead>
+              <tr style={{ background: "rgba(0,0,0,.3)", borderBottom: `2px solid ${T.ouro}` }}>
+                <th style={{ padding: "8px 5px", textAlign: "center", fontSize: 9.5, color: T.fraco }}>#</th>
+                <th style={{ padding: "8px 6px", textAlign: "left", fontSize: 9.5, color: T.fraco }}>JOGADOR</th>
+                <th style={{ padding: "8px 5px", textAlign: "center", fontSize: 9.5, color: T.fraco }}>CLASSE</th>
+                {cols.map(([r]) => <th key={r} style={{ padding: "8px 5px", fontSize: 9.5, color: T.fraco }}>{r}</th>)}
+                <th style={{ padding: "8px 5px", textAlign: "center", fontSize: 9.5, color: T.fraco }}>ÚLT. 5</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {visiveis.map((l, i) => (
+                <tr key={l.id} onClick={() => setDetalhe(detalhe === l.id ? null : l.id)}
+                  style={{ background: l.supercopa ? T.ouroFraco : i % 2 ? T.linhaPar : "transparent", borderBottom: "1px solid rgba(255,255,255,.05)", cursor: "pointer" }}>
+                  <td style={{ padding: "8px 5px", textAlign: "center", fontWeight: 900, color: l.supercopa ? T.ouro : T.fraco, borderLeft: l.supercopa ? `4px solid ${T.ouro}` : "4px solid transparent" }}>{l.posicao}</td>
+                  <td style={{ padding: "8px 6px", textAlign: "left" }}>
+                    <div className="flex items-center gap-1.5" style={{ whiteSpace: "nowrap" }}>
+                      {l.jogador.posicao === "GOLEIRO" && <IconeGoleiro />}
+                      <span style={{ color: T.texto, fontWeight: 600, fontSize: 12.5 }}>{l.nome}</span>
+                      {l.nivelAtraso && <SeloAtraso nivel={l.atrasosNoMes} cfg={cfg} mini />}
+                      <Marcadores jogador={l.jogador} />
+                    </div>
+                    {detalhe === l.id && (
+                      <p style={{ marginTop: 3, fontSize: 10.5, lineHeight: 1.5, fontWeight: 400, color: T.ouroClaro, whiteSpace: "normal" }}>
+                        {l.criterioAplicado ? `Desempate: ${ROTULO_CRITERIO[l.criterioAplicado]}` : "Líder da tabela"}
+                        {l.rankCategoria && ` · ${l.rankCategoria}º entre ${l.totalCategoria} ${l.ehGoleiro ? "goleiros" : "de linha"} → ${l.estrelas}★`}
+                        <span style={{ display: "block", color: T.secundario }}>
+                          Ciclo de amarelos: {l.cartoesNoCiclo}/{cfg.cartoesPorPonto} · atrasos no mês: {l.atrasosNoMes}
+                          {l.nivelAtraso && ` — ${l.nivelAtraso.rotulo}`}
+                        </span>
+                        {l.Pmenos > 0 && <span style={{ display: "block", color: T.vermelho }}>
+                          P−: {l.histPmenos} histórico + {l.pontosAtraso} atraso + {l.penalAmarelo} amarelos + {l.penalVermelho} vermelho + {l.penalidadeManual} manual
+                        </span>}
+                        {l.jogador.posicaoInferida && <span style={{ display: "block", color: T.gk }}>Goleiro inferido da tabela oficial — confirme no Elenco.</span>}
+                      </p>
+                    )}
+                  </td>
+                  <td style={{ padding: "8px 5px", textAlign: "center" }}><Estrelas n={l.estrelas} tam={10.5} goleiro={l.ehGoleiro} /></td>
+                  {cols.map(([r, k]) => (
+                    <td key={r} style={{ padding: "8px 5px", color: cor(k, l), fontWeight: k === "pontos" ? 900 : 400, fontSize: k === "pontos" ? 13 : 11 }}>
+                      {k === "aproveitamento" ? `${l[k]}%` : k === "SG" ? `${l.SG > 0 ? "+" : ""}${l.SG}` : (k === "Pmais" || k === "Pmenos") ? (l[k] || "") : l[k]}
+                    </td>
+                  ))}
+                  <td style={{ padding: "8px 5px" }}>
+                    <div className="flex justify-center gap-0.5">
+                      {l.ultimos5.map((r, k) => (
+                        <span key={k} style={{
+                          display: "inline-block", width: 16, height: 16, borderRadius: 3, fontSize: 9, fontWeight: 800, lineHeight: "16px", textAlign: "center",
+                          background: r === "V" ? T.verde : r === "E" ? "#5A76A8" : r === "D" ? T.vermelho : "rgba(255,255,255,.07)",
+                          color: r === "V" || r === "D" ? "#06122b" : r === "E" ? "#fff" : "rgba(255,255,255,.25)"
+                        }}>{r}</span>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
 
-      {visiveis.length === 0 && <Painel className="p-6 text-center" style={{ borderStyle: "dashed", color: T.secundario }}>Nenhum jogador com esse filtro.</Painel>}
+        {visiveis.length === 0 && <Painel className="p-6 text-center" style={{ borderStyle: "dashed", color: T.secundario }}>Nenhum jogador com esse filtro.</Painel>}
 
-      {dados.convidados.length > 0 && (
-        <Painel className="p-3" style={{ borderColor: "rgba(192,140,255,.4)", fontSize: 11.5, color: T.secundario }}>
-          <b style={{ color: T.roxo }}>Convidados (fora da classificação):</b> {dados.convidados.map((c) => `${c.nome} — ${c.J}J, ${c.gols}G`).join(" · ")}
+        {dados.convidados.length > 0 && (
+          <Painel className="p-3" style={{ borderColor: "rgba(192,140,255,.4)", fontSize: 11.5, color: T.secundario }}>
+            <b style={{ color: T.roxo }}>Convidados (fora da classificação):</b> {dados.convidados.map((c) => `${c.nome} — ${c.J}J, ${c.gols}G`).join(" · ")}
+          </Painel>
+        )}
+
+        <Painel className="p-3" style={{ fontSize: 11.5, lineHeight: 1.65, color: T.secundario }}>
+          <b style={{ color: T.ouro }}>Pontuação</b> · P = J + (3 × V) + E + P⁺ − P⁻ · % = P ÷ ({cfg.baseAproveitamento === "previstas" ? cfg.rodadasPrevistas : dados.rodadasRealizadas} × {cfg.tetoPorRodada}) = ÷ {dados.teto}<br />
+          <b style={{ color: T.ouro }}>Cartões</b> · {cfg.cartoesPorPonto} amarelos/azuis = −{cfg.pontosPorCicloAmarelo} ponto (contagem reinicia, Art. 82º §2º) · cada vermelho = −{cfg.pontosPorVermelho}<br />
+          <b style={{ color: T.ouro }}>Atrasos</b> · 1º alerta · 2º amarelo · 3º perde a presença · 4º suspensão. Zera na virada do mês, salvo emenda (§9º)<br />
+          <b style={{ color: T.ouro }}>Classe</b> · 1º-3º = 5★ · 4º-6º = 4★ · 7º-9º = 3★ · 10º-14º = 2★ · 15º+ = 1★<br />
+          <span style={{ color: T.fraco }}>Escala única: a classe sai da posição geral na tabela, goleiro (<span style={{ color: T.gk }}>★ azul</span>) e linha (<span style={{ color: T.ouro }}>★ ouro</span>) na mesma fila — a cor é só identificação visual. Toque na linha para ver o rank dentro da categoria.</span><br />
+          <span style={{ color: T.ouro }}>▌</span> Zona Supercopa · <IconeGoleiro tam={13} /> goleiro · <span style={{ color: T.vermelho }}>$</span> pendência · (*) a confirmar
         </Painel>
-      )}
 
-      <Painel className="p-3" style={{ fontSize: 11.5, lineHeight: 1.65, color: T.secundario }}>
-        <b style={{ color: T.ouro }}>Pontuação</b> · P = J + (3 × V) + E + P⁺ − P⁻ · % = P ÷ ({cfg.baseAproveitamento === "previstas" ? cfg.rodadasPrevistas : dados.rodadasRealizadas} × {cfg.tetoPorRodada}) = ÷ {dados.teto}<br />
-        <b style={{ color: T.ouro }}>Cartões</b> · {cfg.cartoesPorPonto} amarelos/azuis = −{cfg.pontosPorCicloAmarelo} ponto (contagem reinicia, Art. 82º §2º) · cada vermelho = −{cfg.pontosPorVermelho}<br />
-        <b style={{ color: T.ouro }}>Atrasos</b> · 1º alerta · 2º amarelo · 3º perde a presença · 4º suspensão. Zera na virada do mês, salvo emenda (§9º)<br />
-        <b style={{ color: T.ouro }}>Classe</b> · 1º-3º = 5★ · 4º-6º = 4★ · 7º-9º = 3★ · 10º-14º = 2★ · 15º+ = 1★<br />
-        <span style={{ color: T.fraco }}>Escala única: a classe sai da posição geral na tabela, goleiro (<span style={{ color: T.gk }}>★ azul</span>) e linha (<span style={{ color: T.ouro }}>★ ouro</span>) na mesma fila — a cor é só identificação visual. Toque na linha para ver o rank dentro da categoria.</span><br />
-        <span style={{ color: T.ouro }}>▌</span> Zona Supercopa · <IconeGoleiro tam={13} /> goleiro · <span style={{ color: T.vermelho }}>$</span> pendência · (*) a confirmar
-      </Painel>
-
-      <div className="grid grid-cols-2 gap-2">
-        <Botao variante="secundario" onClick={() => { baixarArquivo("jpffs-classificacao.csv", csvClassificacao(dados.classificacao)); avisar("CSV exportado"); }}>Exportar CSV</Botao>
-        <Botao onClick={() => { imagemTabela(dados.classificacao, cfg, { rodadas: dados.rodadasRealizadas, teto: dados.teto }); avisar("Imagem PNG gerada"); }}>Imagem PNG</Botao>
-      </div>
+        <div className="grid grid-cols-2 gap-2">
+          <Botao variante="secundario" onClick={() => { baixarArquivo("jpffs-classificacao.csv", csvClassificacao(dados.classificacao)); avisar("CSV exportado"); }}>Exportar CSV</Botao>
+          <Botao onClick={() => { imagemTabela(dados.classificacao, cfg, { rodadas: dados.rodadasRealizadas, teto: dados.teto }); avisar("Imagem PNG gerada"); }}>Imagem PNG</Botao>
+        </div>
       </>)}
     </div>
   );
@@ -2862,7 +2886,8 @@ function TelaElenco({ base, setBase, dados, cfg, avisar }) {
           const d = JSON.parse(txt);
           novos = (Array.isArray(d) ? d : d.jogadores || []).map((j) => ({
             id: id(), nome: j.nome, posicao: /goleiro/i.test(j.posicao || "") ? "GOLEIRO" : "LINHA",
-            ativo: j.ativo !== false, convidado: !!j.convidado, estrelasIniciais: 1 }));
+            ativo: j.ativo !== false, convidado: !!j.convidado, estrelasIniciais: 1
+          }));
         } else {
           const linhas = txt.split(/\r?\n/).filter(Boolean);
           const sep = linhas[0].includes(";") ? ";" : ",";
@@ -2924,9 +2949,11 @@ function TelaElenco({ base, setBase, dados, cfg, avisar }) {
         <div className="flex gap-1.5">
           {[["alfabetica", "A → Z"], ["classificacao", "Classificação"], ["posicao", "Goleiros primeiro"]].map(([v, r]) => (
             <button key={v} onClick={() => setOrdem(v)} className="flex-1 rounded-full"
-              style={{ padding: "9px 6px", minHeight: 42, fontSize: 11.5, fontWeight: 800,
+              style={{
+                padding: "9px 6px", minHeight: 42, fontSize: 11.5, fontWeight: 800,
                 background: ordem === v ? `linear-gradient(180deg,${T.ouroClaro},${T.ouro})` : "rgba(255,255,255,.07)",
-                color: ordem === v ? "#07204a" : T.secundario }}>{r}</button>
+                color: ordem === v ? "#07204a" : T.secundario
+              }}>{r}</button>
           ))}
         </div>
       </div>
@@ -2967,9 +2994,11 @@ function TelaElenco({ base, setBase, dados, cfg, avisar }) {
                     )}
                   </div>
                   <button onClick={() => setEditando(aberto ? null : j.id)} className="shrink-0 rounded-lg"
-                    style={{ padding: "9px 12px", minHeight: 40, fontSize: 11.5, fontWeight: 800, letterSpacing: ".06em",
+                    style={{
+                      padding: "9px 12px", minHeight: 40, fontSize: 11.5, fontWeight: 800, letterSpacing: ".06em",
                       background: aberto ? `linear-gradient(180deg,${T.ouroClaro},${T.ouro})` : "rgba(255,255,255,.08)",
-                      color: aberto ? "#07204a" : T.secundario, border: `1px solid ${aberto ? T.ouro : T.borda}` }}>
+                      color: aberto ? "#07204a" : T.secundario, border: `1px solid ${aberto ? T.ouro : T.borda}`
+                    }}>
                     {aberto ? "FECHAR" : "EDITAR"}
                   </button>
                 </div>
@@ -3002,8 +3031,10 @@ function TelaElenco({ base, setBase, dados, cfg, avisar }) {
                       if (base.rodadas.some((r) => (r.times || []).some((t) => idsDoTime(t).includes(j.id)))) return avisar("Tem partidas registradas — desative em vez de excluir");
                       if (confirm(`Excluir ${j.nome} do elenco?`)) { setBase({ ...base, jogadores: base.jogadores.filter((x) => x.id !== j.id) }); setEditando(null); }
                     }} className="w-full rounded-lg"
-                      style={{ padding: "11px", minHeight: 44, fontSize: 11.5, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase",
-                        background: "rgba(176,33,33,.18)", border: "1px solid rgba(255,107,107,.4)", color: T.vermelho }}>
+                      style={{
+                        padding: "11px", minHeight: 44, fontSize: 11.5, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase",
+                        background: "rgba(176,33,33,.18)", border: "1px solid rgba(255,107,107,.4)", color: T.vermelho
+                      }}>
                       Excluir do elenco
                     </button>
                   </div>
@@ -3076,16 +3107,16 @@ function TelaConfig({ base, setBase, dados, cfg, avisar }) {
         <Secao titulo="Disciplina" detalhe="Art. 34º §8º · Art. 82º" />
         <Painel className="grid grid-cols-2 gap-2 p-3">
           {[["pontoPerdidoTerceiroAtraso", "Pontos perdidos no 3º atraso", ""],
-            ["atrasosParaSuspensao", "Atrasos para suspensão", ""],
-            ["cartoesPorPonto", "Amarelos por ciclo", "Art. 82º §1º — padrão 3"],
-            ["pontosPorCicloAmarelo", "Pontos por ciclo fechado", ""],
-            ["pontosPorVermelho", "Pontos por vermelho", "Art. 82º §3º"],
-            ["rodadasPrevistas", "Rodadas do campeonato", ""]].map(([c, r, d]) => (
+          ["atrasosParaSuspensao", "Atrasos para suspensão", ""],
+          ["cartoesPorPonto", "Amarelos por ciclo", "Art. 82º §1º — padrão 3"],
+          ["pontosPorCicloAmarelo", "Pontos por ciclo fechado", ""],
+          ["pontosPorVermelho", "Pontos por vermelho", "Art. 82º §3º"],
+          ["rodadasPrevistas", "Rodadas do campeonato", ""]].map(([c, r, d]) => (
             <Campo key={c} rotulo={r} dica={d}><input type="number" value={cfg[c]} onChange={(e) => mudar(c, Number(e.target.value))} style={{ ...inputStyle, padding: "10px" }} /></Campo>
           ))}
           {[["amareloNoSegundoAtraso", "2º atraso gera cartão amarelo na classificação"],
-            ["converterSegundoAmarelo", "2º amarelo, ou amarelo + azul, vira vermelho na mesma partida (Art. 81º §Único)"],
-            ["perdePontoNoQuartoAtraso", "Cobrar ponto extra do suspenso (premissa em aberto)"]].map(([c, r]) => (
+          ["converterSegundoAmarelo", "2º amarelo, ou amarelo + azul, vira vermelho na mesma partida (Art. 81º §Único)"],
+          ["perdePontoNoQuartoAtraso", "Cobrar ponto extra do suspenso (premissa em aberto)"]].map(([c, r]) => (
             <div key={c} className="col-span-2">
               <button onClick={() => mudar(c, !cfg[c])} className="w-full rounded-lg p-3 text-left"
                 style={{ border: `1px solid ${cfg[c] ? T.ouro : T.borda}`, background: cfg[c] ? T.ouroFraco : "rgba(0,0,0,.2)", fontSize: 12.5, color: cfg[c] ? T.ouroClaro : T.secundario }}>
@@ -3100,7 +3131,7 @@ function TelaConfig({ base, setBase, dados, cfg, avisar }) {
         <Secao titulo="Motor de sorteio" detalhe="§12º — goleiro e linha juntos" />
         <Painel className="grid grid-cols-2 gap-2 p-3">
           {[["amplitude", "Diferença máx."], ["desvio", "Desvio padrão"], ["varianciaInterna", "Composição interna"],
-            ["faixa", "Distribuição por faixa"], ["repeticao", "Anti-repetição"], ["aproveitamento", "Aproveitamento %"]].map(([c, r]) => (
+          ["faixa", "Distribuição por faixa"], ["repeticao", "Anti-repetição"], ["aproveitamento", "Aproveitamento %"]].map(([c, r]) => (
             <Campo key={c} rotulo={r}><input type="number" value={cfg.pesos[c]} onChange={(e) => mudarPeso(c, e.target.value)} style={{ ...inputStyle, padding: "10px" }} /></Campo>
           ))}
           <div className="col-span-2">
@@ -3110,7 +3141,7 @@ function TelaConfig({ base, setBase, dados, cfg, avisar }) {
             </button>
           </div>
           {[["rodadasAntiRepeticao", "Anti-repetição (rodadas)"], ["jogadoresPorTime", "Jogadores por equipe"],
-            ["goleirosPorTime", "Goleiros por equipe"]].map(([c, r]) => (
+          ["goleirosPorTime", "Goleiros por equipe"]].map(([c, r]) => (
             <Campo key={c} rotulo={r}><input type="number" value={cfg[c]} onChange={(e) => mudar(c, Number(e.target.value))} style={{ ...inputStyle, padding: "10px" }} /></Campo>
           ))}
         </Painel>
@@ -3148,8 +3179,8 @@ function TelaConfig({ base, setBase, dados, cfg, avisar }) {
         <Secao titulo="Pontuação" />
         <Painel className="grid grid-cols-2 gap-2 p-3">
           {[["pontosVitoria", "Pontos por vitória"], ["pontosEmpate", "Pontos por empate"],
-            ["pontosPresenca", "Pontos por presença"], ["tetoPorRodada", "Teto por rodada"],
-            ["zonaSupercopa", "Supercopa: nº de linha"], ["goleirosSupercopa", "Supercopa: nº de goleiros"]].map(([c, r]) => (
+          ["pontosPresenca", "Pontos por presença"], ["tetoPorRodada", "Teto por rodada"],
+          ["zonaSupercopa", "Supercopa: nº de linha"], ["goleirosSupercopa", "Supercopa: nº de goleiros"]].map(([c, r]) => (
             <Campo key={c} rotulo={r}><input type="number" value={cfg[c]} onChange={(e) => mudar(c, Number(e.target.value))} style={{ ...inputStyle, padding: "10px" }} /></Campo>
           ))}
           <div className="col-span-2">
@@ -3244,7 +3275,7 @@ function TelaConfig({ base, setBase, dados, cfg, avisar }) {
           .eq("id", 1);
         if (error) { alert("Falha ao restaurar: " + error.message); return; }
         // Limpa o backup local para não conflitar
-        try { localStorage.removeItem("jpffs:backup"); } catch {}
+        try { localStorage.removeItem("jpffs:backup"); } catch { }
         avisar("Base oficial restaurada — recarregando…");
         setTimeout(() => window.location.reload(), 400);
       }}>Restaurar base oficial</Botao>
