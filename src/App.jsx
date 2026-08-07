@@ -2570,25 +2570,25 @@ function TelaClassificacao({ base, dados, cfg, avisar }) {
 
       {vista === "classificacao" && (<>
       <div className="overflow-x-auto rounded-xl" style={{ border: `1px solid ${T.borda}` }}>
-        <table style={{ width: "100%", textAlign: "right", fontSize: 10.5, borderCollapse: "collapse" }}>
+        <table style={{ width: "100%", textAlign: "right", fontSize: 11, borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: "rgba(0,0,0,.3)", borderBottom: `2px solid ${T.ouro}` }}>
-              <th style={{ padding: "7px 3px", textAlign: "center", fontSize: 9, color: T.fraco }}>#</th>
-              <th style={{ padding: "7px 4px", textAlign: "left", fontSize: 9, color: T.fraco }}>JOGADOR</th>
-              <th style={{ padding: "7px 3px", textAlign: "center", fontSize: 9, color: T.fraco }}>CLASSE</th>
-              {cols.map(([r]) => <th key={r} style={{ padding: "7px 3px", fontSize: 9, color: T.fraco }}>{r}</th>)}
-              <th style={{ padding: "7px 3px", textAlign: "center", fontSize: 9, color: T.fraco }}>ÚLT. 5</th>
+              <th style={{ padding: "8px 5px", textAlign: "center", fontSize: 9.5, color: T.fraco }}>#</th>
+              <th style={{ padding: "8px 6px", textAlign: "left", fontSize: 9.5, color: T.fraco }}>JOGADOR</th>
+              <th style={{ padding: "8px 5px", textAlign: "center", fontSize: 9.5, color: T.fraco }}>CLASSE</th>
+              {cols.map(([r]) => <th key={r} style={{ padding: "8px 5px", fontSize: 9.5, color: T.fraco }}>{r}</th>)}
+              <th style={{ padding: "8px 5px", textAlign: "center", fontSize: 9.5, color: T.fraco }}>ÚLT. 5</th>
             </tr>
           </thead>
           <tbody>
             {visiveis.map((l, i) => (
               <tr key={l.id} onClick={() => setDetalhe(detalhe === l.id ? null : l.id)}
                 style={{ background: l.supercopa ? T.ouroFraco : i % 2 ? T.linhaPar : "transparent", borderBottom: "1px solid rgba(255,255,255,.05)", cursor: "pointer" }}>
-                <td style={{ padding: "7px 3px", textAlign: "center", fontWeight: 900, color: l.supercopa ? T.ouro : T.fraco, borderLeft: l.supercopa ? `4px solid ${T.ouro}` : "4px solid transparent" }}>{l.posicao}</td>
-                <td style={{ padding: "7px 4px", textAlign: "left" }}>
+                <td style={{ padding: "8px 5px", textAlign: "center", fontWeight: 900, color: l.supercopa ? T.ouro : T.fraco, borderLeft: l.supercopa ? `4px solid ${T.ouro}` : "4px solid transparent" }}>{l.posicao}</td>
+                <td style={{ padding: "8px 6px", textAlign: "left" }}>
                   <div className="flex items-center gap-1.5" style={{ whiteSpace: "nowrap" }}>
                     {l.jogador.posicao === "GOLEIRO" && <IconeGoleiro />}
-                    <span style={{ color: T.texto, fontWeight: 600, fontSize: 12 }}>{l.nome}</span>
+                    <span style={{ color: T.texto, fontWeight: 600, fontSize: 12.5 }}>{l.nome}</span>
                     {l.nivelAtraso && <SeloAtraso nivel={l.atrasosNoMes} cfg={cfg} mini />}
                     <Marcadores jogador={l.jogador} />
                   </div>
@@ -2607,16 +2607,16 @@ function TelaClassificacao({ base, dados, cfg, avisar }) {
                     </p>
                   )}
                 </td>
-                <td style={{ padding: "7px 3px", textAlign: "center" }}><Estrelas n={l.estrelas} tam={10} goleiro={l.ehGoleiro} /></td>
+                <td style={{ padding: "8px 5px", textAlign: "center" }}><Estrelas n={l.estrelas} tam={10.5} goleiro={l.ehGoleiro} /></td>
                 {cols.map(([r, k]) => (
-                  <td key={r} style={{ padding: "7px 3px", color: cor(k, l), fontWeight: k === "pontos" ? 900 : 400, fontSize: k === "pontos" ? 12.5 : 10.5 }}>
+                  <td key={r} style={{ padding: "8px 5px", color: cor(k, l), fontWeight: k === "pontos" ? 900 : 400, fontSize: k === "pontos" ? 13 : 11 }}>
                     {k === "aproveitamento" ? `${l[k]}%` : k === "SG" ? `${l.SG > 0 ? "+" : ""}${l.SG}` : (k === "Pmais" || k === "Pmenos") ? (l[k] || "") : l[k]}
                   </td>
                 ))}
-                <td style={{ padding: "7px 3px" }}>
+                <td style={{ padding: "8px 5px" }}>
                   <div className="flex justify-center gap-0.5">
                     {l.ultimos5.map((r, k) => (
-                      <span key={k} style={{ display: "inline-block", width: 15, height: 15, borderRadius: 3, fontSize: 8.5, fontWeight: 800, lineHeight: "15px", textAlign: "center",
+                      <span key={k} style={{ display: "inline-block", width: 16, height: 16, borderRadius: 3, fontSize: 9, fontWeight: 800, lineHeight: "16px", textAlign: "center",
                         background: r === "V" ? T.verde : r === "E" ? "#5A76A8" : r === "D" ? T.vermelho : "rgba(255,255,255,.07)",
                         color: r === "V" || r === "D" ? "#06122b" : r === "E" ? "#fff" : "rgba(255,255,255,.25)" }}>{r}</span>
                     ))}
