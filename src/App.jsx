@@ -191,11 +191,14 @@ function placarDe(jogo, rodada) {
 function marcarReaproveitamentos(rodada) {
   const jaApareceu = new Set();
   return [...(rodada.jogos || [])].sort((a, b) => a.numero - b.numero).map((jogo) => {
-    const soCartoes = [];
+    // Começa com o que já veio marcado manualmente (§10, decidido na tela de
+    // sorteio) — essa função só ACRESCENTA quem se repete, nunca apaga uma
+    // marcação manual que o organizador já tinha feito.
+    const soCartoes = [...(jogo.soCartoes || [])];
     for (const tid of [jogo.timeA, jogo.timeB]) {
       const time = timePorId(rodada, tid);
       for (const j of time?.jogadores || []) {
-        if (jaApareceu.has(j.jogadorId)) soCartoes.push(j.jogadorId);
+        if (jaApareceu.has(j.jogadorId)) { if (!soCartoes.includes(j.jogadorId)) soCartoes.push(j.jogadorId); }
         else jaApareceu.add(j.jogadorId);
       }
     }
@@ -1691,7 +1694,7 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
     if (!sorteio) return null;
     const completas = sorteio.partidas.filter((p) => contarVazias(p) === 0);
     const base2 = completas.length ? completas : sorteio.partidas;
-    const times = base2.flatMap((p) => [p.amarelo, p.azul]).map((e) => e.vagas.map((v) => v.jogador).filter(Boolean));
+    const times = base2.flatMap((p) => [p.amarelo, p.azul]).map((e) => e.vagas.map((v) => v.jogador).filter(Boolean).filter((j) => !j.naoPontua));
     const todos = times.flat();
     if (!todos.length) return { indiceEquilibrio: 0, amplitude: 0, desvio: 0, violacoes: [] };
     return avaliarTimes(times, {
@@ -1713,7 +1716,10 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
     fn(partidas);
     for (const p of partidas) for (const lado of ["amarelo", "azul"]) {
       const e = p[lado];
-      e.forca = e.vagas.reduce((s, v) => s + (v.jogador?.estrelas || 0), 0);
+      // Quem foi marcado como "não pontua" (§10, escolhido à mão só pra
+      // completar) não entra na força/equilíbrio — ele não está de fato
+      // disputando a partida.
+      e.forca = e.vagas.reduce((s, v) => s + (v.jogador && !v.jogador.naoPontua ? v.jogador.estrelas : 0), 0);
     }
     setSorteio({ ...sorteio, partidas });
   }
@@ -1735,7 +1741,14 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
         if (v.jogador?.id === id) return q.numero;
       return null;
     };
-    const travado = (id) => primeira[id] === posicaoDe(id) && !aparicoes[id];
+    // Escolhido à mão para completar uma vaga em aberto nunca trava — precisa
+    // sempre poder ser movido/trocado, mesmo sendo a "primeira" aparição dele.
+    const ehManual = (id) => {
+      for (const q of sorteio.partidas) for (const e of [q.amarelo, q.azul]) for (const v of e.vagas)
+        if (v.jogador?.id === id) return !!v.jogador.manual;
+      return false;
+    };
+    const travado = (id) => primeira[id] === posicaoDe(id) && !aparicoes[id] && !ehManual(id);
     if (travado(a) || travado(b)) { avisar("Jogador bloqueado 🔒 — está na partida em que pontua"); return; }
     let recusa = null;
     mexer((partidas) => {
@@ -1779,6 +1792,10 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
         id: j.id, nome: j.nome, ehGoleiro: ehGk, convidado: !!j.convidado,
         estrelas: j.convidado ? j.estrelasIniciais || 1 : l?.estrelas || 1,
         posicaoTabela: l?.posicao || 999, slotGoleiro: vaga.papel === "GOLEIRO",
+        // Escolhido à mão para completar uma vaga que ficou em aberto: nunca
+        // pontua (§10º) e nunca trava — sempre dá pra apagar e escolher de
+        // novo se clicou errado.
+        manual: true, naoPontua: true,
       };
     });
     if (recusa) avisar(recusa);
@@ -1848,6 +1865,7 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
             convidado: !!e.jogador.convidado,
             estrelas: e.jogador.convidado ? e.jogador.estrelasIniciais || 1 : l?.estrelas || 1,
             posicaoTabela: l?.posicao || 999, slotGoleiro: vaga.papel === "GOLEIRO",
+            manual: true, naoPontua: true,
           };
           preencheu++;
         }
@@ -1882,8 +1900,12 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
         times.push(t); return t.id;
       };
       const a = criar(p.amarelo), b = criar(p.azul);
+      // Quem foi marcado com §10 na tela de sorteio (completou a vaga aberta,
+      // mas o organizador decidiu que não pontua) já entra gravado como
+      // soCartoes — marcarReaproveitamentos só ACRESCENTA a isso, nunca apaga.
+      const soCartoesManual = [p.amarelo, p.azul].flatMap((e) => e.vagas.filter((v) => v.jogador?.naoPontua).map((v) => v.jogador.id));
       jogos.push({ id: id(), numero: i + 1, timeA: a, timeB: b,
-        golsContraA: 0, golsContraB: 0, golsNaoComputadosA: 0, golsNaoComputadosB: 0, placarManual: null, encerrado: false, completaTime: [], soCartoes: [], eventos: {} });
+        golsContraA: 0, golsContraB: 0, golsNaoComputadosA: 0, golsNaoComputadosB: 0, placarManual: null, encerrado: false, completaTime: [], soCartoes: soCartoesManual, eventos: {} });
     });
     const nova = { ...rodada, times, jogos };
     // Um único atualizar(): sorteioRascunho precisa ir junto no mesmo patch,
@@ -1951,9 +1973,13 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
             }
             const noGol = v.papel === "GOLEIRO";
             const repetido = !!aparicoes[j.id];
-            // Travado = está na partida onde pontua (1ª aparição no sorteio) e
-            // não é um reaproveitamento de partida já gravada. Não pode mover.
-            const travado = primeiraAparicao[j.id] === p.numero && !repetido;
+            const naoPontua = !!j.naoPontua;
+            // Travado = está na partida onde pontua (1ª aparição no sorteio),
+            // não é reaproveitamento de partida já gravada, E não foi um
+            // preenchimento manual de vaga aberta — esse último nunca trava,
+            // pra sempre dar pra desfazer um clique errado.
+            const travado = primeiraAparicao[j.id] === p.numero && !repetido && !j.manual;
+            const semPontuar = repetido || naoPontua;
             return (
               <li key={j.id} draggable={!travado}
                 onDragStart={(e) => { if (travado) { e.preventDefault(); return; } e.dataTransfer.setData("text/plain", j.id); }}
@@ -1965,11 +1991,12 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
                   background: sel === j.id ? T.ouroFraco : noGol ? T.gkFraco : "transparent",
                   outline: sel === j.id ? `1px solid ${T.ouro}` : noGol ? `1px solid ${T.gk}` : "none",
                   opacity: travado ? 0.92 : 1 }}>
-                <span className="flex min-w-0 items-center gap-1" style={{ color: repetido ? T.fraco : T.texto, fontStyle: repetido ? "italic" : "normal" }}>
+                <span className="flex min-w-0 items-center gap-1" style={{ color: semPontuar ? T.fraco : T.texto, fontStyle: semPontuar ? "italic" : "normal" }}>
                   {noGol && <IconeGoleiro tam={13} />}
                   <span className="truncate">{j.nome}</span>
                   {travado && <span title="Está na partida em que pontua — bloqueado para não desfazer a escalação que vale" style={{ fontSize: 11 }}>🔒</span>}
                   {repetido && <span title="Já jogou nesta rodada — aqui só preenche a vaga, não pontua nada" style={{ fontSize: 8, fontWeight: 800, color: T.laranja }}>REPETE</span>}
+                  {!repetido && naoPontua && <span title="Completou uma vaga que estava em aberto (§10º) — não pontua nada" style={{ fontSize: 8, fontWeight: 800, color: T.laranja }}>COMPLETA</span>}
                   {j.convidado && <span style={{ fontSize: 8, color: T.roxo }}>CONV</span>}
                 </span>
                 <span className="flex shrink-0 items-center gap-1">
@@ -2694,7 +2721,7 @@ function Resultados({ base, cfg }) {
             {estaAberta && (
               <div className="space-y-2" style={{ padding: 10, background: "rgba(0,0,0,.15)" }}>
                 <div className="flex flex-wrap items-center" style={{ gap: "6px 12px", fontSize: 10, color: T.fraco, paddingBottom: 2 }}>
-                  <span>⚽ gol · 👟 assistência · 🟨 amarelo · 🟦 azul · 🟥 vermelho</span>
+                  <span>⚽ gol · 👟 assistência · 🟨 amarelo · 🟦 azul · 🟥 vermelho · 🔴 gol contra · ❔ gol não computado</span>
                   <span style={{ color: T.laranja, fontStyle: "italic" }}>● nome em laranja itálico = completou a equipe (§10º), não pontuou</span>
                 </div>
                 {jogos.map((jogo) => {
@@ -2753,6 +2780,19 @@ function Resultados({ base, cfg }) {
                           ))}
                         </div>
                       </div>
+                      {((jogo.golsContraA || 0) + (jogo.golsContraB || 0) + (jogo.golsNaoComputadosA || 0) + (jogo.golsNaoComputadosB || 0)) > 0 && (
+                        <div className="flex justify-between" style={{ gap: 10, marginTop: 6, paddingTop: 6, borderTop: `1px dashed ${T.borda}`, fontSize: 10, color: T.laranja }}>
+                          <div className="flex-1 text-right">
+                            {jogo.golsContraA > 0 && <div>🔴 gol contra ×{jogo.golsContraA}</div>}
+                            {jogo.golsNaoComputadosA > 0 && <div>❔ gol não computado ×{jogo.golsNaoComputadosA}</div>}
+                          </div>
+                          <div style={{ width: 1 }} />
+                          <div className="flex-1">
+                            {jogo.golsContraB > 0 && <div>gol contra ×{jogo.golsContraB} 🔴</div>}
+                            {jogo.golsNaoComputadosB > 0 && <div>gol não computado ×{jogo.golsNaoComputadosB} ❔</div>}
+                          </div>
+                        </div>
+                      )}
                     </Painel>
                   );
                 })}
