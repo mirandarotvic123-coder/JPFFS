@@ -2352,6 +2352,22 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
     const atual = jogo.placarManual || { A: p.calcA, B: p.calcB };
     mudar({ placarManual: { ...atual, [lado]: Math.max(0, atual[lado] + d) } });
   };
+  // Gol contra e gol não computado somam no placar automaticamente (via
+  // placarDe). Mas se o placar já foi travado em "manual" — o que acontece
+  // sempre que a partida é encerrada, mesmo sem ninguém ter mexido no placar
+  // à mão — esses cliques precisam empurrar o placarManual junto, senão o
+  // gol fica registrado na estatística mas some da tela/placar oficial.
+  const ajustarGolQueSomaNoPlacar = (campo, ladoNoPlacar, d) => {
+    const atualCampo = jogo[campo] || 0;
+    const novoCampo = Math.max(0, atualCampo + d);
+    const diff = novoCampo - atualCampo;
+    const atualizacoes = { [campo]: novoCampo };
+    if (jogo.placarManual && diff !== 0) {
+      const pm = jogo.placarManual;
+      atualizacoes.placarManual = { ...pm, [ladoNoPlacar]: Math.max(0, pm[ladoNoPlacar] + diff) };
+    }
+    mudar(atualizacoes);
+  };
 
   const Coluna = ({ time, lado }) => (
     <div className="min-w-0">
@@ -2451,17 +2467,17 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
         title="Gol de quem não pontua (§10º) ou que ninguém viu quem fez — soma no placar da própria equipe sem ir pra estatística de ninguém">
         <span style={{ fontSize: 9.5, letterSpacing: ".06em", textTransform: "uppercase", color: T.laranja }}>Gol não computado</span>
         <div className="flex items-center">
-          <button onClick={() => mudar({ [`golsNaoComputados${lado}`]: Math.max(0, (jogo[`golsNaoComputados${lado}`] || 0) - 1) })} style={{ padding: "6px 8px", color: T.fraco }}>−</button>
+          <button onClick={() => ajustarGolQueSomaNoPlacar(`golsNaoComputados${lado}`, lado, -1)} style={{ padding: "6px 8px", color: T.fraco }}>−</button>
           <span style={{ width: 12, textAlign: "center", fontSize: 12.5, fontWeight: 800 }}>{jogo[`golsNaoComputados${lado}`] || 0}</span>
-          <button onClick={() => mudar({ [`golsNaoComputados${lado}`]: (jogo[`golsNaoComputados${lado}`] || 0) + 1 })} style={{ padding: "6px 8px", color: T.laranja }}>+</button>
+          <button onClick={() => ajustarGolQueSomaNoPlacar(`golsNaoComputados${lado}`, lado, 1)} style={{ padding: "6px 8px", color: T.laranja }}>+</button>
         </div>
       </div>
       <div className="mt-1 flex items-center justify-between rounded px-2" style={{ background: "rgba(255,255,255,.06)" }}>
         <span style={{ fontSize: 9.5, letterSpacing: ".06em", textTransform: "uppercase", color: T.fraco }}>Gol contra</span>
         <div className="flex items-center">
-          <button onClick={() => mudar({ [`golsContra${lado}`]: Math.max(0, (jogo[`golsContra${lado}`] || 0) - 1) })} style={{ padding: "6px 8px", color: T.fraco }}>−</button>
+          <button onClick={() => ajustarGolQueSomaNoPlacar(`golsContra${lado}`, lado === "A" ? "B" : "A", -1)} style={{ padding: "6px 8px", color: T.fraco }}>−</button>
           <span style={{ width: 12, textAlign: "center", fontSize: 12.5, fontWeight: 800 }}>{jogo[`golsContra${lado}`] || 0}</span>
-          <button onClick={() => mudar({ [`golsContra${lado}`]: (jogo[`golsContra${lado}`] || 0) + 1 })} style={{ padding: "6px 8px", color: T.ouro }}>+</button>
+          <button onClick={() => ajustarGolQueSomaNoPlacar(`golsContra${lado}`, lado === "A" ? "B" : "A", 1)} style={{ padding: "6px 8px", color: T.ouro }}>+</button>
         </div>
       </div>
     </div>
