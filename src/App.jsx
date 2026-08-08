@@ -87,7 +87,6 @@ function embaralharRng(arr, rng) {
   for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1));[a[i], a[j]] = [a[j], a[i]]; }
   return a;
 }
-
 /* --- core/estrelas -------------------------------------------------------*/
 function estrelasPorPosicao(p) {
   if (p <= 3) return 5; if (p <= 6) return 4; if (p <= 9) return 3; if (p <= 14) return 2; return 1;
@@ -601,12 +600,10 @@ function sortearEquipes(entradas, opcoes = {}) {
    * aberto; as anteriores saem completas. Por isso a linha é espalhada em
    * SERPENTINA entre as partidas, com um "alvo" de vagas por partida: as
    * primeiras enchem por completo, a última recebe o resto.
-   * Goleiro é uma exceção deliberada a essa regra (§12º): em vez de
-   * concentrar os goleiros de ofício sempre na Partida 1 e deixar as demais
-   * sem nenhum goleiro de verdade — o que esvazia o gol justo nos últimos
-   * jogos do dia, quando quem já jogou fica sem interesse em completar —,
-   * os goleiros presentes são ESPALHADOS entre as partidas antes de dobrar
-   * em qualquer uma delas. */
+   * Goleiro é uma exceção deliberada a essa regra (§12º): a vaga de goleiro
+   * de cada partida (Amarelo e Azul) entra inteira no sorteio, então quem
+   * enfrenta quem — e se algum goleiro fica sem adversário na meta — é
+   * decidido pelo próprio sorteio, não por uma fórmula fixa. */
   // Todos os presentes, sem descartar ninguém. Quem a seleção deixou de fora
   // por excesso volta ao pote (será usado para completar vagas de gol).
   // Embaralhado (não ordenado por estrela): ordenar por estrela aqui fazia o
@@ -626,13 +623,19 @@ function sortearEquipes(entradas, opcoes = {}) {
   const filaG = [...poteGk];
   const filaL = [...poteLinha];
 
-  // 1) goleiros: preenchidos em VOLTAS — cada volta passa uma vez por todas as
-  //    partidas no lado amarelo (ida) e depois por todas de novo no lado azul
-  //    (volta). Assim, faltando goleiro, quem sobra fica sem meta espalhado
-  //    pelas partidas, em vez de esvaziar sempre as últimas.
-  for (let volta = 0; volta < gkPorTime && filaG.length; volta++) {
-    for (let p = 0; p < partidas && filaG.length; p++) gksPorPartida[p][volta * 2] = { ...filaG.shift(), slotGoleiro: true };
-    for (let p = partidas - 1; p >= 0 && filaG.length; p--) gksPorPartida[p][volta * 2 + 1] = { ...filaG.shift(), slotGoleiro: true };
+  // 1) goleiros: as vagas de goleiro de TODAS as partidas (Amarelo e Azul de
+  //    cada uma) formam um único pote, sorteado em bloco. Goleiros podem ou
+  //    não se enfrentar — é o sorteio quem decide, não uma fórmula fixa: com
+  //    3 goleiros para 2 partidas, tanto faz se quem sobra calha na Partida 1
+  //    ou na Partida 2, e isso pode mudar a cada sorteio, mesmo com os mesmos
+  //    presentes. A única regra rígida é nunca colocar 2 goleiros do mesmo
+  //    lado — e essa restrição já vem de cada posição pertencer a um lado
+  //    específico (Amarelo ou Azul) dentro da própria vaga sorteada.
+  const vagasGoleiro = [];
+  for (let p = 0; p < partidas; p++) for (let s = 0; s < gkPorTime * 2; s++) vagasGoleiro.push([p, s]);
+  for (const [p, s] of embaralharRng(vagasGoleiro, rng)) {
+    if (!filaG.length) break;
+    gksPorPartida[p][s] = { ...filaG.shift(), slotGoleiro: true };
   }
 
   // 2) linha: define quantas vagas de linha cada partida terá de fato. As vagas
