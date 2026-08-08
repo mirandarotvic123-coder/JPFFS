@@ -2476,7 +2476,7 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
         {time.cor}
       </p>
       <div className="space-y-1">
-        {[...(time.jogadores || [])].sort((a, b) => Number(!!b.atuaComoGoleiro) - Number(!!a.atuaComoGoleiro)).map(({ jogadorId: jid, atuaComoGoleiro }) => {
+        {[...(time.jogadores || [])].sort((a, b) => Number(!!b.atuaComoGoleiro) - Number(!!a.atuaComoGoleiro)).map(({ jogadorId: jid, atuaComoGoleiro, estrelaNoSorteio }) => {
           const bruto = { ...evVazio, ...(jogo.eventos[jid] || {}) };
           const ev = normalizarCartoes(bruto, cfg);
           const virouVermelho = ev.cv !== bruto.cv;
@@ -2494,6 +2494,7 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
               <div className="mb-1 flex items-start justify-between gap-1">
                 <span className="flex min-w-0 items-center gap-1" style={{ fontSize: 12.5, color: soCartao ? T.fraco : T.texto, fontStyle: soCartao ? "italic" : "normal" }}>
                   {atuaComoGoleiro && <IconeGoleiro tam={12} />}<span className="truncate">{jog[jid]?.nome || "?"}</span>
+                  <Estrelas n={estrelaNoSorteio || 1} tam={9} goleiro={atuaComoGoleiro} />
                   {niveis?.[jid] && <SeloAtraso nivel={niveis[jid]} cfg={cfg} mini />}
                 </span>
                 <button onClick={() => mudar({
@@ -3189,7 +3190,7 @@ function TelaConfig({ base, setBase, dados, cfg, avisar }) {
       </Painel>
 
       <section>
-        <Secao titulo="Disciplina" detalhe="Art. 34º §8º · Art. 82º" />
+        <Secao titulo="Disciplina" detalhe="🔒 bloqueado · Art. 34º §8º · Art. 82º" />
         <Painel className="grid grid-cols-2 gap-2 p-3">
           {[["pontoPerdidoTerceiroAtraso", "Pontos perdidos no 3º atraso", ""],
           ["atrasosParaSuspensao", "Atrasos para suspensão", ""],
@@ -3197,14 +3198,14 @@ function TelaConfig({ base, setBase, dados, cfg, avisar }) {
           ["pontosPorCicloAmarelo", "Pontos por ciclo fechado", ""],
           ["pontosPorVermelho", "Pontos por vermelho", "Art. 82º §3º"],
           ["rodadasPrevistas", "Rodadas do campeonato", ""]].map(([c, r, d]) => (
-            <Campo key={c} rotulo={r} dica={d}><input type="number" value={cfg[c]} onChange={(e) => mudar(c, Number(e.target.value))} style={{ ...inputStyle, padding: "10px" }} /></Campo>
+            <Campo key={c} rotulo={r} dica={d}><input type="number" value={cfg[c]} disabled onChange={(e) => mudar(c, Number(e.target.value))} style={{ ...inputStyle, padding: "10px", opacity: .55, cursor: "not-allowed" }} /></Campo>
           ))}
           {[["amareloNoSegundoAtraso", "2º atraso gera cartão amarelo na classificação"],
           ["converterSegundoAmarelo", "2º amarelo, ou amarelo + azul, vira vermelho na mesma partida (Art. 81º §Único)"],
           ["perdePontoNoQuartoAtraso", "Cobrar ponto extra do suspenso (premissa em aberto)"]].map(([c, r]) => (
             <div key={c} className="col-span-2">
-              <button onClick={() => mudar(c, !cfg[c])} className="w-full rounded-lg p-3 text-left"
-                style={{ border: `1px solid ${cfg[c] ? T.ouro : T.borda}`, background: cfg[c] ? T.ouroFraco : "rgba(0,0,0,.2)", fontSize: 12.5, color: cfg[c] ? T.ouroClaro : T.secundario }}>
+              <button disabled onClick={() => mudar(c, !cfg[c])} className="w-full rounded-lg p-3 text-left"
+                style={{ border: `1px solid ${cfg[c] ? T.ouro : T.borda}`, background: cfg[c] ? T.ouroFraco : "rgba(0,0,0,.2)", fontSize: 12.5, color: cfg[c] ? T.ouroClaro : T.secundario, opacity: .55, cursor: "not-allowed" }}>
                 {cfg[c] ? "☑ " : "☐ "}{r}
               </button>
             </div>
@@ -3213,47 +3214,47 @@ function TelaConfig({ base, setBase, dados, cfg, avisar }) {
       </section>
 
       <section>
-        <Secao titulo="Motor de sorteio" detalhe="§12º — goleiro e linha juntos" />
+        <Secao titulo="Motor de sorteio" detalhe="🔒 bloqueado · §12º — goleiro e linha juntos" />
         <Painel className="grid grid-cols-2 gap-2 p-3">
           {[["amplitude", "Diferença máx."], ["desvio", "Desvio padrão"], ["varianciaInterna", "Composição interna"],
           ["faixa", "Distribuição por faixa"], ["faixaPartida", "5★ espalhados entre partidas"],
           ["repeticao", "Anti-repetição"], ["aproveitamento", "Aproveitamento %"]].map(([c, r]) => (
-            <Campo key={c} rotulo={r}><input type="number" value={cfg.pesos[c]} onChange={(e) => mudarPeso(c, e.target.value)} style={{ ...inputStyle, padding: "10px" }} /></Campo>
+            <Campo key={c} rotulo={r}><input type="number" value={cfg.pesos[c]} disabled onChange={(e) => mudarPeso(c, e.target.value)} style={{ ...inputStyle, padding: "10px", opacity: .55, cursor: "not-allowed" }} /></Campo>
           ))}
           <div className="col-span-2">
-            <button onClick={() => mudar("usarAproveitamento", !cfg.usarAproveitamento)} className="w-full rounded-lg p-3 text-left"
-              style={{ border: `1px solid ${cfg.usarAproveitamento ? T.ouro : T.borda}`, background: cfg.usarAproveitamento ? T.ouroFraco : "rgba(0,0,0,.2)", fontSize: 12.5, color: cfg.usarAproveitamento ? T.ouroClaro : T.secundario }}>
+            <button disabled onClick={() => mudar("usarAproveitamento", !cfg.usarAproveitamento)} className="w-full rounded-lg p-3 text-left"
+              style={{ border: `1px solid ${cfg.usarAproveitamento ? T.ouro : T.borda}`, background: cfg.usarAproveitamento ? T.ouroFraco : "rgba(0,0,0,.2)", fontSize: 12.5, color: cfg.usarAproveitamento ? T.ouroClaro : T.secundario, opacity: .55, cursor: "not-allowed" }}>
               {cfg.usarAproveitamento ? "☑ " : "☐ "}Equilibrar também o aproveitamento %
             </button>
           </div>
           {[["rodadasAntiRepeticao", "Anti-repetição (rodadas)"], ["jogadoresPorTime", "Jogadores por equipe"],
           ["goleirosPorTime", "Goleiros por equipe"]].map(([c, r]) => (
-            <Campo key={c} rotulo={r}><input type="number" value={cfg[c]} onChange={(e) => mudar(c, Number(e.target.value))} style={{ ...inputStyle, padding: "10px" }} /></Campo>
+            <Campo key={c} rotulo={r}><input type="number" value={cfg[c]} disabled onChange={(e) => mudar(c, Number(e.target.value))} style={{ ...inputStyle, padding: "10px", opacity: .55, cursor: "not-allowed" }} /></Campo>
           ))}
         </Painel>
       </section>
 
       <section>
-        <Secao titulo="Restrições por par" detalhe={`${(base.restricoes || []).length} regra(s)`} />
+        <Secao titulo="Restrições por par" detalhe={`🔒 bloqueado · ${(base.restricoes || []).length} regra(s)`} />
         <Painel className="space-y-2 p-3">
           {(base.restricoes || []).map((r) => (
             <div key={r.id} className="flex items-center justify-between rounded px-2 py-1.5" style={{ background: "rgba(0,0,0,.25)", fontSize: 12 }}>
               <span className="truncate" style={{ color: T.secundario }}>{nomes[r.a]} <span style={{ color: r.tipo === "juntos" ? T.verde : T.vermelho }}>{r.tipo === "juntos" ? "sempre com" : "nunca com"}</span> {nomes[r.b]}</span>
-              <button onClick={() => setBase({ ...base, restricoes: base.restricoes.filter((x) => x.id !== r.id) })} style={{ color: T.fraco }}>✕</button>
+              <button disabled onClick={() => setBase({ ...base, restricoes: base.restricoes.filter((x) => x.id !== r.id) })} style={{ color: T.fraco, opacity: .55, cursor: "not-allowed" }}>✕</button>
             </div>
           ))}
           <div className="flex gap-1.5">
-            <select value={ra} onChange={(e) => setRa(e.target.value)} style={{ ...inputStyle, flex: 1, padding: "10px 4px", fontSize: 12 }}>
+            <select value={ra} disabled onChange={(e) => setRa(e.target.value)} style={{ ...inputStyle, flex: 1, padding: "10px 4px", fontSize: 12, opacity: .55, cursor: "not-allowed" }}>
               <option value="">Jogador A</option>{base.jogadores.map((j) => <option key={j.id} value={j.id}>{j.nome}</option>)}
             </select>
-            <select value={tipo} onChange={(e) => setTipo(e.target.value)} style={{ ...inputStyle, width: "auto", padding: "10px 4px", fontSize: 12 }}>
+            <select value={tipo} disabled onChange={(e) => setTipo(e.target.value)} style={{ ...inputStyle, width: "auto", padding: "10px 4px", fontSize: 12, opacity: .55, cursor: "not-allowed" }}>
               <option value="separados">nunca com</option><option value="juntos">sempre com</option>
             </select>
-            <select value={rb} onChange={(e) => setRb(e.target.value)} style={{ ...inputStyle, flex: 1, padding: "10px 4px", fontSize: 12 }}>
+            <select value={rb} disabled onChange={(e) => setRb(e.target.value)} style={{ ...inputStyle, flex: 1, padding: "10px 4px", fontSize: 12, opacity: .55, cursor: "not-allowed" }}>
               <option value="">Jogador B</option>{base.jogadores.map((j) => <option key={j.id} value={j.id}>{j.nome}</option>)}
             </select>
           </div>
-          <Botao className="w-full" onClick={() => {
+          <Botao className="w-full" disabled onClick={() => {
             if (!ra || !rb || ra === rb) return avisar("Escolha dois jogadores diferentes");
             setBase({ ...base, restricoes: [...(base.restricoes || []), { id: id(), a: ra, b: rb, tipo }] });
             setRa(""); setRb("");
@@ -3262,16 +3263,16 @@ function TelaConfig({ base, setBase, dados, cfg, avisar }) {
       </section>
 
       <section>
-        <Secao titulo="Pontuação" />
+        <Secao titulo="Pontuação" detalhe="🔒 bloqueado" />
         <Painel className="grid grid-cols-2 gap-2 p-3">
           {[["pontosVitoria", "Pontos por vitória"], ["pontosEmpate", "Pontos por empate"],
           ["pontosPresenca", "Pontos por presença"], ["tetoPorRodada", "Teto por rodada"],
           ["zonaSupercopa", "Supercopa: nº de linha"], ["goleirosSupercopa", "Supercopa: nº de goleiros"]].map(([c, r]) => (
-            <Campo key={c} rotulo={r}><input type="number" value={cfg[c]} onChange={(e) => mudar(c, Number(e.target.value))} style={{ ...inputStyle, padding: "10px" }} /></Campo>
+            <Campo key={c} rotulo={r}><input type="number" value={cfg[c]} disabled onChange={(e) => mudar(c, Number(e.target.value))} style={{ ...inputStyle, padding: "10px", opacity: .55, cursor: "not-allowed" }} /></Campo>
           ))}
           <div className="col-span-2">
             <Campo rotulo="Base do aproveitamento" dica="Realizadas reproduz a tabela oficial.">
-              <select value={cfg.baseAproveitamento} onChange={(e) => mudar("baseAproveitamento", e.target.value)} style={{ ...inputStyle, padding: "10px", fontSize: 13 }}>
+              <select value={cfg.baseAproveitamento} disabled onChange={(e) => mudar("baseAproveitamento", e.target.value)} style={{ ...inputStyle, padding: "10px", fontSize: 13, opacity: .55, cursor: "not-allowed" }}>
                 <option value="realizadas">Rodadas realizadas ({dados.rodadasRealizadas})</option>
                 <option value="previstas">Rodadas previstas ({cfg.rodadasPrevistas})</option>
               </select>
