@@ -54,7 +54,7 @@ const CONFIG_PADRAO = {
   criteriosDesempate: ["pontos", "vitorias", "saldo", "golsPro", "cartoes", "alfabetica"],
   // motor de sorteio (§12º) — busca local otimiza direto a divisão exibida
   rodadasAntiRepeticao: 3, usarAproveitamento: false,
-  pesos: { rigida: 100000, amplitude: 1000, desvio: 300, faixa: 40, varianciaInterna: 60, repeticao: 8, aproveitamento: 15 },
+  pesos: { rigida: 100000, amplitude: 1000, desvio: 300, faixa: 40, faixaPartida: 150, varianciaInterna: 60, repeticao: 8, aproveitamento: 15 },
 };
 
 const ROTULO_CRITERIO = {
@@ -86,6 +86,30 @@ function embaralharRng(arr, rng) {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1));[a[i], a[j]] = [a[j], a[i]]; }
   return a;
+}
+/** Distribui `itens` (JÁ ORDENADOS na prioridade que se quer preservar, aqui
+ *  por estrela decrescente) entre grupos de capacidades `alvos`, mas
+ *  respeitando a proporção de cada grupo ao longo de TODA a lista — em vez de
+ *  encher os grupos em ordem (o que faria o grupo menor saturar cedo e ficar
+ *  só com o início da lista, ex.: só os jogadores de mais estrela). A cada
+ *  item, entra no grupo com espaço que está proporcionalmente mais vazio até
+ *  agora, então cada grupo recebe uma amostra representativa do começo ao
+ *  fim da lista. */
+function distribuirProporcional(itens, alvos) {
+  const usados = alvos.map(() => 0);
+  const grupos = alvos.map(() => []);
+  for (const item of itens) {
+    let melhor = -1, melhorRazao = Infinity;
+    for (let g = 0; g < alvos.length; g++) {
+      if (usados[g] >= alvos[g]) continue;
+      const razao = alvos[g] > 0 ? usados[g] / alvos[g] : Infinity;
+      if (razao < melhorRazao) { melhorRazao = razao; melhor = g; }
+    }
+    if (melhor === -1) break; // sem espaço em nenhum grupo — não deveria acontecer
+    grupos[melhor].push(item);
+    usados[melhor]++;
+  }
+  return grupos;
 }
 /* --- core/estrelas -------------------------------------------------------*/
 function estrelasPorPosicao(p) {
@@ -453,6 +477,27 @@ function avaliarTimes(times, ctx) {
     ampAprov = Math.max(...md) - Math.min(...md);
   }
 
+  /* Equilíbrio de 5★ ENTRE PARTIDAS, não só entre times. A regra "nunca 2 5★
+   * no mesmo time" (abaixo) só cuida de cada time isoladamente — ela é
+   * satisfeita igualmente tanto se os 5★ presentes forem espalhados entre
+   * várias partidas quanto se forem todos empilhados numa única partida (um
+   * de cada lado dela, o que já cumpre a regra), deixando as demais partidas
+   * sem nenhum 5★ pra ancorar. Aqui somamos os 5★ dos dois times de cada
+   * partida e penalizamos a diferença entre a partida com mais e a com
+   * menos — assim as partidas ficam parecidas entre si, não só os times
+   * dentro de cada uma. */
+  let faixaPartida = 0;
+  if (ctx.partidaDoTime) {
+    const cincoPorPartida = new Map();
+    times.forEach((t, i) => {
+      const p = ctx.partidaDoTime(i);
+      const c5 = t.filter((j) => j.estrelas === 5).length;
+      cincoPorPartida.set(p, (cincoPorPartida.get(p) || 0) + c5);
+    });
+    const valores = [...cincoPorPartida.values()];
+    if (valores.length > 1) faixaPartida = Math.max(...valores) - Math.min(...valores);
+  }
+
   const violacoes = [];
   let rigidas = 0;      // violações contadas uma a uma
   let excessoGk = 0;    // excesso de goleiros, ao quadrado (ver abaixo)
@@ -489,11 +534,11 @@ function avaliarTimes(times, ctx) {
   }
 
   const custo = P.rigida * (rigidas + excessoGk) + P.amplitude * amplitude + P.desvio * desvio +
-    P.faixa * faixa + P.varianciaInterna * ampVar + P.repeticao * repeticao +
+    P.faixa * faixa + (P.faixaPartida || 0) * faixaPartida + P.varianciaInterna * ampVar + P.repeticao * repeticao +
     (ctx.usarAproveitamento ? P.aproveitamento * ampAprov : 0);
 
   return {
-    custo, somas, amplitude, desvio, faixa, ampVar, repeticao, violacoes, mediaSomas,
+    custo, somas, amplitude, desvio, faixa, faixaPartida, ampVar, repeticao, violacoes, mediaSomas,
     indiceEquilibrio: Math.max(0, Math.min(100, Math.round(100 - (mediaSomas > 0 ? (amplitude / mediaSomas) * 70 : 0)))),
   };
 }
@@ -597,9 +642,12 @@ function sortearEquipes(entradas, opcoes = {}) {
   };
 
   /* Regra do campeonato: só a ÚLTIMA partida pode ter vagas de LINHA em
-   * aberto; as anteriores saem completas. Por isso a linha é espalhada em
-   * SERPENTINA entre as partidas, com um "alvo" de vagas por partida: as
-   * primeiras enchem por completo, a última recebe o resto.
+   * aberto; as anteriores saem completas. Por isso a linha é distribuída com
+   * um "alvo" de vagas por partida: as primeiras enchem por completo, a
+   * última recebe o resto — mas a distribuição em si é PROPORCIONAL, não
+   * uma serpentina simples, pra não fazer a partida menor herdar sempre os
+   * jogadores de mais estrela (ver distribuirProporcional() e o comentário
+   * mais abaixo).
    * Goleiro é uma exceção deliberada a essa regra (§12º): a vaga de goleiro
    * de cada partida (Amarelo e Azul) entra inteira no sorteio, então quem
    * enfrenta quem — e se algum goleiro fica sem adversário na meta — é
@@ -647,23 +695,17 @@ function sortearEquipes(entradas, opcoes = {}) {
     alvoLn[p] -= tira; faltamLn -= tira;
   }
 
-  // 3) distribui a linha em serpentina, respeitando o alvo de cada partida
+  // 3) distribui a linha entre as partidas de forma PROPORCIONAL ao alvo de
+  //    cada uma, não em serpentina simples. filaL está ordenada por estrela
+  //    decrescente (poteLinha) — com serpentina simples, a partida com alvo
+  //    menor saturava bem mais rápido que as outras e acabava levando só o
+  //    INÍCIO da lista (os de mais estrela), deixando as demais partidas com
+  //    os de estrela mais baixa. distribuirProporcional intercala o alvo de
+  //    cada partida ao longo de TODA a lista, então a partida menor também
+  //    recebe uma amostra variada de estrelas, não só as mais altas.
   {
-    let dir = 1, idx = 0;
-    for (const jr of filaL) {
-      const j = { ...jr, slotGoleiro: false };
-      let t = 0;
-      while (lnsPorPartida[idx].length >= alvoLn[idx] && t < partidas * 2) {
-        idx += dir;
-        if (idx >= partidas) { idx = partidas - 1; dir = -1; }
-        else if (idx < 0) { idx = 0; dir = 1; }
-        t++;
-      }
-      if (lnsPorPartida[idx].length < alvoLn[idx]) lnsPorPartida[idx].push(j);
-      idx += dir;
-      if (idx >= partidas) { idx = partidas - 1; dir = -1; }
-      else if (idx < 0) { idx = 0; dir = 1; }
-    }
+    const gruposLn = distribuirProporcional(filaL, alvoLn);
+    gruposLn.forEach((grupo, p) => { lnsPorPartida[p] = grupo.map((j) => ({ ...j, slotGoleiro: false })); });
   }
 
   const repartir = (gks, lns) => {
@@ -1741,13 +1783,14 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
   const jogadoresDaPartida = (p) => [p.amarelo, p.azul].flatMap((e) => e.vagas.map((v) => v.jogador).filter(Boolean));
   const contarVazias = (p) => [p.amarelo, p.azul].reduce((s, e) => s + e.vagas.filter((v) => !v.jogador).length, 0);
 
-  // equilíbrio calculado só nas partidas SEM vagas em aberto — a incompleta,
-  // que ainda vai ser completada na mão, costuma ficar desigual
+  // Equilíbrio calculado em CIMA DE TODAS as partidas, inclusive a que tem
+  // vaga em aberto — antes essa partida era excluída do cálculo (porque "ela
+  // ainda vai ser completada na mão"), mas isso escondia um desequilíbrio que
+  // pode já estar lá em quem FOI sorteado nela; vagas ainda vazias não têm
+  // jogador, então não entram na soma de qualquer forma.
   const diag = useMemo(() => {
     if (!sorteio) return null;
-    const completas = sorteio.partidas.filter((p) => contarVazias(p) === 0);
-    const base2 = completas.length ? completas : sorteio.partidas;
-    const times = base2.flatMap((p) => [p.amarelo, p.azul]).map((e) => e.vagas.map((v) => v.jogador).filter(Boolean).filter((j) => !j.naoPontua));
+    const times = sorteio.partidas.flatMap((p) => [p.amarelo, p.azul]).map((e) => e.vagas.map((v) => v.jogador).filter(Boolean).filter((j) => !j.naoPontua));
     const todos = times.flat();
     if (!todos.length) return { indiceEquilibrio: 0, amplitude: 0, desvio: 0, violacoes: [] };
     return avaliarTimes(times, {
@@ -1755,6 +1798,7 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
       totalCinco: todos.filter((j) => j.estrelas === 5).length, duplasRecentes: null,
       restricoes: (base.restricoes || []).filter((r) => todos.some((j) => j.id === r.a) && todos.some((j) => j.id === r.b)),
       usarAproveitamento: cfg.usarAproveitamento, travados: new Set(),
+      partidaDoTime: (i) => Math.floor(i / 2),
       nome: (x) => nomes[x] || "?", nomeTime: (i) => `Time ${i + 1}`,
     });
   }, [sorteio, cfg, base.restricoes, nomes]);
@@ -2118,7 +2162,7 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
             </div>
           </div>
           <p style={{ fontSize: 10.5, textAlign: "center", color: T.fraco }}>
-            Medido nas partidas completas. Cada equipe fecha com 1 goleiro + {cfg.jogadoresPorTime - cfg.goleirosPorTime} de linha.
+            Medido em cima de todo mundo já escalado, inclusive na partida com vaga em aberto. Cada equipe fecha com 1 goleiro + {cfg.jogadoresPorTime - cfg.goleirosPorTime} de linha.
           </p>
 
           {sel && <p className="rounded px-2 py-2 text-center" style={{ background: T.ouroFraco, fontSize: 12, color: T.ouroClaro }}>{nomes[sel]} selecionado — toque em outro para trocar.</p>}
@@ -3172,7 +3216,8 @@ function TelaConfig({ base, setBase, dados, cfg, avisar }) {
         <Secao titulo="Motor de sorteio" detalhe="§12º — goleiro e linha juntos" />
         <Painel className="grid grid-cols-2 gap-2 p-3">
           {[["amplitude", "Diferença máx."], ["desvio", "Desvio padrão"], ["varianciaInterna", "Composição interna"],
-          ["faixa", "Distribuição por faixa"], ["repeticao", "Anti-repetição"], ["aproveitamento", "Aproveitamento %"]].map(([c, r]) => (
+          ["faixa", "Distribuição por faixa"], ["faixaPartida", "5★ espalhados entre partidas"],
+          ["repeticao", "Anti-repetição"], ["aproveitamento", "Aproveitamento %"]].map(([c, r]) => (
             <Campo key={c} rotulo={r}><input type="number" value={cfg.pesos[c]} onChange={(e) => mudarPeso(c, e.target.value)} style={{ ...inputStyle, padding: "10px" }} /></Campo>
           ))}
           <div className="col-span-2">
