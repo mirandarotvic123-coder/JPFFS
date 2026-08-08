@@ -1,11 +1,4 @@
-/* ============================================================================
- * JPFFS — utilitários de layout
- * ----------------------------------------------------------------------------
- * O app usa 76 classes utilitárias de layout. Em vez de arrastar o Tailwind
- * inteiro como dependência de build, elas estão escritas aqui à mão: menos de
- * 3 KB, zero configuração e nada para quebrar em atualização de versão.
- * As cores e a tipografia ficam em style inline, dentro do próprio App.
- * ==========================================================================*/
+
 
 *, *::before, *::after { box-sizing: border-box; }
 html, body, #root { margin: 0; padding: 0; }
