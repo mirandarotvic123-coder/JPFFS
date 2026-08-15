@@ -747,6 +747,139 @@ function imagemTabela(cl, cfg, meta) {
   }
 }
 
+function imagemEscalacoes(rodada, nomes, niveis, cfg) {
+  const jogos = [...(rodada.jogos || [])].sort((a, b) => a.numero - b.numero);
+  const blocos = jogos.map((jogo) => {
+    const tA = timePorId(rodada, jogo.timeA), tB = timePorId(rodada, jogo.timeB);
+    if (!tA || !tB) return null;
+    const soCartoes = new Set([...(jogo.completaTime || []), ...(jogo.soCartoes || [])]);
+    const ladoDe = (t) => {
+      const jogadores = [...(t.jogadores || [])].sort((a, b) => Number(!!b.atuaComoGoleiro) - Number(!!a.atuaComoGoleiro));
+      const itens = jogadores.map((j) => ({
+        vaga: false, nome: nomes[j.jogadorId] || "?", goleiro: !!j.atuaComoGoleiro,
+        completou: soCartoes.has(j.jogadorId), nivel: niveis?.[j.jogadorId] || 0,
+        estrelas: j.estrelaNoSorteio || 1,
+      }));
+      const vagas = (t.vagasAbertas || []).map((papel) => ({ vaga: true, papel }));
+      const forca = itens.filter((i) => !i.completou).reduce((s, i) => s + i.estrelas, 0);
+      return { cor: t.cor, hex: corDe(t.chave).hex, itens: [...itens, ...vagas], forca };
+    };
+    return { numero: jogo.numero, extra: !!jogo.extra, A: ladoDe(tA), B: ladoDe(tB) };
+  }).filter(Boolean);
+  if (!blocos.length) return;
+
+  const somasForca = blocos.flatMap((b) => [b.A.forca, b.B.forca]);
+  const mediaForca = somasForca.reduce((s, v) => s + v, 0) / (somasForca.length || 1);
+  const amplitudeForca = somasForca.length ? Math.max(...somasForca) - Math.min(...somasForca) : 0;
+  const indiceEquilibrio = mediaForca > 0 ? Math.max(0, Math.min(100, Math.round(100 - (amplitudeForca / mediaForca) * 70))) : 100;
+
+  const esc = 2, pad = 24, larg = 680, colGap = 14;
+  const hCab = 104, hPartidaHead = 28, hTimeHead = 20, hLinha = 24, gapPartida = 16, gapFinal = 34;
+  const colW = (larg - pad * 2 - colGap) / 2;
+
+  let alt = hCab;
+  for (const b of blocos) alt += hPartidaHead + 6 + hTimeHead + Math.max(b.A.itens.length, b.B.itens.length, 1) * hLinha + gapPartida;
+  alt += gapFinal;
+
+  const logo = new Image();
+  logo.onload = () => desenhar(logo);
+  logo.onerror = () => desenhar(null);
+  logo.src = ESCUDO;
+
+  function desenhar(escudo) {
+    const cv = document.createElement("canvas");
+    cv.width = larg * esc; cv.height = alt * esc;
+    const x = cv.getContext("2d");
+    x.scale(esc, esc); x.textBaseline = "middle";
+    const g = x.createLinearGradient(0, 0, 0, alt);
+    g.addColorStop(0, T.fundoTopo); g.addColorStop(0.45, "#0a2557"); g.addColorStop(1, T.fundoBase);
+    x.fillStyle = g; x.fillRect(0, 0, larg, alt);
+
+    const hEscudo = 60;
+    if (escudo) {
+      const wEscudo = escudo.width * (hEscudo / escudo.height);
+      x.drawImage(escudo, pad, 16, wEscudo, hEscudo);
+    }
+    const xTexto = pad + (escudo ? escudo.width * (hEscudo / escudo.height) + 16 : 0);
+    x.textAlign = "left";
+    x.fillStyle = T.ouro; x.font = "900 21px system-ui, sans-serif";
+    x.fillText("CAMPEONATO JPFFS", xTexto, 34);
+    x.fillStyle = T.texto; x.font = "700 13px system-ui, sans-serif";
+    x.fillText(`ESCALAÇÕES · RODADA ${rodada.numero}`, xTexto, 54);
+    x.fillStyle = T.secundario; x.font = "400 11px system-ui, sans-serif";
+    x.fillText(rodada.data ? new Date(rodada.data + "T12:00:00").toLocaleDateString("pt-BR") : "", xTexto, 72);
+
+    const corEq = indiceEquilibrio >= 90 ? T.verde : indiceEquilibrio >= 75 ? T.ouro : T.laranja;
+    x.textAlign = "right"; x.fillStyle = T.fraco; x.font = "800 9.5px system-ui, sans-serif";
+    x.fillText("EQUILÍBRIO DA RODADA", larg - pad, 28);
+    x.fillStyle = corEq; x.font = "900 26px system-ui, sans-serif";
+    x.fillText(`${indiceEquilibrio}%`, larg - pad, 54);
+
+    let y = hCab;
+    for (const b of blocos) {
+      x.fillStyle = "rgba(255,255,255,0.06)"; x.fillRect(pad, y, larg - pad * 2, hPartidaHead);
+      x.fillStyle = T.ouro; x.font = "800 12px system-ui, sans-serif"; x.textAlign = "center";
+      x.fillText(`PARTIDA ${b.numero}${b.extra ? " · SOBRESSALENTES" : ""}`, larg / 2, y + hPartidaHead / 2);
+      y += hPartidaHead + 6;
+
+      const colX = [pad, pad + colW + colGap];
+      [b.A, b.B].forEach((t, ci) => {
+        x.textAlign = "left"; x.fillStyle = t.hex; x.font = "800 11.5px system-ui, sans-serif";
+        x.fillText(t.cor, colX[ci], y + hTimeHead / 2);
+        x.textAlign = "right"; x.fillStyle = T.ouro; x.font = "800 11px system-ui, sans-serif";
+        x.fillText(`${t.forca}★`, colX[ci] + colW, y + hTimeHead / 2);
+      });
+      y += hTimeHead;
+
+      const nLinhas = Math.max(b.A.itens.length, b.B.itens.length, 1);
+      for (let li = 0; li < nLinhas; li++) {
+        [b.A, b.B].forEach((t, ci) => {
+          const item = t.itens[li];
+          if (!item) return;
+          const rowY = y + hLinha / 2;
+          if (item.vaga) {
+            x.fillStyle = "rgba(255,165,61,.12)"; x.fillRect(colX[ci], y, colW, hLinha - 4);
+            x.fillStyle = T.laranja; x.font = "700 10.5px system-ui, sans-serif"; x.textAlign = "left";
+            x.fillText(`vaga de ${item.papel === "GOLEIRO" ? "goleiro" : "linha"} em aberto`, colX[ci] + 8, rowY);
+            return;
+          }
+          x.fillStyle = item.completou ? "rgba(255,165,61,.06)" : (li % 2 ? "rgba(255,255,255,0.03)" : "transparent");
+          x.fillRect(colX[ci], y, colW, hLinha - 4);
+          x.textAlign = "left";
+          x.font = item.completou ? "italic 600 11px system-ui, sans-serif" : "600 11px system-ui, sans-serif";
+          x.fillStyle = item.completou ? T.fraco : T.texto;
+          const textoNome = (item.goleiro ? "G · " : "") + item.nome;
+          x.fillText(textoNome, colX[ci] + 8, rowY);
+          const wNome = x.measureText(textoNome).width;
+          x.font = "10px system-ui, sans-serif";
+          x.fillStyle = item.completou ? "rgba(245,197,24,.4)" : T.ouro;
+          x.fillText(" " + "★".repeat(item.estrelas), colX[ci] + 10 + wNome, rowY);
+
+          const badges = [];
+          if (item.nivel > 0) { const ni = nivelInfo(item.nivel, cfg); if (ni) badges.push(`${ni.curto} atraso`); }
+          if (item.completou) badges.push("COMPLETOU");
+          if (badges.length) {
+            x.textAlign = "right"; x.font = "800 8.5px system-ui, sans-serif"; x.fillStyle = T.laranja;
+            x.fillText(badges.join(" · "), colX[ci] + colW - 6, rowY);
+          }
+        });
+        y += hLinha;
+      }
+      y += gapPartida;
+    }
+
+    x.textAlign = "left"; x.fillStyle = T.fraco; x.font = "400 10px system-ui, sans-serif";
+    x.fillText("COMPLETOU = entrou só para completar a equipe (Art. 34º §10º), não pontua · badge = nível de atraso na rodada · ★ = classe do jogador no sorteio", pad, alt - 16);
+
+    cv.toBlob((blob) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `jpffs-escalacoes-r${rodada.numero}.png`; a.click();
+      URL.revokeObjectURL(url);
+    });
+  }
+}
+
 function baixarArquivo(nome, conteudo, tipo = "text/csv;charset=utf-8") {
   const blob = new Blob(["\uFEFF" + conteudo], { type: tipo });
   const url = URL.createObjectURL(blob);
@@ -2099,6 +2232,11 @@ function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId 
 
   return (
     <div className="space-y-4">
+      <Botao variante="secundario" className="w-full" onClick={() => {
+        imagemEscalacoes(rodada, nomes, niveis, cfg);
+        avisar("Gerando imagem das escalações…");
+      }}>Enviar escalação</Botao>
+
       {Object.keys(niveis).length > 0 && (
         <Painel className="p-3" style={{ fontSize: 11.5, color: T.secundario }}>
           <b style={{ color: T.laranja }}>Atrasos sinalizados na súmula (§8º):</b>
