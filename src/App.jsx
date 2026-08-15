@@ -1074,6 +1074,7 @@ export default function App() {
   const [sessao, setSessao] = useState(null);
   const [mostrarLogin, setMostrarLogin] = useState(false);
   const pularProximoSalvar = useRef(false);
+  const salvandoPendenteRef = useRef(false); // true enquanto há uma alteração local ainda não gravada
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSessao(data.session));
@@ -1084,6 +1085,7 @@ export default function App() {
   useEffect(() => {
     const sincronizar = async () => {
       if (document.visibilityState !== "visible") return;
+      if (salvandoPendenteRef.current) return; // há alteração local pendente de salvar — não sobrescrever
       const nova = await carregarBase();
       if (nova) { pularProximoSalvar.current = true; setBase(nova); }
     };
@@ -1099,7 +1101,7 @@ export default function App() {
       .channel("base:realtime")
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "base" }, (payload) => {
         const nova = payload.new?.dados;
-        if (nova && Object.keys(nova).length) {
+        if (nova && Object.keys(nova).length && !salvandoPendenteRef.current) {
           pularProximoSalvar.current = true;
           setBase(migrarBase(nova));
           if (payload.new.atualizado_por && payload.new.atualizado_por !== sessao?.user?.email) {
@@ -1114,7 +1116,11 @@ export default function App() {
     if (!base) return;
     if (pularProximoSalvar.current) { pularProximoSalvar.current = false; return; }
     if (!sessao) return;
-    const t = setTimeout(() => salvarBase(base), 250);
+    salvandoPendenteRef.current = true;
+    const t = setTimeout(async () => {
+      await salvarBase(base);
+      salvandoPendenteRef.current = false;
+    }, 250);
     return () => clearTimeout(t);
   }, [base, sessao]);
 
@@ -1364,6 +1370,19 @@ function EtapaPresenca({ base, setBase, rodada, atualizar, porId, cfg, dados, av
 
       <section>
         <Secao titulo="Chamada" detalhe="ausente → presente → atrasado" />
+        {Object.keys(rodada.presencas || {}).length > 0 && (
+          <button
+            onClick={() => {
+              const temLancamento = (rodada.jogos || []).length > 0 || !!rodada.sorteioRascunho;
+              if (temLancamento && !confirm("Limpar toda a presença marcada? Vagas das partidas já sorteadas podem ficar em aberto."))
+                return;
+              atualizar({ presencas: {} });
+              avisar("Seleção de presença limpa");
+            }}
+            style={{ display: "block", marginBottom: 10, fontSize: 11.5, fontWeight: 700, color: T.laranja, textDecoration: "underline" }}>
+            Limpar seleção
+          </button>
+        )}
         <div className="space-y-4">
           {gruposChamada.map((grupo) => (
             <div key={grupo.titulo}>
@@ -1987,7 +2006,92 @@ function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId 
       mudou = true;
     }
 
-    if (mudou) { atualizar({ times: novosTimes }); avisar("A última partida em aberto foi reequilibrada com quem está presente"); }
+    // Depois de tentar preencher as vagas abertas das partidas já sorteadas, quem ainda sobrar
+    // (não coube em nenhuma vaga) ganha partida(s) extra(s) dentro da mesma rodada. Não importa
+    // se sobrou 1, 2 ou 6: todo mundo que sobrou entra num único cálculo de equilíbrio conjunto
+    // (o mesmo motor do sorteio normal), então quando há mais de uma partida extra elas também
+    // ficam equilibradas entre si, não cada uma isolada.
+    const novosJogos = [];
+    if ((rodada.jogos || []).length > 0) {
+      const idsEmUsoDepois = new Set();
+      for (const t of novosTimes) for (const jj of t.jogadores || []) idsEmUsoDepois.add(jj.jogadorId);
+      const sobraFinal = P.aptos.map((e) => e.jogador.id).filter((jid) => !idsEmUsoDepois.has(jid));
+      let proximoNumero = Math.max(0, ...(rodada.jogos || []).map((g) => g.numero)) + 1;
+
+      if (sobraFinal.length > 0) {
+        // ordenado do mais estrelado pro menos, pra já distribuir em zigue-zague (time forte/fraco intercalado)
+        const entradasSobra = sobraFinal.map(entradaDe).filter(Boolean).sort((a, b) => b.estrelas - a.estrelas);
+        const nGk = entradasSobra.filter((e) => e.ehGoleiro).length;
+        const nLn = entradasSobra.length - nGk;
+        const capGk = gkPorTime * 2, capLn = linhaPorTime * 2;
+        // quantas partidas extras cabem com quem sobrou (garante vaga de goleiro e de linha pra todo mundo)
+        const partidasExtras = Math.max(1, Math.ceil(Math.max(nGk / capGk, nLn / capLn)));
+        const nTimesExtras = partidasExtras * 2;
+
+        const timesExtras = Array.from({ length: nTimesExtras }, () => []);
+        const contagem = Array.from({ length: nTimesExtras }, () => ({ gk: 0, ln: 0 }));
+        let cursor = 0;
+        for (const e of entradasSobra) {
+          const chave = e.ehGoleiro ? "gk" : "ln";
+          const cap = e.ehGoleiro ? gkPorTime : linhaPorTime;
+          let tentativas = 0;
+          while (contagem[cursor][chave] >= cap && tentativas < nTimesExtras) { cursor = (cursor + 1) % nTimesExtras; tentativas++; }
+          if (contagem[cursor][chave] >= cap) continue; // não coube em nenhuma partida extra — sobra pra próxima chegada
+          timesExtras[cursor].push({ ...e, slotGoleiro: e.ehGoleiro });
+          contagem[cursor][chave] += 1;
+          cursor = (cursor + 1) % nTimesExtras;
+        }
+
+        const todosNaExtra = timesExtras.flat();
+        if (todosNaExtra.length) {
+          // mesmo ajuste fino de equilíbrio por estrelas do sorteio normal — considera todas as
+          // partidas extras juntas, então elas ficam equilibradas entre si também, não isoladas
+          buscaLocal(timesExtras, {
+            pesos: cfg.pesos, goleirosPorTime: gkPorTime, goleirosSuficientes: false,
+            totalCinco: todosNaExtra.filter((j) => j.estrelas === 5).length, duplasRecentes: null,
+            restricoes: (base.restricoes || []).filter((r) => todosNaExtra.some((j) => j.id === r.a) && todosNaExtra.some((j) => j.id === r.b)),
+            usarAproveitamento: cfg.usarAproveitamento, travados: new Set(),
+            partidaDoTime: (i) => Math.floor(i / 2),
+            nome: (x) => nomes[x] || "?", nomeTime: (i) => `Extra ${Math.floor(i / 2) + 1}`,
+          });
+
+          const montarLado = (lista) => {
+            const gkCount = lista.filter((e) => e.ehGoleiro).length;
+            return {
+              jogadores: lista.map((e) => ({ jogadorId: e.id, estrelaNoSorteio: e.estrelas, atuaComoGoleiro: e.ehGoleiro })),
+              vagasAbertas: [
+                ...Array(Math.max(0, gkPorTime - gkCount)).fill("GOLEIRO"),
+                ...Array(Math.max(0, linhaPorTime - (lista.length - gkCount))).fill("LINHA"),
+              ],
+            };
+          };
+
+          for (let p = 0; p < partidasExtras; p++) {
+            const listaA = timesExtras[p * 2], listaB = timesExtras[p * 2 + 1];
+            if (!listaA.length && !listaB.length) continue;
+            const timeA = { id: id(), partida: proximoNumero, cor: AMARELO.cor, chave: AMARELO.chave, seed: null, ...montarLado(listaA) };
+            const timeB = { id: id(), partida: proximoNumero, cor: AZUL.cor, chave: AZUL.chave, seed: null, ...montarLado(listaB) };
+            novosTimes.push(timeA, timeB);
+            novosJogos.push({
+              id: id(), numero: proximoNumero, timeA: timeA.id, timeB: timeB.id, extra: true,
+              golsContraA: 0, golsContraB: 0, golsNaoComputadosA: 0, golsNaoComputadosB: 0,
+              placarManual: null, encerrado: false, completaTime: [], soCartoes: [], eventos: {},
+            });
+            proximoNumero += 1;
+            mudou = true;
+          }
+        }
+      }
+    }
+
+    if (mudou) {
+      const patch = { times: novosTimes };
+      if (novosJogos.length) patch.jogos = [...(rodada.jogos || []), ...novosJogos];
+      atualizar(patch);
+      avisar(novosJogos.length
+        ? (novosJogos.length > 1 ? `${novosJogos.length} partidas extras criadas para quem sobrou dos atrasados` : "Partida extra criada para quem sobrou dos atrasados")
+        : "A última partida em aberto foi reequilibrada com quem está presente");
+    }
   }, [rodada.presencas]);
 
   if (!rodada.jogos.length)
@@ -2006,7 +2110,7 @@ function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId 
 
       {[...rodada.jogos].sort((a, b) => a.numero - b.numero).map((jogo) => (
         <div key={jogo.id}>
-          <FaixaPartida n={jogo.numero} />
+          <FaixaPartida n={jogo.numero} extra={!!jogo.extra} />
           <Sumula {...{ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, porId }} />
         </div>
       ))}
