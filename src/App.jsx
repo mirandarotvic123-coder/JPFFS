@@ -2816,6 +2816,7 @@ function TelaElenco({ base, setBase, dados, cfg, avisar }) {
   const [busca, setBusca] = useState("");
   const [ordem, setOrdem] = useState("alfabetica");
   const [editando, setEditando] = useState(null);
+  const [nomeEditado, setNomeEditado] = useState({});
   const inputRef = useRef(null);
   const porId = Object.fromEntries(dados.todos.map((l) => [l.id, l]));
   const atualizar = (jid, patch) => setBase({ ...base, jogadores: base.jogadores.map((j) => (j.id === jid ? { ...j, ...patch } : j)) });
@@ -2939,7 +2940,10 @@ function TelaElenco({ base, setBase, dados, cfg, avisar }) {
                       </div>
                     )}
                   </div>
-                  <button onClick={() => setEditando(aberto ? null : j.id)} className="shrink-0 rounded-lg"
+                  <button onClick={() => {
+                    setEditando(aberto ? null : j.id);
+                    setNomeEditado((s) => { const c = { ...s }; delete c[j.id]; return c; });
+                  }} className="shrink-0 rounded-lg"
                     style={{
                       padding: "9px 12px", minHeight: 40, fontSize: 11.5, fontWeight: 800, letterSpacing: ".06em",
                       background: aberto ? `linear-gradient(180deg,${T.ouroClaro},${T.ouro})` : "rgba(255,255,255,.08)",
@@ -2951,6 +2955,23 @@ function TelaElenco({ base, setBase, dados, cfg, avisar }) {
 
                 {aberto && (
                   <div className="space-y-2 px-3 pb-3" style={{ borderTop: `1px solid ${T.borda}`, paddingTop: 12 }}>
+                    <Campo rotulo="Nome">
+                      <div className="flex gap-2">
+                        <input value={nomeEditado[j.id] ?? j.nome}
+                          onChange={(e) => setNomeEditado({ ...nomeEditado, [j.id]: e.target.value })}
+                          style={{ ...inputStyle, flex: 1 }} />
+                        <Botao style={{ padding: "0 14px" }}
+                          disabled={(nomeEditado[j.id] ?? j.nome).trim() === j.nome}
+                          onClick={() => {
+                            const novo = (nomeEditado[j.id] ?? j.nome).trim();
+                            if (!novo) return avisar("Nome não pode ficar vazio");
+                            atualizar(j.id, { nome: novo });
+                            setNomeEditado((s) => { const c = { ...s }; delete c[j.id]; return c; });
+                            avisar("Nome atualizado");
+                          }}>Salvar</Botao>
+                      </div>
+                    </Campo>
+
                     <Segmento titulo="Posição" valor={j.posicao}
                       onChange={(v) => atualizar(j.id, { posicao: v, posicaoInferida: false })}
                       opcoes={[{ valor: "LINHA", rotulo: "Jogador de linha" }, { valor: "GOLEIRO", rotulo: "Goleiro", cor: T.gk }]} />
