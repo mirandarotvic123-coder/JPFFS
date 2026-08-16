@@ -2116,6 +2116,27 @@ function sortearParcial(tA, tB, sobra, cfg, nomes, restricoes) {
   return { A: vagasDe(A), B: vagasDe(B) };
 }
 
+// Cria uma partida nova só com quem está "aguardando encaixe" — ação manual do organizador,
+// nunca automática. Reaproveita o mesmo encaixe por força de sortearParcial, só que partindo
+// de dois times vazios. Se não sobrar gente pra fechar os dois lados por completo, a partida
+// nasce com vagas em aberto, que entram no fluxo normal de "Sortear esta partida" quando mais
+// gente chegar depois.
+function criarPartidaExtra(sobra, cfg, nomes, restricoes, numero) {
+  const resultado = sortearParcial({ jogadores: [] }, { jogadores: [] }, sobra, cfg, nomes, restricoes);
+  const criarTime = (cor, dados) => ({
+    id: id(), partida: numero, cor: cor.cor, chave: cor.chave, seed: null, extra: true,
+    jogadores: dados.jogadores, vagasAbertas: dados.vagasAbertas,
+  });
+  const timeA = criarTime(AMARELO, resultado.A);
+  const timeB = criarTime(AZUL, resultado.B);
+  const jogo = {
+    id: id(), numero, timeA: timeA.id, timeB: timeB.id, extra: true,
+    golsContraA: 0, golsContraB: 0, golsNaoComputadosA: 0, golsNaoComputadosB: 0,
+    placarManual: null, encerrado: false, completaTime: [], soCartoes: [], eventos: {},
+  };
+  return { times: [timeA, timeB], jogo };
+}
+
 function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId }) {
   const niveis = dados.disciplina.porRodada[rodada.id] || {};
   const [jogoAlvo, setJogoAlvo] = useState("");
@@ -2158,6 +2179,13 @@ function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId 
     avisar(`Partida ${jogo.numero} resorteada com quem chegou`);
   }
 
+  function criarExtra() {
+    const numero = Math.max(0, ...rodada.jogos.map((j) => j.numero)) + 1;
+    const { times: novosTimes, jogo: novoJogo } = criarPartidaExtra(sobra, cfg, nomes, base.restricoes, numero);
+    atualizar({ times: [...rodada.times, ...novosTimes], jogos: [...rodada.jogos, novoJogo] });
+    avisar(`Partida extra ${numero} criada com quem estava aguardando encaixe`);
+  }
+
   if (!rodada.jogos.length)
     return <Painel className="p-6 text-center" style={{ borderStyle: "dashed", fontSize: 14, color: T.secundario }}>Nenhuma partida sorteada ainda. Volte para a etapa Sorteio.</Painel>;
 
@@ -2198,10 +2226,22 @@ function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId 
               </Campo>
               <Botao className="w-full" disabled={!jogoAlvo} onClick={sortearPartida}>Sortear esta partida</Botao>
             </>
+          ) : sobra.length >= 2 ? (
+            <>
+              <p style={{ fontSize: 11.5, color: T.fraco }}>
+                Nenhuma partida com vaga aberta agora — as vagas já foram preenchidas, ou as partidas
+                com vaga já começaram a ser pontuadas. Dá pra criar uma partida extra só com quem
+                está aguardando encaixe.
+              </p>
+              <Botao className="w-full" onClick={criarExtra}>
+                Criar partida extra com quem sobrou ({sobra.length})
+              </Botao>
+            </>
           ) : (
             <p style={{ fontSize: 11.5, color: T.fraco }}>
-              Nenhuma partida disponível pra sortear agora — ou as vagas já foram preenchidas, ou as partidas com vaga já começaram a ser pontuadas.
-              Use o seletor "quem completa" dentro da súmula pra encaixar manualmente.
+              Só {sobra.length === 1 ? "1 pessoa está" : "ninguém está"} aguardando encaixe — falta
+              gente pra formar uma partida extra. Assim que outro atrasado chegar ou uma vaga abrir,
+              dá pra encaixar.
             </p>
           )}
         </Painel>
