@@ -2226,23 +2226,17 @@ function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId 
               </Campo>
               <Botao className="w-full" disabled={!jogoAlvo} onClick={sortearPartida}>Sortear esta partida</Botao>
             </>
-          ) : sobra.length >= 2 ? (
+          ) : (
             <>
               <p style={{ fontSize: 11.5, color: T.fraco }}>
                 Nenhuma partida com vaga aberta agora — as vagas já foram preenchidas, ou as partidas
                 com vaga já começaram a ser pontuadas. Dá pra criar uma partida extra só com quem
-                está aguardando encaixe.
+                está aguardando encaixe{sobra.length === 1 ? " — o resto dos times fica em aberto pra você completar na mão" : ""}.
               </p>
               <Botao className="w-full" onClick={criarExtra}>
                 Criar partida extra com quem sobrou ({sobra.length})
               </Botao>
             </>
-          ) : (
-            <p style={{ fontSize: 11.5, color: T.fraco }}>
-              Só {sobra.length === 1 ? "1 pessoa está" : "ninguém está"} aguardando encaixe — falta
-              gente pra formar uma partida extra. Assim que outro atrasado chegar ou uma vaga abrir,
-              dá pra encaixar.
-            </p>
           )}
         </Painel>
       )}
