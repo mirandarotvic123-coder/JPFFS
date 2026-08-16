@@ -2064,168 +2064,93 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
 
 /* --------------------- Etapa 3: partidas e súmulas -----------------------*/
 
+// Resorteia só UMA partida específica: mantém quem já está escalado nela (nunca remove
+// ninguém), e preenche só as vagas de fato abertas (linha e/ou goleiro) com quem está
+// aguardando encaixe. Depois roda o mesmo ajuste fino de equilíbrio (buscaLocal), que pode
+// trocar quem já estava de time (Amarelo↔Azul) mas nunca tira alguém já confirmado da partida.
+function sortearParcial(tA, tB, sobra, cfg, nomes, restricoes) {
+  const gkPorTime = cfg.goleirosPorTime, linhaPorTime = cfg.jogadoresPorTime - gkPorTime;
+  const existentes = [
+    ...(tA.jogadores || []).map((j) => ({ id: j.jogadorId, estrelas: j.estrelaNoSorteio || 1, ehGoleiro: j.atuaComoGoleiro })),
+    ...(tB.jogadores || []).map((j) => ({ id: j.jogadorId, estrelas: j.estrelaNoSorteio || 1, ehGoleiro: j.atuaComoGoleiro })),
+  ];
+  const idsExistentes = new Set(existentes.map((e) => e.id));
+  const gkExistentes = existentes.filter((e) => e.ehGoleiro);
+  const lnExistentes = existentes.filter((e) => !e.ehGoleiro);
+
+  const vagasGk = Math.max(0, gkPorTime * 2 - gkExistentes.length);
+  const vagasLn = Math.max(0, linhaPorTime * 2 - lnExistentes.length);
+  const sobraGk = sobra.filter((s) => s.ehGoleiro && !idsExistentes.has(s.id)).sort((a, b) => b.estrelas - a.estrelas).slice(0, vagasGk);
+  const sobraLn = sobra.filter((s) => !s.ehGoleiro && !idsExistentes.has(s.id)).sort((a, b) => b.estrelas - a.estrelas).slice(0, vagasLn);
+
+  const gkPool = [...gkExistentes, ...sobraGk];
+  const lnPool = [...lnExistentes, ...sobraLn].sort((a, b) => b.estrelas - a.estrelas);
+
+  const A = [], B = [];
+  gkPool.forEach((j, i) => (i % 2 === 0 ? A : B).push({ ...j, slotGoleiro: true }));
+  lnPool.forEach((j, i) => (i % 4 === 0 || i % 4 === 3 ? A : B).push({ ...j, slotGoleiro: false }));
+  const times2 = [A, B];
+  const todos2 = [...A, ...B];
+
+  buscaLocal(times2, {
+    pesos: cfg.pesos, goleirosPorTime: gkPorTime, goleirosSuficientes: false,
+    totalCinco: todos2.filter((j) => j.estrelas === 5).length, duplasRecentes: null,
+    restricoes: (restricoes || []).filter((r) => todos2.some((j) => j.id === r.a) && todos2.some((j) => j.id === r.b)),
+    usarAproveitamento: cfg.usarAproveitamento, travados: new Set(),
+    nome: (x) => nomes[x] || "?", nomeTime: (i) => (i === 0 ? "Amarelo" : "Azul"),
+  });
+
+  const vagasDe = (jogadores) => {
+    const gk = jogadores.filter((j) => j.slotGoleiro), ln = jogadores.filter((j) => !j.slotGoleiro);
+    return {
+      jogadores: [
+        ...gk.map((j) => ({ jogadorId: j.id, estrelaNoSorteio: j.estrelas, atuaComoGoleiro: true })),
+        ...ln.map((j) => ({ jogadorId: j.id, estrelaNoSorteio: j.estrelas, atuaComoGoleiro: false })),
+      ],
+      vagasAbertas: [
+        ...Array(Math.max(0, gkPorTime - gk.length)).fill("GOLEIRO"),
+        ...Array(Math.max(0, linhaPorTime - ln.length)).fill("LINHA"),
+      ],
+    };
+  };
+  return { A: vagasDe(A), B: vagasDe(B) };
+}
+
 function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId }) {
   const niveis = dados.disciplina.porRodada[rodada.id] || {};
-  useEffect(() => {
-    const gkPorTime = cfg.goleirosPorTime, linhaPorTime = cfg.jogadoresPorTime - gkPorTime;
-    const P = poolsDoDia(base, rodada, porId, dados, cfg);
-    const idsEmUso = new Set();
-    for (const t of rodada.times || []) for (const jj of t.jogadores || []) idsEmUso.add(jj.jogadorId);
-    const sobraIds = P.aptos.map((e) => e.jogador.id).filter((id) => !idsEmUso.has(id));
-    const sobraSet = new Set(sobraIds);
-    const entradaDe = (jid) => {
-      const j = base.jogadores.find((x) => x.id === jid);
-      if (!j) return null;
-      const l = porId[jid];
-      return { id: jid, nome: j.nome, ehGoleiro: j.posicao === "GOLEIRO", estrelas: j.convidado ? (j.estrelasIniciais || 1) : (l?.estrelas || 1) };
-    };
+  const [jogoAlvo, setJogoAlvo] = useState("");
 
-    let mudou = false;
-    const novosTimes = (rodada.times || []).map((t) => ({ ...t }));
+  const P = poolsDoDia(base, rodada, porId, dados, cfg);
+  const idsEmUso = new Set();
+  for (const t of rodada.times || []) for (const jj of t.jogadores || []) idsEmUso.add(jj.jogadorId);
+  const sobra = P.aptos.filter((e) => !idsEmUso.has(e.jogador.id)).map((e) => ({
+    id: e.jogador.id, nome: e.jogador.nome, ehGoleiro: e.jogador.posicao === "GOLEIRO",
+    estrelas: e.jogador.convidado ? (e.jogador.estrelasIniciais || 1) : (e.linha?.estrelas || 1),
+    nivel: e.nivel,
+  }));
+  const intocada = (jogo) => Object.keys(jogo.eventos || {}).length === 0 && !jogo.placarManual &&
+    !(jogo.golsContraA || jogo.golsContraB || jogo.golsNaoComputadosA || jogo.golsNaoComputadosB);
+  const jogosComVaga = (rodada.jogos || []).filter((j) => {
+    if (j.encerrado || !intocada(j)) return false;
+    const tA = timePorId(rodada, j.timeA), tB = timePorId(rodada, j.timeB);
+    return ((tA?.vagasAbertas || []).length + (tB?.vagasAbertas || []).length) > 0;
+  });
 
-    for (const jogo of rodada.jogos || []) {
-      if (jogo.encerrado) continue;
-      const intocada = Object.keys(jogo.eventos || {}).length === 0 && !jogo.placarManual &&
-        !(jogo.golsContraA || jogo.golsContraB || jogo.golsNaoComputadosA || jogo.golsNaoComputadosB);
-      if (!intocada) continue;
-      const tA = novosTimes.find((t) => t.id === jogo.timeA), tB = novosTimes.find((t) => t.id === jogo.timeB);
-      if (!tA || !tB) continue;
-      if (!(tA.vagasAbertas || []).length && !(tB.vagasAbertas || []).length) continue;
-
-      const idsAntes = new Set([...idsDoTime(tA), ...idsDoTime(tB)]);
-      const poolIds = [...idsAntes, ...sobraIds];
-      const pool = poolIds.map(entradaDe).filter(Boolean);
-      const gkPool = pool.filter((e) => e.ehGoleiro).sort((a, b) => b.estrelas - a.estrelas).slice(0, gkPorTime * 2);
-      const lnPool = pool.filter((e) => !e.ehGoleiro).sort((a, b) => b.estrelas - a.estrelas).slice(0, linhaPorTime * 2);
-
-      const A = [], B = [];
-      gkPool.forEach((j, i) => (i % 2 === 0 ? A : B).push({ ...j, slotGoleiro: true }));
-      lnPool.forEach((j, i) => (i % 4 === 0 || i % 4 === 3 ? A : B).push({ ...j, slotGoleiro: false }));
-      const times2 = [A, B];
-      const todos2 = [...A, ...B];
-      const novosNaLinha = lnPool.filter((j) => sobraSet.has(j.id)).sort((a, b) => b.estrelas - a.estrelas);
-      const separacoesNovos = [];
-      for (let i = 0; i + 1 < novosNaLinha.length; i += 2)
-        separacoesNovos.push({ a: novosNaLinha[i].id, b: novosNaLinha[i + 1].id, tipo: "separados" });
-
-      buscaLocal(times2, {
-        pesos: cfg.pesos, goleirosPorTime: gkPorTime, goleirosSuficientes: false,
-        totalCinco: todos2.filter((j) => j.estrelas === 5).length, duplasRecentes: null,
-        restricoes: [
-          ...(base.restricoes || []).filter((r) => todos2.some((j) => j.id === r.a) && todos2.some((j) => j.id === r.b)),
-          ...separacoesNovos,
-        ],
-        usarAproveitamento: cfg.usarAproveitamento, travados: new Set(),
-        nome: (x) => nomes[x] || "?", nomeTime: (i) => (i === 0 ? "Amarelo" : "Azul"),
-      });
-
-      const idsDepois = new Set(todos2.map((j) => j.id));
-      const igual = idsAntes.size === idsDepois.size && [...idsAntes].every((id) => idsDepois.has(id));
-      if (igual) continue;
-
-      const vagasDe = (jogadores) => {
-        const gk = jogadores.filter((j) => j.slotGoleiro), ln = jogadores.filter((j) => !j.slotGoleiro);
-        const jogadoresFinal = [
-          ...gk.slice(0, gkPorTime).map((j) => ({ jogadorId: j.id, estrelaNoSorteio: j.estrelas, atuaComoGoleiro: true })),
-          ...ln.slice(0, linhaPorTime).map((j) => ({ jogadorId: j.id, estrelaNoSorteio: j.estrelas, atuaComoGoleiro: false })),
-        ];
-        const vagasAbertas = [
-          ...Array(Math.max(0, gkPorTime - gk.length)).fill("GOLEIRO"),
-          ...Array(Math.max(0, linhaPorTime - ln.length)).fill("LINHA"),
-        ];
-        return { jogadores: jogadoresFinal, vagasAbertas };
-      };
-      Object.assign(tA, vagasDe(A)); Object.assign(tB, vagasDe(B));
-      mudou = true;
-    }
-
-    // Depois de tentar preencher as vagas abertas das partidas já sorteadas, quem ainda sobrar
-    // (não coube em nenhuma vaga) ganha partida(s) extra(s) dentro da mesma rodada. Não importa
-    // se sobrou 1, 2 ou 6: todo mundo que sobrou entra num único cálculo de equilíbrio conjunto
-    // (o mesmo motor do sorteio normal), então quando há mais de uma partida extra elas também
-    // ficam equilibradas entre si, não cada uma isolada.
-    const novosJogos = [];
-    if ((rodada.jogos || []).length > 0) {
-      const idsEmUsoDepois = new Set();
-      for (const t of novosTimes) for (const jj of t.jogadores || []) idsEmUsoDepois.add(jj.jogadorId);
-      const sobraFinal = P.aptos.map((e) => e.jogador.id).filter((jid) => !idsEmUsoDepois.has(jid));
-      let proximoNumero = Math.max(0, ...(rodada.jogos || []).map((g) => g.numero)) + 1;
-
-      if (sobraFinal.length > 0) {
-        // ordenado do mais estrelado pro menos, pra já distribuir em zigue-zague (time forte/fraco intercalado)
-        const entradasSobra = sobraFinal.map(entradaDe).filter(Boolean).sort((a, b) => b.estrelas - a.estrelas);
-        const nGk = entradasSobra.filter((e) => e.ehGoleiro).length;
-        const nLn = entradasSobra.length - nGk;
-        const capGk = gkPorTime * 2, capLn = linhaPorTime * 2;
-        // quantas partidas extras cabem com quem sobrou (garante vaga de goleiro e de linha pra todo mundo)
-        const partidasExtras = Math.max(1, Math.ceil(Math.max(nGk / capGk, nLn / capLn)));
-        const nTimesExtras = partidasExtras * 2;
-
-        const timesExtras = Array.from({ length: nTimesExtras }, () => []);
-        const contagem = Array.from({ length: nTimesExtras }, () => ({ gk: 0, ln: 0 }));
-        let cursor = 0;
-        for (const e of entradasSobra) {
-          const chave = e.ehGoleiro ? "gk" : "ln";
-          const cap = e.ehGoleiro ? gkPorTime : linhaPorTime;
-          let tentativas = 0;
-          while (contagem[cursor][chave] >= cap && tentativas < nTimesExtras) { cursor = (cursor + 1) % nTimesExtras; tentativas++; }
-          if (contagem[cursor][chave] >= cap) continue; // não coube em nenhuma partida extra — sobra pra próxima chegada
-          timesExtras[cursor].push({ ...e, slotGoleiro: e.ehGoleiro });
-          contagem[cursor][chave] += 1;
-          cursor = (cursor + 1) % nTimesExtras;
-        }
-
-        const todosNaExtra = timesExtras.flat();
-        if (todosNaExtra.length) {
-          // mesmo ajuste fino de equilíbrio por estrelas do sorteio normal — considera todas as
-          // partidas extras juntas, então elas ficam equilibradas entre si também, não isoladas
-          buscaLocal(timesExtras, {
-            pesos: cfg.pesos, goleirosPorTime: gkPorTime, goleirosSuficientes: false,
-            totalCinco: todosNaExtra.filter((j) => j.estrelas === 5).length, duplasRecentes: null,
-            restricoes: (base.restricoes || []).filter((r) => todosNaExtra.some((j) => j.id === r.a) && todosNaExtra.some((j) => j.id === r.b)),
-            usarAproveitamento: cfg.usarAproveitamento, travados: new Set(),
-            partidaDoTime: (i) => Math.floor(i / 2),
-            nome: (x) => nomes[x] || "?", nomeTime: (i) => `Extra ${Math.floor(i / 2) + 1}`,
-          });
-
-          const montarLado = (lista) => {
-            const gkCount = lista.filter((e) => e.ehGoleiro).length;
-            return {
-              jogadores: lista.map((e) => ({ jogadorId: e.id, estrelaNoSorteio: e.estrelas, atuaComoGoleiro: e.ehGoleiro })),
-              vagasAbertas: [
-                ...Array(Math.max(0, gkPorTime - gkCount)).fill("GOLEIRO"),
-                ...Array(Math.max(0, linhaPorTime - (lista.length - gkCount))).fill("LINHA"),
-              ],
-            };
-          };
-
-          for (let p = 0; p < partidasExtras; p++) {
-            const listaA = timesExtras[p * 2], listaB = timesExtras[p * 2 + 1];
-            if (!listaA.length && !listaB.length) continue;
-            const timeA = { id: id(), partida: proximoNumero, cor: AMARELO.cor, chave: AMARELO.chave, seed: null, ...montarLado(listaA) };
-            const timeB = { id: id(), partida: proximoNumero, cor: AZUL.cor, chave: AZUL.chave, seed: null, ...montarLado(listaB) };
-            novosTimes.push(timeA, timeB);
-            novosJogos.push({
-              id: id(), numero: proximoNumero, timeA: timeA.id, timeB: timeB.id, extra: true,
-              golsContraA: 0, golsContraB: 0, golsNaoComputadosA: 0, golsNaoComputadosB: 0,
-              placarManual: null, encerrado: false, completaTime: [], soCartoes: [], eventos: {},
-            });
-            proximoNumero += 1;
-            mudou = true;
-          }
-        }
-      }
-    }
-
-    if (mudou) {
-      const patch = { times: novosTimes };
-      if (novosJogos.length) patch.jogos = [...(rodada.jogos || []), ...novosJogos];
-      atualizar(patch);
-      avisar(novosJogos.length
-        ? (novosJogos.length > 1 ? `${novosJogos.length} partidas extras criadas para quem sobrou dos atrasados` : "Partida extra criada para quem sobrou dos atrasados")
-        : "A última partida em aberto foi reequilibrada com quem está presente");
-    }
-  }, [rodada.presencas]);
+  function sortearPartida() {
+    const jogo = rodada.jogos.find((j) => j.id === jogoAlvo);
+    if (!jogo) return;
+    const tA = timePorId(rodada, jogo.timeA), tB = timePorId(rodada, jogo.timeB);
+    if (!tA || !tB) return;
+    const resultado = sortearParcial(tA, tB, sobra, cfg, nomes, base.restricoes);
+    const novoTimes = rodada.times.map((t) => {
+      if (t.id === tA.id) return { ...t, ...resultado.A };
+      if (t.id === tB.id) return { ...t, ...resultado.B };
+      return t;
+    });
+    atualizar({ times: novoTimes });
+    setJogoAlvo("");
+    avisar(`Partida ${jogo.numero} resorteada com quem chegou`);
+  }
 
   if (!rodada.jogos.length)
     return <Painel className="p-6 text-center" style={{ borderStyle: "dashed", fontSize: 14, color: T.secundario }}>Nenhuma partida sorteada ainda. Volte para a etapa Sorteio.</Painel>;
@@ -2236,6 +2161,45 @@ function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId 
         imagemEscalacoes(rodada, nomes, niveis, cfg);
         avisar("Gerando imagem das escalações…");
       }}>Enviar escalação</Botao>
+
+      {sobra.length > 0 && (
+        <Painel className="p-3 space-y-3" style={{ borderColor: T.laranja, background: "rgba(255,165,61,.08)" }}>
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".14em", color: T.laranja, marginBottom: 6 }}>AGUARDANDO ENCAIXE</div>
+            <div className="flex flex-wrap gap-1.5">
+              {sobra.map((s) => (
+                <span key={s.id} className="flex items-center gap-1 rounded-full"
+                  style={{ padding: "6px 10px", fontSize: 12.5, fontWeight: 600, background: "rgba(255,255,255,.06)", border: `1px solid ${T.borda}` }}>
+                  {s.ehGoleiro && <IconeGoleiro tam={12} />}
+                  {s.nome}
+                  <Estrelas n={s.estrelas} tam={9} goleiro={s.ehGoleiro} />
+                  {s.nivel > 0 && <SeloAtraso nivel={s.nivel} cfg={cfg} mini />}
+                </span>
+              ))}
+            </div>
+          </div>
+          {jogosComVaga.length > 0 ? (
+            <>
+              <Campo rotulo="Escolher partida">
+                <select value={jogoAlvo} onChange={(e) => setJogoAlvo(e.target.value)} style={{ ...inputStyle, padding: "10px", fontSize: 13 }}>
+                  <option value="">— selecionar —</option>
+                  {jogosComVaga.map((j) => {
+                    const tA = timePorId(rodada, j.timeA), tB = timePorId(rodada, j.timeB);
+                    const vagas = (tA?.vagasAbertas?.length || 0) + (tB?.vagasAbertas?.length || 0);
+                    return <option key={j.id} value={j.id}>Partida {j.numero} · {vagas} vaga(s) em aberto</option>;
+                  })}
+                </select>
+              </Campo>
+              <Botao className="w-full" disabled={!jogoAlvo} onClick={sortearPartida}>Sortear esta partida</Botao>
+            </>
+          ) : (
+            <p style={{ fontSize: 11.5, color: T.fraco }}>
+              Nenhuma partida disponível pra sortear agora — ou as vagas já foram preenchidas, ou as partidas com vaga já começaram a ser pontuadas.
+              Use o seletor "quem completa" dentro da súmula pra encaixar manualmente.
+            </p>
+          )}
+        </Painel>
+      )}
 
       {Object.keys(niveis).length > 0 && (
         <Painel className="p-3" style={{ fontSize: 11.5, color: T.secundario }}>
