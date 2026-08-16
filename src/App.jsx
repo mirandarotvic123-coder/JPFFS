@@ -2121,9 +2121,15 @@ function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId 
   const [jogoAlvo, setJogoAlvo] = useState("");
 
   const P = poolsDoDia(base, rodada, porId, dados, cfg);
-  const idsEmUso = new Set();
-  for (const t of rodada.times || []) for (const jj of t.jogadores || []) idsEmUso.add(jj.jogadorId);
-  const sobra = P.aptos.filter((e) => !idsEmUso.has(e.jogador.id)).map((e) => ({
+  // Só sai do "aguardando encaixe" quem já tem uma colocação que vale (pontua) em algum jogo —
+  // quem só entrou pra completar (§10º) continua aparecendo, porque ainda não teve seu encaixe de verdade.
+  const idsComVagaReal = new Set();
+  for (const t of rodada.times || []) {
+    const jogoDoTime = (rodada.jogos || []).find((j) => j.timeA === t.id || j.timeB === t.id);
+    const soCartoesDoJogo = jogoDoTime ? new Set([...(jogoDoTime.completaTime || []), ...(jogoDoTime.soCartoes || [])]) : new Set();
+    for (const jj of t.jogadores || []) if (!soCartoesDoJogo.has(jj.jogadorId)) idsComVagaReal.add(jj.jogadorId);
+  }
+  const sobra = P.aptos.filter((e) => !idsComVagaReal.has(e.jogador.id)).map((e) => ({
     id: e.jogador.id, nome: e.jogador.nome, ehGoleiro: e.jogador.posicao === "GOLEIRO",
     estrelas: e.jogador.convidado ? (e.jogador.estrelasIniciais || 1) : (e.linha?.estrelas || 1),
     nivel: e.nivel,
@@ -2243,6 +2249,7 @@ function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId 
 
 function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, porId }) {
   const jog = Object.fromEntries(base.jogadores.map((j) => [j.id, j]));
+  const [pendenteVaga, setPendenteVaga] = useState({});
   const tA = timePorId(rodada, jogo.timeA), tB = timePorId(rodada, jogo.timeB);
   const p = placarDe(jogo, rodada);
   const soCartoes = new Set([...(jogo.completaTime || []), ...(jogo.soCartoes || [])]);
@@ -2261,9 +2268,9 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
   const diffForca = Math.abs(forcaA - forcaB);
   const indiceEquilibrio = mediaForca > 0 ? Math.max(0, Math.min(100, Math.round(100 - (diffForca / mediaForca) * 70))) : 100;
 
-  const preencherVaga = (timeId, papel, jogadorId) => {
+  const preencherVaga = (timeId, papel, jogadorId, pontua) => {
     if (!jogadorId) return;
-    const repete = apareceuEmOutroJogo(jogadorId);
+    const repete = !pontua; // decisão explícita de quem preencheu a vaga, não mais um palpite automático
     const l = porId[jogadorId];
     const cand = candidatos.find((e) => e.jogador.id === jogadorId);
     const novoTimes = (rodada.times || []).map((t) => {
@@ -2283,7 +2290,7 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
       ? (rodada.jogos || []).map((g) => (g.id === jogo.id ? { ...g, soCartoes: [...new Set([...(g.soCartoes || []), jogadorId])] } : g))
       : rodada.jogos;
     atualizar({ times: novoTimes, jogos: novoJogos });
-    avisar(repete ? `${jog[jogadorId]?.nome} completou a equipe — já jogou, não pontua de novo` : `${jog[jogadorId]?.nome} entrou na vaga`);
+    avisar(repete ? `${jog[jogadorId]?.nome} completou a equipe — não pontua` : `${jog[jogadorId]?.nome} entrou na vaga e vai pontuar`);
   };
 
   const setEvento = (jid, campo, d) => {
@@ -2381,22 +2388,41 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
         {(time.vagasAbertas || []).map((papel, vi) => {
           const jaEscolhidos = new Set([...idsDoTime(tA), ...idsDoTime(tB)]);
           const opcoes = candidatos.filter((e) => !jaEscolhidos.has(e.jogador.id));
+          const chave = `${time.id}-${vi}`;
+          const pend = pendenteVaga[chave];
           return (
-            <div key={`va${vi}`} className="rounded" style={{ background: "rgba(255,165,61,.1)", border: `1px dashed ${T.laranja}`, padding: 5 }}>
+            <div key={chave} className="rounded" style={{ background: "rgba(255,165,61,.1)", border: `1px dashed ${T.laranja}`, padding: 5 }}>
               <div className="mb-1 flex items-center gap-1">
                 {papel === "GOLEIRO" ? <IconeGoleiro tam={12} /> : <span style={{ fontSize: 10, color: T.laranja }}>▢</span>}
                 <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".06em", color: T.laranja }}>VAGA DE {papel} · quem chegou</span>
               </div>
-              <select value="" onChange={(e) => preencherVaga(time.id, papel, e.target.value)}
+              <select value={pend?.jogadorId || ""} onChange={(e) => {
+                const jid = e.target.value;
+                if (!jid) { setPendenteVaga((s) => { const c = { ...s }; delete c[chave]; return c; }); return; }
+                setPendenteVaga((s) => ({ ...s, [chave]: { jogadorId: jid, pontua: !apareceuEmOutroJogo(jid) } }));
+              }}
                 style={{ ...inputStyle, padding: "7px 4px", fontSize: 11.5 }}>
                 <option value="">— escolher quem completa —</option>
                 {opcoes.map(({ jogador: o, linha: l }) => (
                   <option key={o.id} value={o.id}>
                     {o.nome}{o.posicao === "GOLEIRO" ? " (GK)" : ""} · {l?.estrelas || 1}★
-                    {apareceuEmOutroJogo(o.id) ? " · já jogou, não pontua" : ""}
+                    {apareceuEmOutroJogo(o.id) ? " · já jogou noutro jogo" : ""}
                   </option>
                 ))}
               </select>
+              {pend && (
+                <div className="mt-1.5 space-y-1.5">
+                  <Segmento valor={pend.pontua} onChange={(v) => setPendenteVaga((s) => ({ ...s, [chave]: { ...s[chave], pontua: v } }))}
+                    opcoes={[
+                      { valor: true, rotulo: "Vai pontuar" },
+                      { valor: false, rotulo: "Só completando (§10º)", cor: T.laranja },
+                    ]} />
+                  <Botao className="w-full" style={{ minHeight: 38, fontSize: 11 }}
+                    onClick={() => { preencherVaga(time.id, papel, pend.jogadorId, pend.pontua); setPendenteVaga((s) => { const c = { ...s }; delete c[chave]; return c; }); }}>
+                    Encaixar {jog[pend.jogadorId]?.nome}
+                  </Botao>
+                </div>
+              )}
               {opcoes.length === 0 && <p style={{ fontSize: 9.5, color: T.fraco, marginTop: 3 }}>Ninguém presente disponível ainda — marque a chegada na etapa Presença.</p>}
             </div>
           );
