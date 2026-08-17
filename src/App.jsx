@@ -772,14 +772,18 @@ function imagemEscalacoes(rodada, nomes, niveis, cfg) {
         estrelas: j.estrelaNoSorteio || 1,
       }));
       const vagas = (t.vagasAbertas || []).map((papel) => ({ vaga: true, papel }));
-      const forca = itens.filter((i) => !i.completou).reduce((s, i) => s + i.estrelas, 0);
-      return { cor: t.cor, hex: corDe(t.chave).hex, itens: [...itens, ...vagas], forca };
+      // conta média por jogador que pontua, não soma bruta — um time ainda com vaga em
+      // aberto tem menos gente e por isso soma menos, sem que isso signifique desequilíbrio
+      const quePontuam = itens.filter((i) => !i.completou);
+      const forca = quePontuam.reduce((s, i) => s + i.estrelas, 0);
+      const forcaMedia = quePontuam.length ? forca / quePontuam.length : 0;
+      return { cor: t.cor, hex: corDe(t.chave).hex, itens: [...itens, ...vagas], forca, forcaMedia };
     };
     return { numero: jogo.numero, extra: !!jogo.extra, A: ladoDe(tA), B: ladoDe(tB) };
   }).filter(Boolean);
   if (!blocos.length) return;
 
-  const somasForca = blocos.flatMap((b) => [b.A.forca, b.B.forca]);
+  const somasForca = blocos.flatMap((b) => [b.A.forcaMedia, b.B.forcaMedia]);
   const mediaForca = somasForca.reduce((s, v) => s + v, 0) / (somasForca.length || 1);
   const amplitudeForca = somasForca.length ? Math.max(...somasForca) - Math.min(...somasForca) : 0;
   const indiceEquilibrio = mediaForca > 0 ? Math.max(0, Math.min(100, Math.round(100 - (amplitudeForca / mediaForca) * 70))) : 100;
