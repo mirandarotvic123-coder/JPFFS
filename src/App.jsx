@@ -147,14 +147,19 @@ function placarDe(jogo, rodada) {
   return { A: m ? m.A : calcA, B: m ? m.B : calcB, calcA, calcB, manual: !!m, divergente: !!m && (m.A !== calcA || m.B !== calcB) };
 }
 function marcarReaproveitamentos(rodada) {
-  const jaApareceu = new Set();
+  const jaContou = new Set(); // já tem uma aparição que pontua de verdade
   return [...(rodada.jogos || [])].sort((a, b) => a.numero - b.numero).map((jogo) => {
     const soCartoes = [...(jogo.soCartoes || [])];
     for (const tid of [jogo.timeA, jogo.timeB]) {
       const time = timePorId(rodada, tid);
       for (const j of time?.jogadores || []) {
-        if (jaApareceu.has(j.jogadorId)) { if (!soCartoes.includes(j.jogadorId)) soCartoes.push(j.jogadorId); }
-        else jaApareceu.add(j.jogadorId);
+        // se essa vaga já foi marcada como "só completando" (manual, na tela do sorteio,
+        // ou pelo próprio sorteio automático), respeita a escolha e não mexe nela —
+        // só decide sozinho quando ninguém decidiu ainda, pra não roubar a vaga que
+        // realmente vale só porque ela está numa partida de número maior.
+        if (soCartoes.includes(j.jogadorId)) continue;
+        if (jaContou.has(j.jogadorId)) { soCartoes.push(j.jogadorId); }
+        else { jaContou.add(j.jogadorId); }
       }
     }
     return { ...jogo, completaTime: [], soCartoes };
