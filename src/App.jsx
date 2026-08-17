@@ -27,7 +27,7 @@ const CONFIG_PADRAO = {
   zonaSupercopa: 12, goleirosSupercopa: 2, campeoesHendor: [],
   criteriosDesempate: ["pontos", "vitorias", "saldo", "golsPro", "cartoes", "alfabetica"],
   rodadasAntiRepeticao: 3, usarAproveitamento: false,
-  pesos: { rigida: 100000, amplitude: 1000, desvio: 300, faixa: 40, faixaPartida: 150, varianciaInterna: 60, repeticao: 8, aproveitamento: 15 },
+  pesos: { rigida: 100000, amplitude: 1000, desvio: 300, faixa: 40, faixaPartida: 900, varianciaInterna: 60, repeticao: 8, aproveitamento: 15 },
 };
 
 const ROTULO_CRITERIO = {
@@ -60,19 +60,23 @@ function embaralharRng(arr, rng) {
   return a;
 }
 
-function distribuirProporcional(itens, alvos) {
+function distribuirProporcional(itens, alvos, rng) {
   const usados = alvos.map(() => 0);
   const grupos = alvos.map(() => []);
   for (const item of itens) {
-    let melhor = -1, melhorRazao = Infinity;
+    let candidatos = [], melhorRazao = Infinity;
     for (let g = 0; g < alvos.length; g++) {
       if (usados[g] >= alvos[g]) continue;
       const razao = alvos[g] > 0 ? usados[g] / alvos[g] : Infinity;
-      if (razao < melhorRazao) { melhorRazao = razao; melhor = g; }
+      if (razao < melhorRazao - 1e-9) { melhorRazao = razao; candidatos = [g]; }
+      else if (Math.abs(razao - melhorRazao) <= 1e-9) { candidatos.push(g); }
     }
-    if (melhor === -1) break;
-    grupos[melhor].push(item);
-    usados[melhor]++;
+    if (!candidatos.length) break;
+    // empate entre partidas e sorteado, nao sempre a de menor indice --
+    // evita que a mesma partida (a menor) fique sempre em desvantagem/vantagem
+    const escolhido = candidatos[Math.floor((rng ? rng() : Math.random()) * candidatos.length)];
+    grupos[escolhido].push(item);
+    usados[escolhido]++;
   }
   return grupos;
 }
@@ -335,9 +339,13 @@ function variancia(v) {
 function avaliarTimes(times, ctx) {
   const P = ctx.pesos;
   const somas = times.map((t) => t.reduce((s, j) => s + j.estrelas, 0));
-  const amplitude = Math.max(...somas) - Math.min(...somas);
-  const mediaSomas = somas.reduce((s, v) => s + v, 0) / somas.length;
-  const desvio = Math.sqrt(variancia(somas));
+  // Equilibrio comparado por MEDIA de estrelas por jogador (densidade), nao soma bruta.
+  // Assim a partida que sobra (com menos gente) nao e comparada em desvantagem so por ter
+  // menos jogadores -- e o otimizador para de "compensar" isso empurrando craques pra la.
+  const medias = times.map((t, i) => (t.length ? somas[i] / t.length : 0));
+  const amplitude = Math.max(...medias) - Math.min(...medias);
+  const mediaSomas = medias.reduce((s, v) => s + v, 0) / medias.length;
+  const desvio = Math.sqrt(variancia(medias));
 
   let faixa = 0;
   for (let e = 1; e <= 5; e++) {
@@ -368,14 +376,17 @@ function avaliarTimes(times, ctx) {
   }
   let faixaPartida = 0;
   if (ctx.partidaDoTime) {
-    const cincoPorPartida = new Map();
+    // tambem por densidade (5 estrelas / jogadores da partida), nao contagem bruta --
+    // senao a partida pequena "conta como cheia de craque" com so 1 jogador 5 estrelas
+    const cincoPorPartida = new Map(); const totalPorPartida = new Map();
     times.forEach((t, i) => {
       const p = ctx.partidaDoTime(i);
       const c5 = t.filter((j) => j.estrelas === 5).length;
       cincoPorPartida.set(p, (cincoPorPartida.get(p) || 0) + c5);
+      totalPorPartida.set(p, (totalPorPartida.get(p) || 0) + t.length);
     });
-    const valores = [...cincoPorPartida.values()];
-    if (valores.length > 1) faixaPartida = Math.max(...valores) - Math.min(...valores);
+    const densidades = [...cincoPorPartida.keys()].map((p) => cincoPorPartida.get(p) / (totalPorPartida.get(p) || 1));
+    if (densidades.length > 1) faixaPartida = Math.max(...densidades) - Math.min(...densidades);
   }
 
   const violacoes = [];
@@ -516,7 +527,7 @@ function sortearEquipes(entradas, opcoes = {}) {
     alvoLn[p] -= tira; faltamLn -= tira;
   }
   {
-    const gruposLn = distribuirProporcional(filaL, alvoLn);
+    const gruposLn = distribuirProporcional(filaL, alvoLn, rng);
     gruposLn.forEach((grupo, p) => { lnsPorPartida[p] = grupo.map((j) => ({ ...j, slotGoleiro: false })); });
   }
 
