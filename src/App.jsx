@@ -5,13 +5,14 @@ import { CONFIG_PADRAO, calcularClassificacao } from "./core/regras";
 import { carregarBase, salvarBase, migrarBase } from "./core/repositorio";
 import { baseOficial } from "./data/baseOficial";
 import {
-  IconeTabela, IconeRodada, IconeElenco, IconeAjustes, IconeConta,
+  IconeTabela, IconeRodada, IconeElenco, IconeAjustes, IconeConta, IconeRachao,
 } from "./components/icones";
 import { ModalLogin } from "./components/ModalLogin";
 import { TelaRodada } from "./telas/TelaRodada";
 import { TelaClassificacao } from "./telas/TelaClassificacao";
 import { TelaElenco } from "./telas/TelaElenco";
 import { TelaConfig } from "./telas/TelaConfig";
+import { TelaRachao } from "./telas/TelaRachao";
 
 export default function App() {
   const [base, setBase] = useState(null);
@@ -85,6 +86,7 @@ export default function App() {
   const cfg = { ...CONFIG_PADRAO, ...base.config, pesos: { ...CONFIG_PADRAO.pesos, ...(base.config?.pesos || {}) } };
   const abas = [
     { id: "tabela", rotulo: "Tabela", Icone: IconeTabela }, { id: "rodada", rotulo: "Rodada", Icone: IconeRodada },
+    { id: "rachao", rotulo: "Rachão", Icone: IconeRachao },
     { id: "elenco", rotulo: "Elenco", Icone: IconeElenco }, { id: "config", rotulo: "Ajustes", Icone: IconeAjustes },
   ].filter((a) => sessao || a.id === "tabela");
 
@@ -125,6 +127,7 @@ export default function App() {
 
       <main className="conteudo-principal mx-auto max-w-5xl px-3 pt-4" style={{ paddingBottom: 104 }}>
         {aba === "rodada" && sessao && <TelaRodada {...{ base, setBase, dados, cfg, avisar: setAviso }} />}
+        {aba === "rachao" && sessao && <TelaRachao {...{ base, setBase, avisar: setAviso }} />}
         {aba === "tabela" && <TelaClassificacao {...{ base, dados, cfg, avisar: setAviso }} />}
         {aba === "elenco" && sessao && <TelaElenco {...{ base, setBase, dados, cfg, avisar: setAviso }} />}
         {aba === "config" && sessao && <TelaConfig {...{ base, setBase, dados, cfg, avisar: setAviso }} />}

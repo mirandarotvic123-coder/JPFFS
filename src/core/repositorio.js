@@ -82,9 +82,10 @@ function migrarBase(base) {
   if (b.historicoInicial.descricao) b.historicoInicial = { ...b.historicoInicial, descricao: corrigirMojibake(b.historicoInicial.descricao) };
   b.jogadores = (b.jogadores || []).map((j) => ({ ...j, posicao: /goleiro/i.test(j.posicao || "") ? "GOLEIRO" : "LINHA", convidado: !!j.convidado }));
   b.rodadas = (b.rodadas || []).map((r) => ({
-    ...r, ajustes: r.ajustes || [], times: r.times || [],
+    ...r, ajustes: r.ajustes || [], times: r.times || [], ordemChegada: r.ordemChegada || [],
     jogos: (r.jogos || []).map((g) => ({ ...g, soCartoes: g.soCartoes || [], golsNaoComputadosA: g.golsNaoComputadosA || 0, golsNaoComputadosB: g.golsNaoComputadosB || 0 })),
   }));
+  b.rachoes = (b.rachoes || []).map((r) => ({ ...r, linha: r.linha || [], goleiros: r.goleiros || [], historico: r.historico || [] }));
   return b;
 }
 export { carregarBase, salvarBase, enviarFotoJogador, id, migrarBase };

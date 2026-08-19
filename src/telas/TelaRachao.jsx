@@ -1,0 +1,469 @@
+import React, { useState } from "react";
+import { T, AMARELO, AZUL, corDe } from "../theme";
+import { id } from "../core/repositorio";
+import {
+  criarSessao, aguardandoLinha, goleirosLivres, proximosTimes,
+  podeIniciarPartida, iniciarPartida, atribuirGoleiro, limparGoleiro, marcarGol,
+  encerrarPartida, resolverParOuImpar, substituirLinha, removerJogador, inserirNaFila,
+  avisosSessao, fecharSessao, reabrirSessao,
+} from "../core/rachao";
+import {
+  Botao, Painel, inputStyle, Campo, CabecalhoPagina, Secao, Segmento, IconeGoleiro,
+  Contador, FaixaPartida,
+} from "../components/ui";
+
+/* =========================== TELA: RACHÃO =================================
+ * Fila por ordem de chegada, times Amarelo × Azul, vencedor fica em quadra
+ * (Art. 25º-30º do Estatuto). Totalmente separada do Campeonato: não mexe em
+ * gols/cartões/pontos/tabela de ninguém — é só um controlador de fila e
+ * placar do dia. Ver core/rachao.js pras suposições assumidas.            */
+
+function TelaRachao({ base, setBase, avisar }) {
+  const nomes = Object.fromEntries(base.jogadores.map((j) => [j.id, j.nome]));
+  const sessao = (base.rachoes || []).find((r) => r.status === "aberta");
+
+  if (!sessao) return <AberturaRachao {...{ base, setBase, avisar, nomes }} />;
+
+  const atualizar = (novaSessao) => setBase({ ...base, rachoes: base.rachoes.map((r) => (r.id === sessao.id ? novaSessao : r)) });
+  const presentesTotal = new Set([...sessao.linha, ...sessao.goleiros]).size;
+  const avisos = avisosSessao(sessao, presentesTotal);
+
+  return (
+    <div className="space-y-4">
+      <CabecalhoPagina titulo="Rachão"
+        descricao={new Date(sessao.data + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })} />
+
+      <Painel className="grid grid-cols-4 gap-1.5 p-2">
+        <Contador rotulo="No dia" valor={presentesTotal} cor={T.verde} />
+        <Contador rotulo="Aguardando" valor={aguardandoLinha(sessao).length} />
+        <Contador rotulo="Goleiros" valor={sessao.goleiros.length} cor={T.gk} />
+        <Contador rotulo="Partidas" valor={sessao.historico.length} cor={T.ouro} />
+      </Painel>
+
+      {avisos.map((a, i) => (
+        <Painel key={i} className="p-3" style={{ borderColor: T.laranja, background: "rgba(255,165,61,.1)", fontSize: 12, color: T.laranja }}>{a}</Painel>
+      ))}
+
+      <QuadraAoVivo {...{ sessao, atualizar, avisar, nomes }} />
+      <ProximosTimesPainel {...{ sessao, nomes }} />
+      <FilaEConvidados {...{ sessao, atualizar, avisar, base, setBase, nomes }} />
+      <HistoricoDoDia sessao={sessao} />
+
+      <Botao variante="secundario" className="w-full" onClick={() => {
+        if (confirm(`Fechar o Rachão de ${new Date(sessao.data + "T12:00:00").toLocaleDateString("pt-BR")}? Dá pra reabrir depois.`)) {
+          atualizar(fecharSessao(sessao));
+          avisar("Rachão fechado");
+        }
+      }}>Fechar Rachão do dia</Botao>
+    </div>
+  );
+}
+
+/* --------------------------- Abertura do dia ------------------------------*/
+
+function AberturaRachao({ base, setBase, avisar, nomes }) {
+  const hoje = new Date().toISOString().slice(0, 10);
+  const [data, setData] = useState(hoje);
+  const [linhaPorTime, setLinhaPorTime] = useState(4);
+  const [limitePartidas, setLimitePartidas] = useState(3);
+  const porId = Object.fromEntries(base.jogadores.map((j) => [j.id, j]));
+  const rodadaDoDia = base.rodadas.find((r) => r.data === data);
+  const fechadaDoDia = (base.rachoes || []).find((r) => r.data === data && r.status === "fechada");
+
+  return (
+    <div className="space-y-4">
+      <CabecalhoPagina titulo="Rachão" descricao="Fila por ordem de chegada, Amarelo × Azul, vencedor fica em quadra." />
+      <Painel className="p-4 space-y-3">
+        <Campo rotulo="Data do rachão">
+          <input type="date" value={data} onChange={(e) => setData(e.target.value)} style={inputStyle} />
+        </Campo>
+
+        {fechadaDoDia ? (
+          <>
+            <p style={{ fontSize: 12, color: T.secundario }}>
+              Já existe um Rachão fechado nesta data ({fechadaDoDia.historico.length} partida(s)). Dá pra reabrir e continuar de onde parou.
+            </p>
+            <Botao className="w-full" onClick={() => {
+              setBase({ ...base, rachoes: base.rachoes.map((r) => (r.id === fechadaDoDia.id ? reabrirSessao(r) : r)) });
+              avisar("Rachão reaberto");
+            }}>Reabrir Rachão de {new Date(data + "T12:00:00").toLocaleDateString("pt-BR")}</Botao>
+          </>
+        ) : (
+          <>
+            {rodadaDoDia ? (
+              <p style={{ fontSize: 12, color: T.secundario }}>
+                Vou puxar a ordem de chegada da <b style={{ color: T.ouro }}>rodada {rodadaDoDia.numero}</b> do Campeonato
+                deste dia ({(rodadaDoDia.ordemChegada || []).length} jogador(es) já chamados) — dá pra ajustar a fila depois de abrir.
+              </p>
+            ) : (
+              <p style={{ fontSize: 12, color: T.fraco }}>Nenhuma rodada do Campeonato encontrada nesta data — a fila abre vazia, dá pra adicionar todo mundo na mão.</p>
+            )}
+            <Campo rotulo="Jogadores de linha por time">
+              <Segmento valor={linhaPorTime} onChange={setLinhaPorTime}
+                opcoes={[{ valor: 4, rotulo: "4 + 1 gol" }, { valor: 5, rotulo: "5 + 1 gol" }]} />
+            </Campo>
+            <Campo rotulo="Sai depois de quantas partidas seguidas" dica="Art. 29º — com 25+ presentes o Estatuto recomenda 2 (a não ser que a locação seja de 2h ou mais).">
+              <Segmento valor={limitePartidas} onChange={setLimitePartidas}
+                opcoes={[{ valor: 2, rotulo: "2 partidas" }, { valor: 3, rotulo: "3 partidas" }]} />
+            </Campo>
+            <Botao className="w-full" onClick={() => {
+              const nova = criarSessao({
+                id: id(), data, rodadaOrigemId: rodadaDoDia?.id || null,
+                ordemChegada: rodadaDoDia?.ordemChegada || [], porId, linhaPorTime, limitePartidas,
+              });
+              setBase({ ...base, rachoes: [...(base.rachoes || []), nova] });
+              avisar(`Rachão de ${new Date(data + "T12:00:00").toLocaleDateString("pt-BR")} aberto`);
+            }}>Abrir Rachão</Botao>
+          </>
+        )}
+      </Painel>
+      <HistoricoRachoes base={base} />
+    </div>
+  );
+}
+
+function HistoricoRachoes({ base }) {
+  const fechados = (base.rachoes || []).filter((r) => r.status === "fechada").sort((a, b) => b.data.localeCompare(a.data));
+  if (!fechados.length) return null;
+  return (
+    <section>
+      <Secao titulo="Rachões anteriores" detalhe={`${fechados.length}`} />
+      <div className="space-y-1.5">
+        {fechados.map((r) => (
+          <Painel key={r.id} className="flex items-center justify-between p-2.5" style={{ fontSize: 12.5 }}>
+            <span>{new Date(r.data + "T12:00:00").toLocaleDateString("pt-BR")}</span>
+            <span style={{ color: T.fraco }}>{r.historico.length} partida(s)</span>
+          </Painel>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* ------------------------------ Quadra ao vivo -----------------------------*/
+
+function QuadraAoVivo({ sessao, atualizar, avisar, nomes }) {
+  const q = sessao.quadra;
+
+  if (!q) {
+    if (sessao.timeEmEspera) {
+      return (
+        <Painel className="space-y-2 p-4 text-center">
+          <p style={{ fontSize: 13, color: T.secundario }}>
+            <b style={{ color: T.verde }}>Um time já está pronto</b> esperando adversário — falta gente na fila pra montar o outro lado.
+          </p>
+          <p style={{ fontSize: 12, color: T.secundario }}>{sessao.timeEmEspera.linha.map((jid) => nomes[jid]).join(" · ")}</p>
+          {podeIniciarPartida(sessao) && (
+            <Botao onClick={() => { atualizar(iniciarPartida(sessao)); avisar("Adversário montado — partida pronta"); }}>
+              Montar adversário e iniciar
+            </Botao>
+          )}
+        </Painel>
+      );
+    }
+    return (
+      <Painel className="p-6 text-center" style={{ borderStyle: "dashed" }}>
+        <p style={{ marginBottom: 12, fontSize: 13, color: T.secundario }}>
+          {podeIniciarPartida(sessao) ? "Fila pronta pra montar os dois primeiros times." : "Aguardando gente suficiente na fila pra montar dois times."}
+        </p>
+        {podeIniciarPartida(sessao) && (
+          <Botao onClick={() => { atualizar(iniciarPartida(sessao)); avisar(`Partida ${sessao.historico.length + 1} montada`); }}>
+            {sessao.historico.length === 0 ? "Iniciar 1ª partida" : "Iniciar próxima partida"}
+          </Botao>
+        )}
+      </Painel>
+    );
+  }
+
+  if (q.pendente === "empateSemFila") {
+    return (
+      <Painel className="space-y-3 p-4" style={{ borderColor: T.laranja }}>
+        <p style={{ fontSize: 12.5, color: T.laranja }}>
+          Empate sem fila suficiente pra tirar os dois times — decida na quadra no par ou ímpar (Art. 30º §2º) quem fica.
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          {["amarelo", "azul"].map((lado) => (
+            <Botao key={lado} style={{ background: corDe(lado).hex, color: "#fff" }} onClick={() => {
+              const r = resolverParOuImpar(sessao, lado);
+              atualizar(r.sessao); avisar(r.aviso);
+            }}>{corDe(lado).cor} venceu</Botao>
+          ))}
+        </div>
+      </Painel>
+    );
+  }
+
+  return (
+    <Painel className="space-y-3 p-3">
+      <FaixaPartida n={q.numero} />
+      <div className="grid grid-cols-2 gap-2">
+        {["amarelo", "azul"].map((lado) => (
+          <TimeQuadra key={lado} {...{ lado, sessao, q, atualizar, avisar, nomes }} />
+        ))}
+      </div>
+      <Botao className="w-full" onClick={() => {
+        const r = encerrarPartida(sessao);
+        atualizar(r.sessao);
+        if (r.aviso) avisar(r.aviso);
+      }}>Encerrar partida</Botao>
+    </Painel>
+  );
+}
+
+function TimeQuadra({ lado, sessao, q, atualizar, avisar, nomes }) {
+  const cor = corDe(lado);
+  const time = q.lados[lado];
+  const goleirosDisp = goleirosLivres(sessao);
+  const livres = aguardandoLinha(sessao);
+
+  return (
+    <div className="overflow-hidden rounded-lg" style={{ background: T.tier1, border: `1px solid ${T.borda}` }}>
+      <div className="flex items-center justify-between" style={{ padding: "7px 10px", background: `${cor.hex}22`, borderBottom: `2px solid ${cor.hex}` }}>
+        <span style={{ fontSize: 11.5, fontWeight: 900, color: cor.hex }}>{cor.emoji} {cor.cor}</span>
+        {q.incumbente === lado && (
+          <span style={{ fontSize: 8.5, fontWeight: 800, color: T.verde }}>
+            EM QUADRA{q.partidasSeguidas > 0 ? ` · ${q.partidasSeguidas}ª SEGUIDA` : ""}
+          </span>
+        )}
+      </div>
+      {q.forcarSaidaAoFim && q.incumbente === lado && (
+        <p style={{ padding: "4px 8px 0", fontSize: 9.5, color: T.laranja }}>Sai depois desta partida, seja qual for o resultado (Art. 29º).</p>
+      )}
+      <div className="flex items-center justify-center gap-3 p-2">
+        <button onClick={() => atualizar(marcarGol(sessao, lado, -1))} style={{ width: 36, height: 36, borderRadius: 8, background: "rgba(255,255,255,.08)", color: T.secundario, fontSize: 18 }}>−</button>
+        <span className="font-destaque" style={{ width: 34, textAlign: "center", fontSize: 32, fontWeight: 700 }}>{q.placar[lado]}</span>
+        <button onClick={() => atualizar(marcarGol(sessao, lado, 1))} style={{ width: 36, height: 36, borderRadius: 8, background: "rgba(255,255,255,.08)", color: T.ouro, fontSize: 18 }}>+</button>
+      </div>
+      <div className="space-y-1 px-2 pb-2">
+        {time.goleiro ? (
+          <div className="flex items-center justify-between rounded px-2 py-1.5" style={{ background: T.gkFraco }}>
+            <span className="flex items-center gap-1" style={{ fontSize: 12 }}><IconeGoleiro tam={12} />{nomes[time.goleiro] || "?"}</span>
+            <button onClick={() => atualizar(limparGoleiro(sessao, lado))} title="Trocar goleiro" style={{ color: "rgba(255,255,255,.35)", fontSize: 12 }}>✕</button>
+          </div>
+        ) : (
+          <select value="" onChange={(e) => e.target.value && atualizar(atribuirGoleiro(sessao, lado, e.target.value))}
+            style={{ ...inputStyle, padding: "7px 4px", fontSize: 11.5 }}>
+            <option value="">— escolher goleiro —</option>
+            {goleirosDisp.map((gid) => <option key={gid} value={gid}>{nomes[gid] || "?"}</option>)}
+          </select>
+        )}
+        {time.linha.map((jid) => (
+          <LinhaJogador key={jid} {...{ jid, lado, sessao, atualizar, avisar, nomes, livres }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LinhaJogador({ jid, lado, sessao, atualizar, avisar, nomes, livres }) {
+  const [abrir, setAbrir] = useState(false);
+  const [substitutoId, setSubstitutoId] = useState("");
+  const [passou5, setPassou5] = useState(true);
+
+  return (
+    <div className="rounded px-2 py-1.5" style={{ background: "rgba(0,0,0,.22)" }}>
+      <div className="flex items-center justify-between">
+        <span style={{ fontSize: 12.5 }}>{nomes[jid] || "?"}</span>
+        <button onClick={() => setAbrir((v) => !v)} style={{ fontSize: 10, fontWeight: 800, color: T.laranja, flexShrink: 0 }}>SAIU</button>
+      </div>
+      {abrir && (
+        <div className="mt-1.5 space-y-1.5">
+          <select value={substitutoId} onChange={(e) => setSubstitutoId(e.target.value)} style={{ ...inputStyle, padding: "6px 4px", fontSize: 11 }}>
+            <option value="">— foi embora de vez (vaga fica aberta) —</option>
+            {livres.map((oid) => <option key={oid} value={oid}>{nomes[oid] || "?"} entra no lugar</option>)}
+          </select>
+          {substitutoId && (
+            <Segmento valor={passou5} onChange={setPassou5} opcoes={[
+              { valor: false, rotulo: "Não passou de 5 min" },
+              { valor: true, rotulo: "Já passou de 5 min" },
+            ]} />
+          )}
+          <div className="flex gap-1.5">
+            <Botao variante="secundario" className="flex-1" style={{ minHeight: 38, fontSize: 11 }} onClick={() => { setAbrir(false); setSubstitutoId(""); }}>Cancelar</Botao>
+            <Botao className="flex-1" style={{ minHeight: 38, fontSize: 11 }} onClick={() => {
+              const nomeSaiu = nomes[jid] || "?";
+              if (substitutoId) {
+                const nomeEntrou = nomes[substitutoId] || "?";
+                atualizar(substituirLinha(sessao, lado, jid, substitutoId, { passouDe5Min: passou5 }));
+                avisar(`${nomeSaiu} saiu, ${nomeEntrou} entrou`);
+              } else {
+                atualizar(removerJogador(sessao, jid));
+                avisar(`${nomeSaiu} saiu — vaga em aberto`);
+              }
+              setAbrir(false); setSubstitutoId(""); setPassou5(true);
+            }}>Confirmar</Botao>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* --------------------------- Próximos times --------------------------------*/
+
+function ProximosTimesPainel({ sessao, nomes }) {
+  const proximos = proximosTimes(sessao, 2);
+  if (!proximos.length) return null;
+  return (
+    <section>
+      <Secao titulo="Próximos times" detalhe="prévia — muda conforme a fila muda" />
+      <div className="grid grid-cols-2 gap-2">
+        {proximos.map((time, i) => (
+          <Painel key={i} className="p-2.5">
+            <p style={{ marginBottom: 5, fontSize: 9.5, fontWeight: 800, letterSpacing: ".08em", color: T.fraco }}>
+              {i === 0 ? "PRÓXIMO A ENTRAR" : "DEPOIS DESSE"}
+            </p>
+            {time.map((jid) => <p key={jid} style={{ fontSize: 12, color: T.secundario }}>{nomes[jid] || "?"}</p>)}
+          </Painel>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/* ------------------------------- Fila / convidado --------------------------*/
+
+function FilaEConvidados({ sessao, atualizar, avisar, base, setBase, nomes }) {
+  const filaLinha = aguardandoLinha(sessao);
+
+  return (
+    <section className="space-y-3">
+      <div>
+        <Secao titulo="Fila (linha)" detalhe={`${filaLinha.length} aguardando`} />
+        <Painel className="space-y-1 p-2">
+          {filaLinha.length === 0 && <p style={{ padding: 8, textAlign: "center", fontSize: 12, color: T.fraco }}>Ninguém aguardando.</p>}
+          {filaLinha.map((jid, i) => (
+            <div key={jid} className="flex items-center justify-between rounded px-2 py-1.5" style={{ background: "rgba(0,0,0,.18)" }}>
+              <span style={{ fontSize: 12.5 }}><b style={{ marginRight: 6, color: T.fraco }}>{i + 1}º</b>{nomes[jid] || "?"}</span>
+              <div className="flex items-center" style={{ gap: 2 }}>
+                <button disabled={i === 0} onClick={() => atualizar(inserirNaFila(sessao, jid, i - 1, false))}
+                  style={{ padding: "4px 7px", fontSize: 12, color: i === 0 ? "rgba(255,255,255,.15)" : T.secundario }}>▲</button>
+                <button disabled={i === filaLinha.length - 1} onClick={() => atualizar(inserirNaFila(sessao, jid, i + 1, false))}
+                  style={{ padding: "4px 7px", fontSize: 12, color: i === filaLinha.length - 1 ? "rgba(255,255,255,.15)" : T.secundario }}>▼</button>
+                <button onClick={() => { atualizar(removerJogador(sessao, jid)); avisar(`${nomes[jid]} saiu da fila`); }}
+                  style={{ padding: "4px 7px", fontSize: 13, color: T.laranja }}>✕</button>
+              </div>
+            </div>
+          ))}
+        </Painel>
+      </div>
+
+      <div>
+        <Secao titulo="Goleiros presentes" detalhe={`${sessao.goleiros.length}`} />
+        <Painel className="space-y-1 p-2">
+          {sessao.goleiros.length === 0 && <p style={{ padding: 8, textAlign: "center", fontSize: 12, color: T.fraco }}>Nenhum goleiro no dia ainda.</p>}
+          {sessao.goleiros.map((jid) => {
+            const ocupado = sessao.quadra && ["amarelo", "azul"].some((l) => sessao.quadra.lados[l].goleiro === jid);
+            return (
+              <div key={jid} className="flex items-center justify-between rounded px-2 py-1.5" style={{ background: ocupado ? T.gkFraco : "rgba(0,0,0,.18)" }}>
+                <span className="flex items-center gap-1" style={{ fontSize: 12.5 }}>
+                  <IconeGoleiro tam={12} />{nomes[jid] || "?"}
+                  {ocupado && <span style={{ fontSize: 8.5, fontWeight: 800, color: T.gk }}>EM QUADRA</span>}
+                </span>
+                {!ocupado && (
+                  <button onClick={() => { atualizar(removerJogador(sessao, jid)); avisar(`${nomes[jid]} saiu`); }} style={{ padding: "4px 7px", fontSize: 13, color: T.laranja }}>✕</button>
+                )}
+              </div>
+            );
+          })}
+        </Painel>
+      </div>
+
+      <AdicionarNaFila {...{ sessao, atualizar, avisar, base, setBase }} />
+    </section>
+  );
+}
+
+function AdicionarNaFila({ sessao, atualizar, avisar, base, setBase }) {
+  const [modo, setModo] = useState("elenco");
+  const [jogadorId, setJogadorId] = useState("");
+  const [nome, setNome] = useState("");
+  const [posicao, setPosicao] = useState("LINHA");
+  const [estrelas, setEstrelas] = useState(1);
+  const [posicaoFila, setPosicaoFila] = useState("");
+
+  const jaNaSessao = new Set([...sessao.linha, ...sessao.goleiros]);
+  const disponiveisElenco = base.jogadores.filter((j) => j.ativo !== false && !jaNaSessao.has(j.id))
+    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+
+  const indiceEscolhido = (ehGoleiro) => {
+    const fila = ehGoleiro ? sessao.goleiros : aguardandoLinha(sessao);
+    return posicaoFila === "" ? fila.length : Math.max(0, Math.min(Number(posicaoFila) - 1, fila.length));
+  };
+
+  return (
+    <div>
+      <Secao titulo="Adicionar à fila" detalhe="do elenco ou convidado só do Rachão" />
+      <Painel className="space-y-2 p-3">
+        <Segmento valor={modo} onChange={setModo} opcoes={[{ valor: "elenco", rotulo: "Do elenco" }, { valor: "convidado", rotulo: "Convidado novo" }]} />
+        {modo === "elenco" ? (
+          <select value={jogadorId} onChange={(e) => setJogadorId(e.target.value)} style={inputStyle}>
+            <option value="">— escolher jogador —</option>
+            {disponiveisElenco.map((j) => <option key={j.id} value={j.id}>{j.nome}{j.posicao === "GOLEIRO" ? " (Gol)" : ""}</option>)}
+          </select>
+        ) : (
+          <div className="flex gap-1.5">
+            <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome" style={{ ...inputStyle, flex: 1, padding: "10px 8px", fontSize: 14 }} />
+            <select value={posicao} onChange={(e) => setPosicao(e.target.value)} style={{ ...inputStyle, width: "auto", padding: "10px 4px", fontSize: 12 }}>
+              <option value="LINHA">Linha</option><option value="GOLEIRO">Gol</option>
+            </select>
+            <select value={estrelas} onChange={(e) => setEstrelas(Number(e.target.value))} style={{ ...inputStyle, width: "auto", padding: "10px 4px", fontSize: 12 }}>
+              {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}★</option>)}
+            </select>
+          </div>
+        )}
+        <Campo rotulo="Posição na fila (vazio = no fim)">
+          <input type="number" min="1" value={posicaoFila} onChange={(e) => setPosicaoFila(e.target.value)} placeholder="ex.: 3" style={inputStyle} />
+        </Campo>
+        <Botao className="w-full" onClick={() => {
+          if (modo === "elenco") {
+            if (!jogadorId) return;
+            const j = base.jogadores.find((x) => x.id === jogadorId);
+            atualizar(inserirNaFila(sessao, jogadorId, indiceEscolhido(j.posicao === "GOLEIRO"), j.posicao === "GOLEIRO"));
+            avisar(`${j.nome} entrou na fila`);
+            setJogadorId("");
+          } else {
+            if (!nome.trim()) return;
+            const jid = id();
+            const ehGoleiro = posicao === "GOLEIRO";
+            const sessaoNova = inserirNaFila(sessao, jid, indiceEscolhido(ehGoleiro), ehGoleiro);
+            setBase({
+              ...base,
+              jogadores: [...base.jogadores, { id: jid, nome: nome.trim(), posicao, ativo: true, convidado: true, estrelasIniciais: estrelas }],
+              rachoes: base.rachoes.map((r) => (r.id === sessao.id ? sessaoNova : r)),
+            });
+            avisar(`${nome.trim()} entrou como convidado`);
+            setNome(""); setEstrelas(1);
+          }
+          setPosicaoFila("");
+        }}>Adicionar</Botao>
+      </Painel>
+    </div>
+  );
+}
+
+/* --------------------------- Histórico do dia -------------------------------*/
+
+function HistoricoDoDia({ sessao }) {
+  if (!sessao.historico.length) return null;
+  return (
+    <section>
+      <Secao titulo="Partidas de hoje" detalhe={`${sessao.historico.length}`} />
+      <div className="space-y-1.5">
+        {[...sessao.historico].reverse().map((h) => (
+          <Painel key={h.numero} className="p-2.5">
+            <div className="flex items-center justify-between">
+              <span style={{ fontSize: 10.5, color: T.fraco }}>PARTIDA {h.numero}</span>
+              <span className="font-destaque" style={{ fontSize: 15, fontWeight: 700 }}>
+                <span style={{ color: AMARELO.hex }}>{h.placarAmarelo}</span> × <span style={{ color: AZUL.hex }}>{h.placarAzul}</span>
+              </span>
+            </div>
+            <p style={{ marginTop: 3, fontSize: 11.5, color: T.secundario }}>{h.motivo}</p>
+          </Painel>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export { TelaRachao };
