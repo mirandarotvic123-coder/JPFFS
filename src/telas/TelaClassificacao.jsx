@@ -5,6 +5,7 @@ import { csvClassificacao, imagemTabela, baixarArquivo } from "../core/exportaca
 import {
   Botao, Painel, Secao, SeloAtraso, CampoBusca, Estrelas, IconeGoleiro, Marcadores, AvatarJogador,
 } from "../components/ui";
+import { IconeSetaDireita } from "../components/icones";
 
 /* ======================= TELA: CLASSIFICAÇÃO =============================*/
 
@@ -156,6 +157,7 @@ function TelaClassificacao({ base, dados, cfg, avisar }) {
 function Resultados({ base, cfg }) {
   const nomes = Object.fromEntries(base.jogadores.map((j) => [j.id, j.nome]));
   const [aberta, setAberta] = useState(null);
+  const [jogosAbertos, setJogosAbertos] = useState({});
   const rodadas = [...(base.rodadas || [])]
     .filter((r) => (r.jogos || []).some((g) => g.encerrado))
     .sort((a, b) => b.numero - a.numero);
@@ -200,8 +202,9 @@ function Resultados({ base, cfg }) {
                   const tA = (rodada.times || []).find((x) => x.id === jogo.timeA);
                   const tB = (rodada.times || []).find((x) => x.id === jogo.timeB);
                   const soCartoesJogo = new Set([...(jogo.completaTime || []), ...(jogo.soCartoes || [])]);
-                  const gA = tA?.jogadores || [];
-                  const gB = tB?.jogadores || [];
+                  const porGoleiroPrimeiro = (a, b) => Number(!!b.atuaComoGoleiro) - Number(!!a.atuaComoGoleiro);
+                  const gA = [...(tA?.jogadores || [])].sort(porGoleiroPrimeiro);
+                  const gB = [...(tB?.jogadores || [])].sort(porGoleiroPrimeiro);
                   const ev = (jid) => eventoDe(jogo, jid);
                   const linhaEventos = (grupo) => grupo.map((j) => {
                     const e = ev(j.jogadorId); const marcas = [];
@@ -218,14 +221,22 @@ function Resultados({ base, cfg }) {
                     return { nome: nomes[j.jogadorId] || "?", marcas, completou };
                   });
                   const venceuA = p.A > p.B, venceuB = p.B > p.A;
+                  const jogoAberto = !!jogosAbertos[jogo.id];
+                  const temExtras = ((jogo.golsContraA || 0) + (jogo.golsContraB || 0) + (jogo.golsNaoComputadosA || 0) + (jogo.golsNaoComputadosB || 0)) > 0;
                   return (
                     <Painel key={jogo.id} className="p-3">
-                      <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".12em", color: T.fraco, textAlign: "center", marginBottom: 6 }}>JOGO {jogo.numero}</div>
-                      <div className="flex items-center justify-between" style={{ gap: 8 }}>
-                        <span className="flex-1 text-right" style={{ fontSize: 13.5, fontWeight: venceuA ? 900 : 600, color: venceuA ? T.ouro : T.texto }}>Amarelo</span>
-                        <span className="font-destaque" style={{ fontSize: 19, fontWeight: 700, color: T.texto, minWidth: 58, textAlign: "center", letterSpacing: ".05em" }}>{p.A} <span style={{ color: T.fraco }}>×</span> {p.B}</span>
-                        <span className="flex-1" style={{ fontSize: 13.5, fontWeight: venceuB ? 900 : 600, color: venceuB ? "#7FB0FF" : T.texto }}>Azul</span>
-                      </div>
+                      <button onClick={() => setJogosAbertos((s) => ({ ...s, [jogo.id]: !s[jogo.id] }))} className="w-full">
+                        <div className="flex items-center justify-center" style={{ gap: 5, marginBottom: 6 }}>
+                          <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".12em", color: T.fraco }}>JOGO {jogo.numero}</span>
+                          <IconeSetaDireita tam={10} cor={T.fraco} style={{ transform: jogoAberto ? "rotate(90deg)" : "none", transition: "transform .15s" }} />
+                        </div>
+                        <div className="flex items-center justify-between" style={{ gap: 8 }}>
+                          <span className="flex-1 text-right" style={{ fontSize: 13.5, fontWeight: venceuA ? 900 : 600, color: venceuA ? T.ouro : T.texto }}>Amarelo</span>
+                          <span className="font-destaque" style={{ fontSize: 19, fontWeight: 700, color: T.texto, minWidth: 58, textAlign: "center", letterSpacing: ".05em" }}>{p.A} <span style={{ color: T.fraco }}>×</span> {p.B}</span>
+                          <span className="flex-1" style={{ fontSize: 13.5, fontWeight: venceuB ? 900 : 600, color: venceuB ? "#7FB0FF" : T.texto }}>Azul</span>
+                        </div>
+                      </button>
+                      {jogoAberto && (<>
                       <div className="flex justify-between" style={{ gap: 10, marginTop: 8, fontSize: 11, lineHeight: 1.7 }}>
                         <div className="flex-1 text-right" style={{ color: T.secundario }}>
                           {linhaEventos(gA).map((r, i) => (
@@ -243,7 +254,7 @@ function Resultados({ base, cfg }) {
                           ))}
                         </div>
                       </div>
-                      {((jogo.golsContraA || 0) + (jogo.golsContraB || 0) + (jogo.golsNaoComputadosA || 0) + (jogo.golsNaoComputadosB || 0)) > 0 && (
+                      {temExtras && (
                         <div className="flex justify-between" style={{ gap: 10, marginTop: 6, paddingTop: 6, borderTop: `1px dashed ${T.borda}`, fontSize: 10, color: T.laranja }}>
                           <div className="flex-1 text-right">
                             {jogo.golsContraA > 0 && <div>🔴 gol contra ×{jogo.golsContraA}</div>}
@@ -256,6 +267,7 @@ function Resultados({ base, cfg }) {
                           </div>
                         </div>
                       )}
+                      </>)}
                     </Painel>
                   );
                 })}

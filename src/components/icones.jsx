@@ -24,9 +24,13 @@ const IconeSetaDireita = (p) => <Svg {...p}><path d="m9 18 6-6-6-6" /></Svg>;
 const IconeSetaEsquerda = (p) => <Svg {...p}><path d="m12 19-7-7 7-7" /><path d="M19 12H5" /></Svg>;
 const IconeEmail = (p) => <Svg {...p}><path d="m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7" /><rect x="2" y="4" width="20" height="16" rx="2" /></Svg>;
 const IconeOlhoFechado = (p) => <Svg {...p}><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49" /><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242" /><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143" /><path d="m2 2 20 20" /></Svg>;
+const IconeUpload = (p) => <Svg {...p}><path d="M12 3v12" /><path d="m17 8-5-5-5 5" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /></Svg>;
+const IconeDownload = (p) => <Svg {...p}><path d="M12 15V3" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" /></Svg>;
+const IconeControles = (p) => <Svg {...p}><path d="M10 5H3" /><path d="M12 19H3" /><path d="M14 3v4" /><path d="M16 17v4" /><path d="M21 12h-9" /><path d="M21 19h-5" /><path d="M21 5h-7" /><path d="M8 10v4" /><path d="M8 12H3" /></Svg>;
 
 export {
   Svg, IconeTabela, IconeRodada, IconeElenco, IconeAjustes, IconeBusca, IconeConta,
   IconeTrofeu, IconeMartelo, IconeMedalha, IconeEmbaralhar, IconeCadeado,
   IconeSetaDireita, IconeSetaEsquerda, IconeEmail, IconeOlhoFechado,
+  IconeUpload, IconeDownload, IconeControles,
 };
