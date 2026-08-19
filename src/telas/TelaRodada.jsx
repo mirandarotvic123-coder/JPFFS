@@ -228,7 +228,12 @@ function EtapaPresenca({ base, setBase, rodada, atualizar, porId, cfg, dados, av
                   return (
                     <button key={j.id} onClick={() => {
                       const novo = ciclo[s];
-                      atualizar({ presencas: { ...rodada.presencas, [j.id]: novo } });
+                      // registra a ordem de chegada de graça, sem mudar nada do fluxo do
+                      // Campeonato — usada depois pra pré-preencher a fila do Rachão do mesmo dia.
+                      const jaTemOrdem = (rodada.ordemChegada || []).includes(j.id);
+                      const ordemChegada = (novo === "presente" || novo === "atrasado") && !jaTemOrdem
+                        ? [...(rodada.ordemChegada || []), j.id] : (rodada.ordemChegada || []);
+                      atualizar({ presencas: { ...rodada.presencas, [j.id]: novo }, ordemChegada });
                       if (novo === "atrasado") avisar(`${j.nome}: ${nivelInfo(proximo, cfg).rotulo}`);
                     }} className="flex items-center gap-1.5 rounded-full"
                       style={{ padding: "10px 14px", minHeight: 44, fontSize: 14, fontWeight: 600, border: `1px solid ${est.border}`, background: est.background, color: est.color }}>
@@ -263,7 +268,8 @@ function EtapaPresenca({ base, setBase, rodada, atualizar, porId, cfg, dados, av
             setBase({
               ...base,
               jogadores: [...base.jogadores, { id: jid, nome: conv.nome.trim(), posicao: conv.posicao, ativo: true, convidado: true, estrelasIniciais: conv.estrelas }],
-              rodadas: base.rodadas.map((r) => r.id === rodada.id ? { ...r, presencas: { ...r.presencas, [jid]: "presente" } } : r),
+              rodadas: base.rodadas.map((r) => r.id === rodada.id
+                ? { ...r, presencas: { ...r.presencas, [jid]: "presente" }, ordemChegada: [...(r.ordemChegada || []), jid] } : r),
             });
             avisar(`${conv.nome.trim()} entrou como convidado`);
             setConv({ nome: "", posicao: "LINHA", estrelas: 1 });
