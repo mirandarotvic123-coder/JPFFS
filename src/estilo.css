@@ -1,11 +1,61 @@
-
+/* ============================================================================
+ * Fontes — auto-hospedadas em public/fonts (não via CDN do Google Fonts).
+ * O service worker só cacheia pedidos de mesma origem (ver public/sw.js), então
+ * se as fontes viessem do Google elas nunca ficariam disponíveis offline. Aqui
+ * ficam no próprio domínio e entram no cache normal do app.
+ * ==========================================================================*/
+@font-face {
+  font-family: "Archivo Narrow";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/archivo-narrow-600.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Archivo Narrow";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/archivo-narrow-700.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/inter-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/inter-700.woff2") format("woff2");
+}
+:root {
+  --fonte-corpo: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --fonte-destaque: "Archivo Narrow", "Arial Narrow", sans-serif;
+}
 
 *, *::before, *::after { box-sizing: border-box; }
 html, body, #root { margin: 0; padding: 0; }
-body { -webkit-text-size-adjust: 100%; }
+body { -webkit-text-size-adjust: 100%; font-family: var(--fonte-corpo); }
 button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
 input, select { font: inherit; }
 table { border-collapse: collapse; }
+
+/* números condensados, para placares e estatísticas — reforça o "quadro de
+   resultados" em vez do texto corrido */
+.font-destaque { font-family: var(--fonte-destaque); }
+
+/* estado de foco visível e na cor da marca, em vez do outline padrão do navegador */
+input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible {
+  outline: 2px solid #F5C518;
+  outline-offset: 2px;
+}
+input:focus, select:focus {
+  border-color: #F5C518;
+}
 
 /* display */
 .block { display: block; }
@@ -28,9 +78,11 @@ table { border-collapse: collapse; }
 
 /* grid */
 .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .grid-cols-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .grid-cols-\[1fr_auto_1fr\] { grid-template-columns: 1fr auto 1fr; }
 .col-span-2 { grid-column: span 2 / span 2; }
+.col-span-full { grid-column: 1 / -1; }
 
 /* gap */
 .gap-0\.5 { gap: 2px; }
@@ -80,6 +132,9 @@ table { border-collapse: collapse; }
 .w-11\/12 { width: 91.666667%; }
 .max-w-3xl { max-width: 768px; }
 .max-w-sm { max-width: 384px; }
+/* usada no cabeçalho/conteúdo/navegação — antes não existia (o app nunca tinha
+   largura máxima em telas grandes); agora respiro real em tablet/desktop */
+.max-w-5xl { max-width: 1200px; }
 .min-w-0 { min-width: 0; }
 .min-h-screen { min-height: 100vh; }
 
@@ -111,3 +166,44 @@ table { border-collapse: collapse; }
 
 /* cursor */
 .cursor-pointer { cursor: pointer; }
+
+/* barra de resumo fixa (ex.: contagem + "Sortear" na chamada de presença) —
+   fica colada acima da barra inferior no celular, e sem obstrução nenhuma no
+   desktop (onde a navegação é lateral, não ocupa a base da tela) */
+.barra-resumo { bottom: 70px; }
+@media (min-width: 1024px) {
+  .barra-resumo { bottom: 0; }
+}
+
+/* ============================================================================
+ * Navegação responsiva
+ * ----------------------------------------------------------------------------
+ * Celular: barra fixa embaixo (comportamento original, intacto).
+ * A partir de ~tablet paisagem (1024px): vira coluna fixa à esquerda, e o
+ * cabeçalho/conteúdo ganham respiro para não ficar embaixo dela.
+ * ==========================================================================*/
+@media (min-width: 1024px) {
+  .nav-principal {
+    top: 0;
+    bottom: 0;
+    right: auto;
+    left: 0;
+    width: 76px;
+    border-top: none !important;
+    border-right: 1px solid rgba(219, 225, 255, 0.13);
+  }
+  .nav-principal > div {
+    flex-direction: column;
+    height: 100%;
+    max-width: none;
+    justify-content: flex-start;
+    gap: 10px;
+    padding-top: 20px;
+  }
+  .nav-principal button.nav-item { padding: 4px 0 !important; }
+  /* na coluna, só o ícone — o rótulo vira title/aria via atributo nativo do botão */
+  .nav-principal .nav-item-rotulo { display: none; }
+  .nav-principal .nav-item-icone { padding: 10px !important; }
+
+  .cabecalho-app, .conteudo-principal { padding-left: 76px; }
+}

@@ -109,27 +109,53 @@ netlify.toml               configuração de build e redirecionamento
 package.json               dependências (React + Vite)
 vite.config.js             configuração do empacotador
 public/
+  fonts/                   Archivo Narrow e Inter, auto-hospedadas (ver estilo.css)
   manifest.webmanifest     dados de instalação como aplicativo
   sw.js                    service worker (funcionamento offline)
   icone-192.png            ícones gerados a partir do escudo
   icone-512.png
 src/
   main.jsx                 ponto de entrada, registra o service worker
-  App.jsx                  o sistema inteiro (regras, telas, sorteio)
-  estilo.css               utilidades de layout escritas à mão
+  App.jsx                  só a casca: cabeçalho, navegação, roteamento entre telas
+  theme.js                 cores, gradiente de fundo, escudo, cores de time
+  estilo.css               utilidades de layout escritas à mão + fontes
+  assets/
+    escudo.png             o escudo (era um base64 gigante embutido no código)
+  core/
+    rng.js                 aleatoriedade determinística (mesma seed → mesmo sorteio)
+    regras.js              pontuação, disciplina, classificação e o motor de sorteio —
+                            tudo puro, sem React, dá pra testar isolado
+    exportacao.js           CSV e as imagens (canvas) de súmula/escalação pra baixar
+    repositorio.js           único ponto que toca em armazenamento (Supabase)
+  data/
+    baseOficial.js           jogadores e histórico oficiais até a 21ª rodada
+  components/
+    icones.jsx                ícones SVG embutidos (baseados no Lucide)
+    ui.jsx                     cartão, botão, badges, campos — peças usadas nas 4 telas
+    ModalLogin.jsx             tela de "Entrar como organizador"
+  telas/
+    TelaRodada.jsx             presença, sorteio, súmula ao vivo
+    TelaClassificacao.jsx      tabela, resultados, documentação (tela pública)
+    TelaElenco.jsx              cadastro e edição de jogadores
+    TelaConfig.jsx               regras oficiais, backup, histórico de rodadas
 dist/                      resultado do build — é esta pasta que vai pro ar
 ```
 
 ### Por que não tem Tailwind aqui
 
-O app usa 77 classes utilitárias de layout. Em vez de instalar o Tailwind
-inteiro, elas estão escritas em `src/estilo.css` — menos de 3 KB, sem
-configuração e sem risco de quebrar em atualização de versão. Cores e tipografia
-ficam em `style` inline dentro do `App.jsx`.
+O app usa as classes utilitárias de layout escritas à mão em `src/estilo.css`
+— sem configuração e sem risco de quebrar em atualização de versão. Cores e
+tipografia moram em `src/theme.js` e são usadas via `style` inline nos
+componentes.
 
-### Sobre o `App.jsx` ser um arquivo único
+### Por que virou vários arquivos
 
-São ~2.200 linhas num só arquivo. A separação existe, mas por seções comentadas
-(`core/pontuacao`, `core/sorteio`, `core/disciplina`…) em vez de arquivos. Se em
-algum momento você for mexer nele com frequência, vale quebrar em módulos
-seguindo esses mesmos comentários — as funções já são puras e independentes.
+Até pouco tempo atrás isso tudo era um `App.jsx` só, de ~3.700 linhas — viável
+enquanto o app era pequeno, mas difícil de navegar depois que cresceu (súmula,
+avatar, redesenho visual…). A divisão acima segue exatamente as seções que já
+existiam como comentários (`core/pontuacao`, `core/sorteio`…): nada de regra
+mudou, só onde cada pedaço mora. `core/` e `data/` são puros (sem React, testáveis
+isolados); `components/` são peças reutilizadas por mais de uma tela;
+`telas/` é uma tela cada. Se for adicionar uma 5ª tela, o padrão é: arquivo novo em
+`telas/`, importa o que precisar de `core`/`components`/`theme`, e o `App.jsx`
+ganha só uma linha de rota a mais.
