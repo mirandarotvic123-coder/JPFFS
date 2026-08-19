@@ -102,6 +102,7 @@ input:focus, select:focus {
 .p-1 { padding: 4px; }
 .p-1\.5 { padding: 6px; }
 .p-2 { padding: 8px; }
+.p-2\.5 { padding: 10px; }
 .p-3 { padding: 12px; }
 .p-5 { padding: 20px; }
 .p-6 { padding: 24px; }

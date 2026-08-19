@@ -347,11 +347,16 @@ function ProximosTimesPainel({ sessao, nomes }) {
     <section>
       <Secao titulo="Próximos times" detalhe="prévia — muda conforme a fila muda" />
       <div className="grid grid-cols-2 gap-2">
-        {proximos.map(({ jogadores, faltam }, i) => (
+        {proximos.map(({ jogadores, faltam, goleiro }, i) => (
           <Painel key={i} className="p-2.5">
             <p style={{ marginBottom: 5, fontSize: 9.5, fontWeight: 800, letterSpacing: ".08em", color: T.fraco }}>
               {i === 0 ? "PRÓXIMO A ENTRAR" : "DEPOIS DESSE"}
             </p>
+            {goleiro ? (
+              <p className="flex items-center gap-1" style={{ fontSize: 12, color: T.gk }}><IconeGoleiro tam={11} />{nomes[goleiro] || "?"}</p>
+            ) : (
+              <p style={{ fontSize: 11, fontStyle: "italic", color: T.fraco }}>sem goleiro livre pra sugerir</p>
+            )}
             {jogadores.map((jid) => <p key={jid} style={{ fontSize: 12, color: T.secundario }}>{nomes[jid] || "?"}</p>)}
             {faltam > 0 && (
               <p style={{ marginTop: 2, fontSize: 11, fontStyle: "italic", color: T.fraco }}>
