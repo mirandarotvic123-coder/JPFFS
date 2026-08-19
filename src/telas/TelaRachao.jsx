@@ -81,9 +81,16 @@ function TelaRachao({ base, avisar }) {
  * entrou no dia. Não é a fila do jogo (aquela gira com vitória/derrota) —
  * é só uma referência de "quem chegou quando", meio apagada de propósito. */
 
+// todo mundo do dia (linha + goleiro), na ordem de chegada combinada — a mesma lista que
+// aparece na Lista de chegada. Usada também em AdicionarNaFila pra "posição X" significar a
+// mesma coisa nas duas telas, em vez de contar só dentro da fila do mesmo tipo.
+function ordemGeral(sessao, ordemIdx) {
+  const ids = [...new Set([...sessao.linha, ...sessao.goleiros])];
+  return ids.sort((a, b) => (ordemIdx[a] ?? Infinity) - (ordemIdx[b] ?? Infinity));
+}
+
 function ListaChegada({ sessao, convidados, nomes, ordemIdx }) {
-  const idsHoje = [...new Set([...sessao.linha, ...sessao.goleiros])];
-  const ordenados = idsHoje.sort((a, b) => (ordemIdx[a] ?? Infinity) - (ordemIdx[b] ?? Infinity));
+  const ordenados = ordemGeral(sessao, ordemIdx);
   const ehGoleiro = (jid) => sessao.goleiros.includes(jid);
   const ehConvidado = (jid) => convidados.some((c) => c.id === jid);
 
@@ -428,13 +435,18 @@ function AdicionarNaFila({ sessao, atualizar, avisar, base, convidados, setConvi
   const disponiveisElenco = base.jogadores.filter((j) => j.ativo !== false && !jaNaSessao.has(j.id))
     .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 
-  // Acha onde encaixar na fila (aguardando) e devolve tanto o vizinho de referência pro
-  // inserirNaFila quanto os vizinhos pra calcular a posição na Lista de chegada — assim quem
-  // escolhe "posição 10" cai na 10ª posição das duas listas, não só na fila do jogo.
-  const posicaoNaFila = (ehGoleiro) => {
-    const fila = ehGoleiro ? goleirosLivres(sessao) : aguardandoLinha(sessao);
-    const idx = posicaoFila === "" ? fila.length : Math.max(0, Math.min(Number(posicaoFila) - 1, fila.length));
-    return { antesDeId: fila[idx] ?? null, anteriorId: fila[idx - 1] ?? null };
+  // A posição digitada é sobre a ORDEM DE CHEGADA combinada (a mesma lista da barra lateral,
+  // misturando linha e goleiro) — não sobre a fila de um tipo só, senão "posição 7" muda de
+  // sentido dependendo de quantos goleiros tem na frente. Pra encaixar de fato na fila
+  // funcional do tipo certo (linha OU goleiro), escaneia a partir dali até achar o primeiro
+  // do mesmo tipo do novo jogador — é ele quem entra como referência pro inserirNaFila.
+  const posicaoEscolhida = (ehGoleiro) => {
+    const geral = ordemGeral(sessao, ordemIdx);
+    const idx = posicaoFila === "" ? geral.length : Math.max(0, Math.min(Number(posicaoFila) - 1, geral.length));
+    const mesmoTipo = (jid) => sessao.goleiros.includes(jid) === ehGoleiro;
+    let antesDeIdTipo = null;
+    for (let i = idx; i < geral.length; i++) if (mesmoTipo(geral[i])) { antesDeIdTipo = geral[i]; break; }
+    return { antesDeIdTipo, anteriorIdGeral: geral[idx - 1] ?? null, antesDeIdGeral: geral[idx] ?? null };
   };
   const novoOrdemIdx = (s, anteriorId, antesDeId) => {
     const antes = anteriorId != null ? s[anteriorId] : undefined;
@@ -465,26 +477,26 @@ function AdicionarNaFila({ sessao, atualizar, avisar, base, convidados, setConvi
             </select>
           </div>
         )}
-        <Campo rotulo="Posição na fila (vazio = no fim)">
+        <Campo rotulo="Posição na ordem de chegada (vazio = no fim)" dica="conta linha e goleiro juntos, igual a lista da direita">
           <input type="number" min="1" value={posicaoFila} onChange={(e) => setPosicaoFila(e.target.value)} placeholder="ex.: 3" style={inputStyle} />
         </Campo>
         <Botao className="w-full" onClick={() => {
           if (modo === "elenco") {
             if (!jogadorId) return;
             const j = base.jogadores.find((x) => x.id === jogadorId);
-            const { antesDeId, anteriorId } = posicaoNaFila(j.posicao === "GOLEIRO");
-            atualizar(inserirNaFila(sessao, jogadorId, antesDeId, j.posicao === "GOLEIRO"));
-            setOrdemIdx((s) => (jogadorId in s ? s : { ...s, [jogadorId]: novoOrdemIdx(s, anteriorId, antesDeId) }));
+            const { antesDeIdTipo, anteriorIdGeral, antesDeIdGeral } = posicaoEscolhida(j.posicao === "GOLEIRO");
+            atualizar(inserirNaFila(sessao, jogadorId, antesDeIdTipo, j.posicao === "GOLEIRO"));
+            setOrdemIdx((s) => (jogadorId in s ? s : { ...s, [jogadorId]: novoOrdemIdx(s, anteriorIdGeral, antesDeIdGeral) }));
             avisar(`${j.nome} entrou na fila`);
             setJogadorId("");
           } else {
             if (!nome.trim()) return;
             const jid = id();
             const ehGoleiro = posicao === "GOLEIRO";
-            const { antesDeId, anteriorId } = posicaoNaFila(ehGoleiro);
+            const { antesDeIdTipo, anteriorIdGeral, antesDeIdGeral } = posicaoEscolhida(ehGoleiro);
             setConvidados([...convidados, { id: jid, nome: nome.trim(), posicao, estrelas }]);
-            atualizar(inserirNaFila(sessao, jid, antesDeId, ehGoleiro));
-            setOrdemIdx((s) => ({ ...s, [jid]: novoOrdemIdx(s, anteriorId, antesDeId) }));
+            atualizar(inserirNaFila(sessao, jid, antesDeIdTipo, ehGoleiro));
+            setOrdemIdx((s) => ({ ...s, [jid]: novoOrdemIdx(s, anteriorIdGeral, antesDeIdGeral) }));
             avisar(`${nome.trim()} entrou como convidado do dia`);
             setNome(""); setEstrelas(1);
           }
