@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import { T, ESCUDO } from "../theme";
-import { ROTULO_CRITERIO, eventoDe, placarDe } from "../core/regras";
+import { eventoDe, placarDe } from "../core/regras";
 import { csvClassificacao, imagemTabela, baixarArquivo } from "../core/exportacao";
 import {
-  Botao, Painel, Secao, SeloAtraso, CampoBusca, Estrelas, IconeGoleiro, Marcadores,
+  Botao, Painel, Secao, SeloAtraso, CampoBusca, Estrelas, IconeGoleiro, Marcadores, AvatarJogador,
 } from "../components/ui";
 
 /* ======================= TELA: CLASSIFICAÇÃO =============================*/
@@ -81,26 +81,29 @@ function TelaClassificacao({ base, dados, cfg, avisar }) {
                   style={{ background: l.supercopa ? T.ouroFraco : i % 2 ? T.linhaPar : "transparent", borderBottom: "1px solid rgba(255,255,255,.05)", cursor: "pointer" }}>
                   <td style={{ padding: "8px 5px", textAlign: "center", fontWeight: 900, color: l.supercopa ? T.ouro : T.fraco, borderLeft: l.supercopa ? `4px solid ${T.ouro}` : "4px solid transparent" }}>{l.posicao}</td>
                   <td style={{ padding: "8px 6px", textAlign: "left" }}>
-                    <div className="flex items-center gap-1.5" style={{ whiteSpace: "nowrap" }}>
-                      {l.jogador.posicao === "GOLEIRO" && <IconeGoleiro />}
-                      <span style={{ color: T.texto, fontWeight: 600, fontSize: 12.5 }}>{l.nome}</span>
-                      {l.nivelAtraso && <SeloAtraso nivel={l.atrasosNoMes} cfg={cfg} mini />}
-                      <Marcadores jogador={l.jogador} />
+                    <div className="flex items-center" style={{ gap: 8 }}>
+                      {detalhe === l.id && <AvatarJogador jogador={l.jogador} tam={36} />}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5" style={{ whiteSpace: "nowrap" }}>
+                          {l.jogador.posicao === "GOLEIRO" && <IconeGoleiro />}
+                          <span style={{ color: T.texto, fontWeight: 600, fontSize: 12.5 }}>{l.nome}</span>
+                          {l.nivelAtraso && <SeloAtraso nivel={l.atrasosNoMes} cfg={cfg} mini />}
+                          <Marcadores jogador={l.jogador} />
+                        </div>
+                        {detalhe === l.id && (
+                          <p style={{ marginTop: 3, fontSize: 10.5, lineHeight: 1.5, fontWeight: 400, color: T.secundario, whiteSpace: "normal" }}>
+                            <span style={{ display: "block", color: T.secundario }}>
+                              Ciclo de amarelos: {l.cartoesNoCiclo}/{cfg.cartoesPorPonto} · atrasos no mês: {l.atrasosNoMes}
+                              {l.nivelAtraso && ` — ${l.nivelAtraso.rotulo}`}
+                            </span>
+                            {l.Pmenos > 0 && <span style={{ display: "block", color: T.vermelho }}>
+                              P−: {l.histPmenos} histórico + {l.pontosAtraso} atraso + {l.penalAmarelo} amarelos + {l.penalVermelho} vermelho + {l.penalidadeManual} manual
+                            </span>}
+                            {l.jogador.posicaoInferida && <span style={{ display: "block", color: T.gk }}>Goleiro inferido da tabela oficial — confirme no Elenco.</span>}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                    {detalhe === l.id && (
-                      <p style={{ marginTop: 3, fontSize: 10.5, lineHeight: 1.5, fontWeight: 400, color: T.ouroClaro, whiteSpace: "normal" }}>
-                        {l.criterioAplicado ? `Desempate: ${ROTULO_CRITERIO[l.criterioAplicado]}` : "Líder da tabela"}
-                        {l.rankCategoria && ` · ${l.rankCategoria}º entre ${l.totalCategoria} ${l.ehGoleiro ? "goleiros" : "de linha"} → ${l.estrelas}★`}
-                        <span style={{ display: "block", color: T.secundario }}>
-                          Ciclo de amarelos: {l.cartoesNoCiclo}/{cfg.cartoesPorPonto} · atrasos no mês: {l.atrasosNoMes}
-                          {l.nivelAtraso && ` — ${l.nivelAtraso.rotulo}`}
-                        </span>
-                        {l.Pmenos > 0 && <span style={{ display: "block", color: T.vermelho }}>
-                          P−: {l.histPmenos} histórico + {l.pontosAtraso} atraso + {l.penalAmarelo} amarelos + {l.penalVermelho} vermelho + {l.penalidadeManual} manual
-                        </span>}
-                        {l.jogador.posicaoInferida && <span style={{ display: "block", color: T.gk }}>Goleiro inferido da tabela oficial — confirme no Elenco.</span>}
-                      </p>
-                    )}
                   </td>
                   <td style={{ padding: "8px 5px", textAlign: "center" }}><Estrelas n={l.estrelas} tam={10.5} goleiro={l.ehGoleiro} /></td>
                   {cols.map(([r, k]) => (
