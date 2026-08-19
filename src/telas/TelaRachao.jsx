@@ -5,7 +5,7 @@ import {
   criarSessao, aguardandoLinha, goleirosLivres, proximosTimes,
   podeIniciarPartida, iniciarPartida, atribuirGoleiro, limparGoleiro, marcarGol,
   encerrarPartida, resolverParOuImpar, substituirLinha, removerJogador, inserirNaFila,
-  avisosSessao, fecharSessao, reabrirSessao,
+  avisosSessao,
 } from "../core/rachao";
 import {
   Botao, Painel, inputStyle, Campo, CabecalhoPagina, Secao, Segmento, IconeGoleiro,
@@ -15,16 +15,25 @@ import {
 /* =========================== TELA: RACHÃO =================================
  * Fila por ordem de chegada, times Amarelo × Azul, vencedor fica em quadra
  * (Art. 25º-30º do Estatuto). Totalmente separada do Campeonato: não mexe em
- * gols/cartões/pontos/tabela de ninguém — é só um controlador de fila e
- * placar do dia. Ver core/rachao.js pras suposições assumidas.            */
+ * gols/cartões/pontos/tabela de ninguém.
+ *
+ * Nada aqui é salvo — a sessão e os convidados do dia vivem só no estado
+ * local desta tela. Sair da aba/recarregar a página perde tudo, e é assim
+ * mesmo: o Rachão roda dentro do dia e acaba com "Encerrar jogos do Rachão".
+ * (Se um dia isso precisar sobreviver a um refresh, dá pra trocar os
+ * useState abaixo por localStorage — sem precisar do Supabase pra isso.)  */
 
-function TelaRachao({ base, setBase, avisar }) {
-  const nomes = Object.fromEntries(base.jogadores.map((j) => [j.id, j.nome]));
-  const sessao = (base.rachoes || []).find((r) => r.status === "aberta");
+function TelaRachao({ base, avisar }) {
+  const [sessao, setSessao] = useState(null);
+  const [convidados, setConvidados] = useState([]); // só desta sessão — não entra no elenco
 
-  if (!sessao) return <AberturaRachao {...{ base, setBase, avisar, nomes }} />;
+  const nomes = {
+    ...Object.fromEntries(base.jogadores.map((j) => [j.id, j.nome])),
+    ...Object.fromEntries(convidados.map((c) => [c.id, c.nome])),
+  };
 
-  const atualizar = (novaSessao) => setBase({ ...base, rachoes: base.rachoes.map((r) => (r.id === sessao.id ? novaSessao : r)) });
+  if (!sessao) return <AberturaRachao {...{ base, avisar, setSessao, setConvidados }} />;
+
   const presentesTotal = new Set([...sessao.linha, ...sessao.goleiros]).size;
   const avisos = avisosSessao(sessao, presentesTotal);
 
@@ -44,99 +53,66 @@ function TelaRachao({ base, setBase, avisar }) {
         <Painel key={i} className="p-3" style={{ borderColor: T.laranja, background: "rgba(255,165,61,.1)", fontSize: 12, color: T.laranja }}>{a}</Painel>
       ))}
 
-      <QuadraAoVivo {...{ sessao, atualizar, avisar, nomes }} />
+      <QuadraAoVivo {...{ sessao, atualizar: setSessao, avisar, nomes }} />
       <ProximosTimesPainel {...{ sessao, nomes }} />
-      <FilaEConvidados {...{ sessao, atualizar, avisar, base, setBase, nomes }} />
+      <FilaEConvidados {...{ sessao, atualizar: setSessao, avisar, base, convidados, setConvidados, nomes }} />
       <HistoricoDoDia sessao={sessao} />
 
       <Botao variante="secundario" className="w-full" onClick={() => {
-        if (confirm(`Fechar o Rachão de ${new Date(sessao.data + "T12:00:00").toLocaleDateString("pt-BR")}? Dá pra reabrir depois.`)) {
-          atualizar(fecharSessao(sessao));
-          avisar("Rachão fechado");
+        if (confirm("Encerrar os jogos do Rachão? Nada foi salvo — a fila, a quadra e o histórico de hoje somem.")) {
+          setSessao(null); setConvidados([]);
+          avisar("Rachão encerrado");
         }
-      }}>Fechar Rachão do dia</Botao>
+      }}>Encerrar jogos do Rachão</Botao>
     </div>
   );
 }
 
 /* --------------------------- Abertura do dia ------------------------------*/
 
-function AberturaRachao({ base, setBase, avisar, nomes }) {
+function AberturaRachao({ base, avisar, setSessao, setConvidados }) {
   const hoje = new Date().toISOString().slice(0, 10);
   const [data, setData] = useState(hoje);
   const [linhaPorTime, setLinhaPorTime] = useState(4);
   const [limitePartidas, setLimitePartidas] = useState(3);
   const porId = Object.fromEntries(base.jogadores.map((j) => [j.id, j]));
   const rodadaDoDia = base.rodadas.find((r) => r.data === data);
-  const fechadaDoDia = (base.rachoes || []).find((r) => r.data === data && r.status === "fechada");
 
   return (
     <div className="space-y-4">
-      <CabecalhoPagina titulo="Rachão" descricao="Fila por ordem de chegada, Amarelo × Azul, vencedor fica em quadra." />
+      <CabecalhoPagina titulo="Rachão" descricao="Fila por ordem de chegada, Amarelo × Azul, vencedor fica em quadra. Nada fica salvo — roda só no dia." />
       <Painel className="p-4 space-y-3">
         <Campo rotulo="Data do rachão">
           <input type="date" value={data} onChange={(e) => setData(e.target.value)} style={inputStyle} />
         </Campo>
 
-        {fechadaDoDia ? (
-          <>
-            <p style={{ fontSize: 12, color: T.secundario }}>
-              Já existe um Rachão fechado nesta data ({fechadaDoDia.historico.length} partida(s)). Dá pra reabrir e continuar de onde parou.
-            </p>
-            <Botao className="w-full" onClick={() => {
-              setBase({ ...base, rachoes: base.rachoes.map((r) => (r.id === fechadaDoDia.id ? reabrirSessao(r) : r)) });
-              avisar("Rachão reaberto");
-            }}>Reabrir Rachão de {new Date(data + "T12:00:00").toLocaleDateString("pt-BR")}</Botao>
-          </>
+        {rodadaDoDia ? (
+          <p style={{ fontSize: 12, color: T.secundario }}>
+            Vou puxar a ordem de chegada da <b style={{ color: T.ouro }}>rodada {rodadaDoDia.numero}</b> do Campeonato
+            deste dia ({(rodadaDoDia.ordemChegada || []).length} jogador(es) já chamados) — dá pra ajustar a fila depois de abrir.
+          </p>
         ) : (
-          <>
-            {rodadaDoDia ? (
-              <p style={{ fontSize: 12, color: T.secundario }}>
-                Vou puxar a ordem de chegada da <b style={{ color: T.ouro }}>rodada {rodadaDoDia.numero}</b> do Campeonato
-                deste dia ({(rodadaDoDia.ordemChegada || []).length} jogador(es) já chamados) — dá pra ajustar a fila depois de abrir.
-              </p>
-            ) : (
-              <p style={{ fontSize: 12, color: T.fraco }}>Nenhuma rodada do Campeonato encontrada nesta data — a fila abre vazia, dá pra adicionar todo mundo na mão.</p>
-            )}
-            <Campo rotulo="Jogadores de linha por time">
-              <Segmento valor={linhaPorTime} onChange={setLinhaPorTime}
-                opcoes={[{ valor: 4, rotulo: "4 + 1 gol" }, { valor: 5, rotulo: "5 + 1 gol" }]} />
-            </Campo>
-            <Campo rotulo="Sai depois de quantas partidas seguidas" dica="Art. 29º — com 25+ presentes o Estatuto recomenda 2 (a não ser que a locação seja de 2h ou mais).">
-              <Segmento valor={limitePartidas} onChange={setLimitePartidas}
-                opcoes={[{ valor: 2, rotulo: "2 partidas" }, { valor: 3, rotulo: "3 partidas" }]} />
-            </Campo>
-            <Botao className="w-full" onClick={() => {
-              const nova = criarSessao({
-                id: id(), data, rodadaOrigemId: rodadaDoDia?.id || null,
-                ordemChegada: rodadaDoDia?.ordemChegada || [], porId, linhaPorTime, limitePartidas,
-              });
-              setBase({ ...base, rachoes: [...(base.rachoes || []), nova] });
-              avisar(`Rachão de ${new Date(data + "T12:00:00").toLocaleDateString("pt-BR")} aberto`);
-            }}>Abrir Rachão</Botao>
-          </>
+          <p style={{ fontSize: 12, color: T.fraco }}>Nenhuma rodada do Campeonato encontrada nesta data — a fila abre vazia, dá pra adicionar todo mundo na mão.</p>
         )}
+        <Campo rotulo="Jogadores de linha por time">
+          <Segmento valor={linhaPorTime} onChange={setLinhaPorTime}
+            opcoes={[{ valor: 4, rotulo: "4 + 1 gol" }, { valor: 5, rotulo: "5 + 1 gol" }]} />
+        </Campo>
+        <Campo rotulo="Sai depois de quantas partidas seguidas" dica="Art. 29º — com 25+ presentes o Estatuto recomenda 2 (a não ser que a locação seja de 2h ou mais).">
+          <Segmento valor={limitePartidas} onChange={setLimitePartidas}
+            opcoes={[{ valor: 2, rotulo: "2 partidas" }, { valor: 3, rotulo: "3 partidas" }]} />
+        </Campo>
+        <Botao className="w-full" onClick={() => {
+          const nova = criarSessao({
+            id: id(), data, rodadaOrigemId: rodadaDoDia?.id || null,
+            ordemChegada: rodadaDoDia?.ordemChegada || [], porId, linhaPorTime, limitePartidas,
+          });
+          setConvidados([]);
+          setSessao(nova);
+          avisar(`Rachão de ${new Date(data + "T12:00:00").toLocaleDateString("pt-BR")} aberto`);
+        }}>Abrir Rachão</Botao>
       </Painel>
-      <HistoricoRachoes base={base} />
     </div>
-  );
-}
-
-function HistoricoRachoes({ base }) {
-  const fechados = (base.rachoes || []).filter((r) => r.status === "fechada").sort((a, b) => b.data.localeCompare(a.data));
-  if (!fechados.length) return null;
-  return (
-    <section>
-      <Secao titulo="Rachões anteriores" detalhe={`${fechados.length}`} />
-      <div className="space-y-1.5">
-        {fechados.map((r) => (
-          <Painel key={r.id} className="flex items-center justify-between p-2.5" style={{ fontSize: 12.5 }}>
-            <span>{new Date(r.data + "T12:00:00").toLocaleDateString("pt-BR")}</span>
-            <span style={{ color: T.fraco }}>{r.historico.length} partida(s)</span>
-          </Painel>
-        ))}
-      </div>
-    </section>
   );
 }
 
@@ -323,7 +299,7 @@ function ProximosTimesPainel({ sessao, nomes }) {
 
 /* ------------------------------- Fila / convidado --------------------------*/
 
-function FilaEConvidados({ sessao, atualizar, avisar, base, setBase, nomes }) {
+function FilaEConvidados({ sessao, atualizar, avisar, base, convidados, setConvidados, nomes }) {
   const filaLinha = aguardandoLinha(sessao);
 
   return (
@@ -369,12 +345,12 @@ function FilaEConvidados({ sessao, atualizar, avisar, base, setBase, nomes }) {
         </Painel>
       </div>
 
-      <AdicionarNaFila {...{ sessao, atualizar, avisar, base, setBase }} />
+      <AdicionarNaFila {...{ sessao, atualizar, avisar, base, convidados, setConvidados }} />
     </section>
   );
 }
 
-function AdicionarNaFila({ sessao, atualizar, avisar, base, setBase }) {
+function AdicionarNaFila({ sessao, atualizar, avisar, base, convidados, setConvidados }) {
   const [modo, setModo] = useState("elenco");
   const [jogadorId, setJogadorId] = useState("");
   const [nome, setNome] = useState("");
@@ -395,7 +371,7 @@ function AdicionarNaFila({ sessao, atualizar, avisar, base, setBase }) {
     <div>
       <Secao titulo="Adicionar à fila" detalhe="do elenco ou convidado só do Rachão" />
       <Painel className="space-y-2 p-3">
-        <Segmento valor={modo} onChange={setModo} opcoes={[{ valor: "elenco", rotulo: "Do elenco" }, { valor: "convidado", rotulo: "Convidado novo" }]} />
+        <Segmento valor={modo} onChange={setModo} opcoes={[{ valor: "elenco", rotulo: "Do elenco" }, { valor: "convidado", rotulo: "Convidado do dia" }]} />
         {modo === "elenco" ? (
           <select value={jogadorId} onChange={(e) => setJogadorId(e.target.value)} style={inputStyle}>
             <option value="">— escolher jogador —</option>
@@ -426,13 +402,9 @@ function AdicionarNaFila({ sessao, atualizar, avisar, base, setBase }) {
             if (!nome.trim()) return;
             const jid = id();
             const ehGoleiro = posicao === "GOLEIRO";
-            const sessaoNova = inserirNaFila(sessao, jid, indiceEscolhido(ehGoleiro), ehGoleiro);
-            setBase({
-              ...base,
-              jogadores: [...base.jogadores, { id: jid, nome: nome.trim(), posicao, ativo: true, convidado: true, estrelasIniciais: estrelas }],
-              rachoes: base.rachoes.map((r) => (r.id === sessao.id ? sessaoNova : r)),
-            });
-            avisar(`${nome.trim()} entrou como convidado`);
+            setConvidados([...convidados, { id: jid, nome: nome.trim(), posicao, estrelas }]);
+            atualizar(inserirNaFila(sessao, jid, indiceEscolhido(ehGoleiro), ehGoleiro));
+            avisar(`${nome.trim()} entrou como convidado do dia`);
             setNome(""); setEstrelas(1);
           }
           setPosicaoFila("");

@@ -3,6 +3,12 @@
  * recebe uma "sessão" (o rachão de um dia), devolve uma sessão nova — sem
  * React, sem tela, dá pra testar isolado.
  *
+ * A sessão NÃO é persistida em lugar nenhum — vive só no estado local da
+ * tela enquanto o rachão do dia está rolando. "Encerrar jogos do Rachão"
+ * simplesmente descarta o estado; não há histórico entre dias nem gravação
+ * no Supabase. Por isso o módulo não tem "status" nem reabertura — só existe
+ * enquanto a tela mantém a sessão viva.
+ *
  * Diferença de fundo pro Campeonato: lá o sorteio é balanceado e todas as
  * partidas rolam em paralelo. Aqui é UMA quadra, times formados por ORDEM DE
  * CHEGADA (sem balancear estrela nenhuma), "quem vence fica em quadra" e um
@@ -46,7 +52,6 @@ function criarSessao({ id, data, rodadaOrigemId, ordemChegada = [], porId = {}, 
     id, data, rodadaOrigemId: rodadaOrigemId || null,
     linhaPorTime: linhaPorTime === 5 ? 5 : 4,
     limitePartidas: limitePartidas === 2 ? 2 : 3,
-    status: "aberta",
     linha, goleiros, quadra: null, timeEmEspera: null, historico: [],
   };
 }
@@ -364,8 +369,6 @@ function avisosSessao(sessao, presentesTotal) {
   }
   return avisos;
 }
-function fecharSessao(sessao) { return { ...sessao, status: "fechada" }; }
-function reabrirSessao(sessao) { return { ...sessao, status: "aberta" }; }
 
 export {
   RACHAO_PADRAO, NOME_LADO,
@@ -374,5 +377,5 @@ export {
   atribuirGoleiro, limparGoleiro, marcarGol,
   encerrarPartida, resolverParOuImpar,
   substituirLinha, removerJogador, inserirNaFila,
-  avisosSessao, fecharSessao, reabrirSessao,
+  avisosSessao,
 };

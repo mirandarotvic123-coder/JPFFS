@@ -85,7 +85,8 @@ function migrarBase(base) {
     ...r, ajustes: r.ajustes || [], times: r.times || [], ordemChegada: r.ordemChegada || [],
     jogos: (r.jogos || []).map((g) => ({ ...g, soCartoes: g.soCartoes || [], golsNaoComputadosA: g.golsNaoComputadosA || 0, golsNaoComputadosB: g.golsNaoComputadosB || 0 })),
   }));
-  b.rachoes = (b.rachoes || []).map((r) => ({ ...r, linha: r.linha || [], goleiros: r.goleiros || [], historico: r.historico || [] }));
+  // rachoes NÃO é persistido — o Rachão roda só na memória da tela, dura o dia e "Encerrar
+  // jogos do Rachão" descarta tudo. ordemChegada acima é a única ponte com o Campeonato.
   return b;
 }
 export { carregarBase, salvarBase, enviarFotoJogador, id, migrarBase };

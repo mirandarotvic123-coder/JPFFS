@@ -127,7 +127,7 @@ export default function App() {
 
       <main className="conteudo-principal mx-auto max-w-5xl px-3 pt-4" style={{ paddingBottom: 104 }}>
         {aba === "rodada" && sessao && <TelaRodada {...{ base, setBase, dados, cfg, avisar: setAviso }} />}
-        {aba === "rachao" && sessao && <TelaRachao {...{ base, setBase, avisar: setAviso }} />}
+        {aba === "rachao" && sessao && <TelaRachao {...{ base, avisar: setAviso }} />}
         {aba === "tabela" && <TelaClassificacao {...{ base, dados, cfg, avisar: setAviso }} />}
         {aba === "elenco" && sessao && <TelaElenco {...{ base, setBase, dados, cfg, avisar: setAviso }} />}
         {aba === "config" && sessao && <TelaConfig {...{ base, setBase, dados, cfg, avisar: setAviso }} />}
