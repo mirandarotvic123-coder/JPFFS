@@ -13,6 +13,9 @@ import {
 
 /* ==================== TELA: HISTÓRICO E CONFIGURAÇÕES ====================*/
 
+/* "2026-08-15" -> "15/08/2026" — mesmo padrão usado no resto do app. */
+const dataBR = (iso) => (iso ? new Date(iso + "T12:00:00").toLocaleDateString("pt-BR") : "");
+
 /* linha "rótulo à esquerda, valor num chip à direita" — usada nos cartões de
    regra travada (Pontuação/Disciplina), pra não fingir que é editável */
 function LinhaValor({ rotulo, dica, valor, unidade }) {
@@ -100,7 +103,7 @@ function Historico({ base, setBase, avisar, nomes, dados }) {
         {base.historicoInicial?.rodadas > 0 && (
           <div className="rounded-lg p-3" style={{ background: T.ouroFraco, border: "1px solid rgba(245,197,24,.3)" }}>
             <p style={{ fontSize: 13, fontWeight: 700, color: T.ouro }}>Rodadas 1 a {base.historicoInicial.rodadas} — base oficial</p>
-            <p style={{ fontSize: 11.5, color: T.secundario }}>{base.historicoInicial.descricao} ({base.historicoInicial.data}).</p>
+            <p style={{ fontSize: 11.5, color: T.secundario }}>{base.historicoInicial.descricao} ({dataBR(base.historicoInicial.data)}).</p>
           </div>
         )}
 
@@ -112,7 +115,7 @@ function Historico({ base, setBase, avisar, nomes, dados }) {
               <option value="">— escolher —</option>
               {ordenadas.map((x) => (
                 <option key={x.id} value={x.id}>
-                  Rodada {x.numero}{x.status === "aberta" ? " · aberta" : ""} — {x.data || "sem data"}
+                  Rodada {x.numero}{x.status === "aberta" ? " · aberta" : ""} — {x.data ? dataBR(x.data) : "sem data"}
                 </option>
               ))}
             </select>
@@ -124,7 +127,7 @@ function Historico({ base, setBase, avisar, nomes, dados }) {
             <div className="min-w-0">
               <p style={{ fontSize: 13.5, fontWeight: 700 }}>Rodada {r.numero} {r.status === "aberta" && <span style={{ color: T.ouro }}>· aberta</span>}</p>
               <p className="truncate" style={{ fontSize: 11.5, color: T.secundario }}>
-                {r.data} · {(r.jogos || []).map((g) => { const p = placarDe(g, r); return `${p.A}×${p.B}`; }).join(" · ") || "sem partidas"}
+                {dataBR(r.data)} · {(r.jogos || []).map((g) => { const p = placarDe(g, r); return `${p.A}×${p.B}`; }).join(" · ") || "sem partidas"}
               </p>
             </div>
             <div className="flex shrink-0 gap-1">

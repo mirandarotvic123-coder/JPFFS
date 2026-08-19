@@ -60,10 +60,26 @@ async function enviarFotoJogador(jogadorId, arquivo) {
 
 const id = () => Math.random().toString(36).slice(2, 10);
 
+/* corrige texto salvo com "double-encoding" de UTF-8 (ex.: "ClassificaÃ§Ã£o"
+ * em vez de "Classificação") — um problema antigo de gravação que ficou preso
+ * em alguns registros. Só mexe na string quando reconhece a marca típica da
+ * corrupção (Ã/Â seguido de outro byte) e a decodificação bate certinho;
+ * caso contrário devolve o texto original intacto. */
+function corrigirMojibake(s) {
+  if (typeof s !== "string" || !/[ÃÂ]/.test(s)) return s;
+  try {
+    const bytes = Uint8Array.from([...s].map((c) => c.charCodeAt(0)));
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return s;
+  }
+}
+
 function migrarBase(base) {
   const b = { ...baseOficial(), ...base, config: { ...CONFIG_PADRAO, ...(base.config || {}), pesos: { ...CONFIG_PADRAO.pesos, ...(base.config?.pesos || {}) } } };
   b.restricoes = b.restricoes || [];
   b.historicoInicial = base.historicoInicial || { rodadas: 0, jogadores: {} };
+  if (b.historicoInicial.descricao) b.historicoInicial = { ...b.historicoInicial, descricao: corrigirMojibake(b.historicoInicial.descricao) };
   b.jogadores = (b.jogadores || []).map((j) => ({ ...j, posicao: /goleiro/i.test(j.posicao || "") ? "GOLEIRO" : "LINHA", convidado: !!j.convidado }));
   b.rodadas = (b.rodadas || []).map((r) => ({
     ...r, ajustes: r.ajustes || [], times: r.times || [],
