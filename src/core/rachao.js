@@ -19,10 +19,13 @@
  *  - "Time que sai" volta pro FIM da fila de linha (não guarda a posição
  *    antiga) — é a leitura padrão de fila com "vencedor fica" e também é o
  *    que dá sentido à exceção do Art. 25º §2º "b" (ver abaixo).
- *  - Goleiro NÃO segue fila estrita: fica num pool sempre visível (ordenado
- *    por chegada só como referência) e é escolhido na mão pra cada time —
- *    pedido explícito de quem usa o sistema, porque há menos goleiros do que
- *    vagas.
+ *  - Goleiro tem presença separada da linha, mas segue a MESMA lógica de fila
+ *    por ordem de chegada entre eles: ao montar um time (novo ou substituto),
+ *    o motor sugere/atribui sozinho o goleiro livre há mais tempo esperando,
+ *    e o goleiro do time que sai vai pro fim dessa fila própria — os
+ *    goleiros nunca se misturam com a fila de linha. O organizador ainda
+ *    pode trocar na mão a qualquer momento (botão ✕ na tela), porque com
+ *    menos goleiros do que vagas às vezes precisa fugir da ordem estrita.
  *  - Art. 25º §2º "b" (substituto que entra depois dos 5min mantém a posição
  *    antiga) é lido como valendo só pro desfecho DESTA partida em que ele
  *    entrou — se o time dele continuar vencendo depois, ele vira um membro
@@ -68,6 +71,11 @@ function idsEmQuadra(sessao) {
     for (const jid of q.lados[lado].linha) s.add(jid);
     if (q.lados[lado].goleiro) s.add(q.lados[lado].goleiro);
   }
+  // time em espera (Art. 27º/28º) já está com a vaga comprometida — não é "aguardando".
+  if (sessao.timeEmEspera) {
+    for (const jid of sessao.timeEmEspera.linha) s.add(jid);
+    if (sessao.timeEmEspera.goleiro) s.add(sessao.timeEmEspera.goleiro);
+  }
   return s;
 }
 function aguardandoLinha(sessao) {
@@ -99,20 +107,21 @@ function podeIniciarPartida(sessao) {
 
 function iniciarPartida(sessao) {
   const fila = aguardandoLinha(sessao);
+  const filaGk = goleirosLivres(sessao); // por ordem de chegada entre eles
   let amarelo, azul, incumbente = null, partidasSeguidas = 0, forcarSaidaAoFim = false;
   let primeiraPartida = sessao.historico.length === 0;
 
   if (sessao.timeEmEspera) {
     // time que já tinha ficado esperando adversário (Art. 27º/28º) — não perde a vaga.
     amarelo = { linha: sessao.timeEmEspera.linha, goleiro: sessao.timeEmEspera.goleiro };
-    azul = { linha: fila.slice(0, sessao.linhaPorTime), goleiro: null };
+    azul = { linha: fila.slice(0, sessao.linhaPorTime), goleiro: filaGk[0] || null };
     incumbente = "amarelo";
     partidasSeguidas = sessao.timeEmEspera.partidasSeguidas;
     forcarSaidaAoFim = sessao.timeEmEspera.forcarSaidaAoFim;
     primeiraPartida = false;
   } else {
-    amarelo = { linha: fila.slice(0, sessao.linhaPorTime), goleiro: null };
-    azul = { linha: fila.slice(sessao.linhaPorTime, sessao.linhaPorTime * 2), goleiro: null };
+    amarelo = { linha: fila.slice(0, sessao.linhaPorTime), goleiro: filaGk[0] || null };
+    azul = { linha: fila.slice(sessao.linhaPorTime, sessao.linhaPorTime * 2), goleiro: filaGk[1] || null };
   }
 
   const quadra = {
@@ -235,20 +244,26 @@ function aplicarDesfecho(sessao, { ladoQueFica, partidasSeguidas, motivo }) {
     ladoQueFicou: ladoQueFica, motivo,
   };
 
-  // quem sai volta pro FIM da fila de linha — exceto os "protegidos" do Art. 25º §2º "b"
-  // (substituto que entrou depois dos 5min desta mesma partida mantém a posição antiga).
+  // quem sai volta pro FIM da fila — exceto os "protegidos" do Art. 25º §2º "b" (substituto
+  // de linha que entrou depois dos 5min desta mesma partida mantém a posição antiga). O
+  // goleiro do time que sai não tem essa exceção: sempre volta pro fim da fila de goleiros.
   let linha = [...sessao.linha];
+  let goleiros = [...sessao.goleiros];
   const mandarProTras = (lado) => {
     const protegidos = new Set(q.lados[lado].protegidos || []);
     const saem = q.lados[lado].linha.filter((jid) => !protegidos.has(jid));
     linha = linha.filter((jid) => !saem.includes(jid));
     linha.push(...saem);
+    const gk = q.lados[lado].goleiro;
+    if (gk) { goleiros = goleiros.filter((jid) => jid !== gk); goleiros.push(gk); }
   };
   if (ladoQueFica !== "amarelo") mandarProTras("amarelo");
   if (ladoQueFica !== "azul") mandarProTras("azul");
 
   const idsQueFicam = new Set(ladoQueFica ? q.lados[ladoQueFica].linha : []);
   const disponiveis = linha.filter((jid) => !idsQueFicam.has(jid));
+  const goleiroQueFica = ladoQueFica ? q.lados[ladoQueFica].goleiro : null;
+  const golDisponiveis = goleiros.filter((jid) => jid !== goleiroQueFica);
 
   let novaQuadra = null, timeEmEspera = null;
   if (ladoQueFica) {
@@ -258,29 +273,29 @@ function aplicarDesfecho(sessao, { ladoQueFica, partidasSeguidas, motivo }) {
         numero: q.numero + 1, primeiraPartida: false,
         incumbente: ladoQueFica, partidasSeguidas, forcarSaidaAoFim,
         lados: {
-          [ladoQueFica]: { linha: q.lados[ladoQueFica].linha, goleiro: q.lados[ladoQueFica].goleiro, protegidos: [] },
-          [outro]: { linha: disponiveis.slice(0, sessao.linhaPorTime), goleiro: null, protegidos: [] },
+          [ladoQueFica]: { linha: q.lados[ladoQueFica].linha, goleiro: goleiroQueFica, protegidos: [] },
+          [outro]: { linha: disponiveis.slice(0, sessao.linhaPorTime), goleiro: golDisponiveis[0] || null, protegidos: [] },
         },
         placar: { amarelo: 0, azul: 0 }, primeiroGol: null, pendente: null,
       };
     } else {
       // ninguém suficiente pro desafio — o time que fica espera de pé, pronto pra próxima
-      timeEmEspera = { linha: q.lados[ladoQueFica].linha, goleiro: q.lados[ladoQueFica].goleiro, partidasSeguidas, forcarSaidaAoFim };
+      timeEmEspera = { linha: q.lados[ladoQueFica].linha, goleiro: goleiroQueFica, partidasSeguidas, forcarSaidaAoFim };
     }
   } else if (disponiveis.length >= sessao.linhaPorTime * 2) {
     novaQuadra = {
       numero: q.numero + 1, primeiraPartida: false,
       incumbente: null, partidasSeguidas: 0, forcarSaidaAoFim: false,
       lados: {
-        amarelo: { linha: disponiveis.slice(0, sessao.linhaPorTime), goleiro: null, protegidos: [] },
-        azul: { linha: disponiveis.slice(sessao.linhaPorTime, sessao.linhaPorTime * 2), goleiro: null, protegidos: [] },
+        amarelo: { linha: disponiveis.slice(0, sessao.linhaPorTime), goleiro: golDisponiveis[0] || null, protegidos: [] },
+        azul: { linha: disponiveis.slice(sessao.linhaPorTime, sessao.linhaPorTime * 2), goleiro: golDisponiveis[1] || null, protegidos: [] },
       },
       placar: { amarelo: 0, azul: 0 }, primeiroGol: null, pendente: null,
     };
   }
 
   return {
-    sessao: { ...sessao, linha, quadra: novaQuadra, timeEmEspera, historico: [...sessao.historico, registro] },
+    sessao: { ...sessao, linha, goleiros, quadra: novaQuadra, timeEmEspera, historico: [...sessao.historico, registro] },
     aviso: motivo + (novaQuadra ? "" : " Aguardando mais gente pra formar a próxima partida."),
     pendente: false,
   };

@@ -5,7 +5,7 @@ import {
   criarSessao, aguardandoLinha, goleirosLivres, proximosTimes,
   podeIniciarPartida, iniciarPartida, atribuirGoleiro, limparGoleiro, marcarGol,
   encerrarPartida, resolverParOuImpar, substituirLinha, removerJogador, inserirNaFila,
-  avisosSessao,
+  avisosSessao, NOME_LADO,
 } from "../core/rachao";
 import {
   Botao, Painel, inputStyle, Campo, CabecalhoPagina, Secao, Segmento, IconeGoleiro,
@@ -220,7 +220,7 @@ function TimeQuadra({ lado, sessao, q, atualizar, avisar, nomes }) {
           <select value="" onChange={(e) => e.target.value && atualizar(atribuirGoleiro(sessao, lado, e.target.value))}
             style={{ ...inputStyle, padding: "7px 4px", fontSize: 11.5 }}>
             <option value="">— escolher goleiro —</option>
-            {goleirosDisp.map((gid) => <option key={gid} value={gid}>{nomes[gid] || "?"}</option>)}
+            {goleirosDisp.map((gid, i) => <option key={gid} value={gid}>{nomes[gid] || "?"}{i === 0 ? " · próximo da fila" : ""}</option>)}
           </select>
         )}
         {time.linha.map((jid) => (
@@ -325,18 +325,21 @@ function FilaEConvidados({ sessao, atualizar, avisar, base, convidados, setConvi
       </div>
 
       <div>
-        <Secao titulo="Goleiros presentes" detalhe={`${sessao.goleiros.length}`} />
+        <Secao titulo="Goleiros presentes" detalhe={`${goleirosLivres(sessao).length} aguardando · ${sessao.goleiros.length} no dia`} />
         <Painel className="space-y-1 p-2">
           {sessao.goleiros.length === 0 && <p style={{ padding: 8, textAlign: "center", fontSize: 12, color: T.fraco }}>Nenhum goleiro no dia ainda.</p>}
           {sessao.goleiros.map((jid) => {
-            const ocupado = sessao.quadra && ["amarelo", "azul"].some((l) => sessao.quadra.lados[l].goleiro === jid);
+            const ladoOcupado = sessao.quadra && ["amarelo", "azul"].find((l) => sessao.quadra.lados[l].goleiro === jid);
+            const rank = goleirosLivres(sessao).indexOf(jid); // ordem de chegada entre os que aguardam
             return (
-              <div key={jid} className="flex items-center justify-between rounded px-2 py-1.5" style={{ background: ocupado ? T.gkFraco : "rgba(0,0,0,.18)" }}>
+              <div key={jid} className="flex items-center justify-between rounded px-2 py-1.5" style={{ background: ladoOcupado ? T.gkFraco : "rgba(0,0,0,.18)" }}>
                 <span className="flex items-center gap-1" style={{ fontSize: 12.5 }}>
-                  <IconeGoleiro tam={12} />{nomes[jid] || "?"}
-                  {ocupado && <span style={{ fontSize: 8.5, fontWeight: 800, color: T.gk }}>EM QUADRA</span>}
+                  <IconeGoleiro tam={12} />
+                  {!ladoOcupado && rank >= 0 && <b style={{ color: T.fraco, marginRight: 1 }}>{rank + 1}º</b>}
+                  {nomes[jid] || "?"}
+                  {ladoOcupado && <span style={{ fontSize: 8.5, fontWeight: 800, color: T.gk }}>EM QUADRA · {NOME_LADO[ladoOcupado]}</span>}
                 </span>
-                {!ocupado && (
+                {!ladoOcupado && (
                   <button onClick={() => { atualizar(removerJogador(sessao, jid)); avisar(`${nomes[jid]} saiu`); }} style={{ padding: "4px 7px", fontSize: 13, color: T.laranja }}>✕</button>
                 )}
               </div>
