@@ -87,12 +87,15 @@ function goleirosLivres(sessao) {
   return sessao.goleiros.filter((jid) => !emQuadra.has(jid));
 }
 function proximosTimes(sessao, quantos = 2) {
+  // cada bloco = { jogadores, faltam }. "faltam" > 0 quando a fila atual não tem gente
+  // suficiente pra fechar esse time — as vagas serão preenchidas por quem for saindo da
+  // quadra mais adiante, o que ainda não dá pra saber (depende de quem perder).
   const fila = aguardandoLinha(sessao);
   const times = [];
   for (let i = 0; i < quantos; i++) {
-    const bloco = fila.slice(i * sessao.linhaPorTime, (i + 1) * sessao.linhaPorTime);
-    if (!bloco.length) break;
-    times.push(bloco);
+    const jogadores = fila.slice(i * sessao.linhaPorTime, (i + 1) * sessao.linhaPorTime);
+    if (!jogadores.length) break;
+    times.push({ jogadores, faltam: sessao.linhaPorTime - jogadores.length });
   }
   return times;
 }

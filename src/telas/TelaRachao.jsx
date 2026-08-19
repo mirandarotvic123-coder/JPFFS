@@ -26,51 +26,88 @@ import {
 function TelaRachao({ base, avisar }) {
   const [sessao, setSessao] = useState(null);
   const [convidados, setConvidados] = useState([]); // só desta sessão — não entra no elenco
+  // ordem de chegada estável, só pra exibição (Lista de chegada) — cada jogador ganha um
+  // índice na hora em que entra no dia e ele nunca muda depois, mesmo que a fila (que gira
+  // com vitória/derrota) reordene. Não afeta regra nenhuma do jogo.
+  const [ordemIdx, setOrdemIdx] = useState({});
+  const proximoIdx = (atual) => (Object.keys(atual).length ? Math.max(...Object.values(atual)) + 1 : 0);
 
   const nomes = {
     ...Object.fromEntries(base.jogadores.map((j) => [j.id, j.nome])),
     ...Object.fromEntries(convidados.map((c) => [c.id, c.nome])),
   };
 
-  if (!sessao) return <AberturaRachao {...{ base, avisar, setSessao, setConvidados }} />;
+  if (!sessao) return <AberturaRachao {...{ base, avisar, setSessao, setConvidados, setOrdemIdx }} />;
 
   const presentesTotal = new Set([...sessao.linha, ...sessao.goleiros]).size;
   const avisos = avisosSessao(sessao, presentesTotal);
 
   return (
-    <div className="space-y-4">
-      <CabecalhoPagina titulo="Rachão"
-        descricao={new Date(sessao.data + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })} />
+    <div className="rachao-layout">
+      <ListaChegada {...{ sessao, convidados, nomes, ordemIdx }} />
+      <div className="space-y-4" style={{ flex: 1, minWidth: 0 }}>
+        <CabecalhoPagina titulo="Rachão"
+          descricao={new Date(sessao.data + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })} />
 
-      <Painel className="grid grid-cols-4 gap-1.5 p-2">
-        <Contador rotulo="No dia" valor={presentesTotal} cor={T.verde} />
-        <Contador rotulo="Aguardando" valor={aguardandoLinha(sessao).length} />
-        <Contador rotulo="Goleiros" valor={sessao.goleiros.length} cor={T.gk} />
-        <Contador rotulo="Partidas" valor={sessao.historico.length} cor={T.ouro} />
-      </Painel>
+        <Painel className="grid grid-cols-4 gap-1.5 p-2">
+          <Contador rotulo="No dia" valor={presentesTotal} cor={T.verde} />
+          <Contador rotulo="Aguardando" valor={aguardandoLinha(sessao).length} />
+          <Contador rotulo="Goleiros" valor={sessao.goleiros.length} cor={T.gk} />
+          <Contador rotulo="Partidas" valor={sessao.historico.length} cor={T.ouro} />
+        </Painel>
 
-      {avisos.map((a, i) => (
-        <Painel key={i} className="p-3" style={{ borderColor: T.laranja, background: "rgba(255,165,61,.1)", fontSize: 12, color: T.laranja }}>{a}</Painel>
-      ))}
+        {avisos.map((a, i) => (
+          <Painel key={i} className="p-3" style={{ borderColor: T.laranja, background: "rgba(255,165,61,.1)", fontSize: 12, color: T.laranja }}>{a}</Painel>
+        ))}
 
-      <QuadraAoVivo {...{ sessao, atualizar: setSessao, avisar, nomes }} />
-      <ProximosTimesPainel {...{ sessao, nomes }} />
-      <FilaEConvidados {...{ sessao, atualizar: setSessao, avisar, base, convidados, setConvidados, nomes }} />
-      <HistoricoDoDia sessao={sessao} />
+        <QuadraAoVivo {...{ sessao, atualizar: setSessao, avisar, nomes }} />
+        <ProximosTimesPainel {...{ sessao, nomes }} />
+        <FilaEConvidados {...{ sessao, atualizar: setSessao, avisar, base, convidados, setConvidados, nomes, ordemIdx, setOrdemIdx, proximoIdx }} />
+        <HistoricoDoDia sessao={sessao} />
 
-      <Botao variante="secundario" className="w-full" onClick={() => {
-        if (confirm("Encerrar os jogos do Rachão? Nada foi salvo — a fila, a quadra e o histórico de hoje somem.")) {
-          setSessao(null); setConvidados([]);
-          avisar("Rachão encerrado");
-        }
-      }}>Encerrar jogos do Rachão</Botao>
+        <Botao variante="secundario" className="w-full" onClick={() => {
+          if (confirm("Encerrar os jogos do Rachão? Nada foi salvo — a fila, a quadra e o histórico de hoje somem.")) {
+            setSessao(null); setConvidados([]); setOrdemIdx({});
+            avisar("Rachão encerrado");
+          }
+        }}>Encerrar jogos do Rachão</Botao>
+      </div>
     </div>
+  );
+}
+
+/* ------------------------- Lista de chegada (só visual) --------------------
+ * Mistura goleiro e convidado numa lista única, na ordem em que cada um
+ * entrou no dia. Não é a fila do jogo (aquela gira com vitória/derrota) —
+ * é só uma referência de "quem chegou quando", meio apagada de propósito. */
+
+function ListaChegada({ sessao, convidados, nomes, ordemIdx }) {
+  const idsHoje = [...new Set([...sessao.linha, ...sessao.goleiros])];
+  const ordenados = idsHoje.sort((a, b) => (ordemIdx[a] ?? Infinity) - (ordemIdx[b] ?? Infinity));
+  const ehGoleiro = (jid) => sessao.goleiros.includes(jid);
+  const ehConvidado = (jid) => convidados.some((c) => c.id === jid);
+
+  if (!ordenados.length) return null;
+  return (
+    <aside className="rachao-lista-chegada" style={{ opacity: 0.62 }}>
+      <p style={{ marginBottom: 8, fontSize: 10, fontWeight: 800, letterSpacing: ".14em", color: T.fraco }}>ORDEM DE CHEGADA</p>
+      <div className="space-y-1" style={{ maxHeight: 480, overflowY: "auto" }}>
+        {ordenados.map((jid, i) => (
+          <div key={jid} className="flex items-center gap-1.5" style={{ padding: "3px 2px", fontSize: 11.5 }}>
+            <span style={{ width: 18, textAlign: "right", color: T.fraco, flexShrink: 0 }}>{i + 1}</span>
+            {ehGoleiro(jid) && <IconeGoleiro tam={11} />}
+            <span className="truncate" style={{ color: T.secundario }}>{nomes[jid] || "?"}</span>
+            {ehConvidado(jid) && <span style={{ fontSize: 8, color: T.roxo, flexShrink: 0 }}>CONV</span>}
+          </div>
+        ))}
+      </div>
+    </aside>
   );
 }
 
 /* --------------------------- Abertura do dia ------------------------------*/
 
-function AberturaRachao({ base, avisar, setSessao, setConvidados }) {
+function AberturaRachao({ base, avisar, setSessao, setConvidados, setOrdemIdx }) {
   const hoje = new Date().toISOString().slice(0, 10);
   const [data, setData] = useState(hoje);
   const [linhaPorTime, setLinhaPorTime] = useState(4);
@@ -103,11 +140,14 @@ function AberturaRachao({ base, avisar, setSessao, setConvidados }) {
             opcoes={[{ valor: 2, rotulo: "2 partidas" }, { valor: 3, rotulo: "3 partidas" }]} />
         </Campo>
         <Botao className="w-full" onClick={() => {
+          const chegada = rodadaDoDia?.ordemChegada || [];
           const nova = criarSessao({
             id: id(), data, rodadaOrigemId: rodadaDoDia?.id || null,
-            ordemChegada: rodadaDoDia?.ordemChegada || [], porId, linhaPorTime, limitePartidas,
+            ordemChegada: chegada, porId, linhaPorTime, limitePartidas,
           });
           setConvidados([]);
+          setOrdemIdx(Object.fromEntries([...nova.linha, ...nova.goleiros]
+            .map((jid) => [jid, chegada.indexOf(jid)])));
           setSessao(nova);
           avisar(`Rachão de ${new Date(data + "T12:00:00").toLocaleDateString("pt-BR")} aberto`);
         }}>Abrir Rachão</Botao>
@@ -284,12 +324,17 @@ function ProximosTimesPainel({ sessao, nomes }) {
     <section>
       <Secao titulo="Próximos times" detalhe="prévia — muda conforme a fila muda" />
       <div className="grid grid-cols-2 gap-2">
-        {proximos.map((time, i) => (
+        {proximos.map(({ jogadores, faltam }, i) => (
           <Painel key={i} className="p-2.5">
             <p style={{ marginBottom: 5, fontSize: 9.5, fontWeight: 800, letterSpacing: ".08em", color: T.fraco }}>
               {i === 0 ? "PRÓXIMO A ENTRAR" : "DEPOIS DESSE"}
             </p>
-            {time.map((jid) => <p key={jid} style={{ fontSize: 12, color: T.secundario }}>{nomes[jid] || "?"}</p>)}
+            {jogadores.map((jid) => <p key={jid} style={{ fontSize: 12, color: T.secundario }}>{nomes[jid] || "?"}</p>)}
+            {faltam > 0 && (
+              <p style={{ marginTop: 2, fontSize: 11, fontStyle: "italic", color: T.fraco }}>
+                +{faltam} jogador{faltam > 1 ? "es" : ""} do time que sair
+              </p>
+            )}
           </Painel>
         ))}
       </div>
@@ -299,7 +344,7 @@ function ProximosTimesPainel({ sessao, nomes }) {
 
 /* ------------------------------- Fila / convidado --------------------------*/
 
-function FilaEConvidados({ sessao, atualizar, avisar, base, convidados, setConvidados, nomes }) {
+function FilaEConvidados({ sessao, atualizar, avisar, base, convidados, setConvidados, nomes, ordemIdx, setOrdemIdx, proximoIdx }) {
   const filaLinha = aguardandoLinha(sessao);
 
   return (
@@ -348,12 +393,12 @@ function FilaEConvidados({ sessao, atualizar, avisar, base, convidados, setConvi
         </Painel>
       </div>
 
-      <AdicionarNaFila {...{ sessao, atualizar, avisar, base, convidados, setConvidados }} />
+      <AdicionarNaFila {...{ sessao, atualizar, avisar, base, convidados, setConvidados, ordemIdx, setOrdemIdx, proximoIdx }} />
     </section>
   );
 }
 
-function AdicionarNaFila({ sessao, atualizar, avisar, base, convidados, setConvidados }) {
+function AdicionarNaFila({ sessao, atualizar, avisar, base, convidados, setConvidados, ordemIdx, setOrdemIdx, proximoIdx }) {
   const [modo, setModo] = useState("elenco");
   const [jogadorId, setJogadorId] = useState("");
   const [nome, setNome] = useState("");
@@ -399,6 +444,7 @@ function AdicionarNaFila({ sessao, atualizar, avisar, base, convidados, setConvi
             if (!jogadorId) return;
             const j = base.jogadores.find((x) => x.id === jogadorId);
             atualizar(inserirNaFila(sessao, jogadorId, indiceEscolhido(j.posicao === "GOLEIRO"), j.posicao === "GOLEIRO"));
+            setOrdemIdx((s) => (jogadorId in s ? s : { ...s, [jogadorId]: proximoIdx(s) }));
             avisar(`${j.nome} entrou na fila`);
             setJogadorId("");
           } else {
@@ -407,6 +453,7 @@ function AdicionarNaFila({ sessao, atualizar, avisar, base, convidados, setConvi
             const ehGoleiro = posicao === "GOLEIRO";
             setConvidados([...convidados, { id: jid, nome: nome.trim(), posicao, estrelas }]);
             atualizar(inserirNaFila(sessao, jid, indiceEscolhido(ehGoleiro), ehGoleiro));
+            setOrdemIdx((s) => ({ ...s, [jid]: proximoIdx(s) }));
             avisar(`${nome.trim()} entrou como convidado do dia`);
             setNome(""); setEstrelas(1);
           }
