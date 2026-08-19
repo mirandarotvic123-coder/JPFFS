@@ -26,6 +26,13 @@
  *    goleiros nunca se misturam com a fila de linha. O organizador ainda
  *    pode trocar na mão a qualquer momento (botão ✕ na tela), porque com
  *    menos goleiros do que vagas às vezes precisa fugir da ordem estrita.
+ *  - Faltando goleiro de verdade, um jogador de LINHA pode completar o gol
+ *    de emergência (aparece no mesmo seletor, depois dos goleiros). Isso é
+ *    só pra ESSA partida e não conta pra ele — ao sair da quadra, mantém a
+ *    posição que já tinha na fila de linha (não vai pro fim), igual um
+ *    "completar" do Campeonato. Diferente de reclassificarJogador (linha
+ *    ↔ goleiro pro resto do dia): ali o jogador realmente muda de fila e
+ *    passa a valer as regras da categoria nova dali em diante.
  *  - Art. 25º §2º "b" (substituto que entra depois dos 5min mantém a posição
  *    antiga) é lido como valendo só pro desfecho DESTA partida em que ele
  *    entrou — se o time dele continuar vencendo depois, ele vira um membro
@@ -285,7 +292,11 @@ function aplicarDesfecho(sessao, { ladoQueFica, partidasSeguidas, motivo }) {
     linha = linha.filter((jid) => !saem.includes(jid));
     linha.push(...saem);
     const gk = q.lados[lado].goleiro;
-    if (gk) { goleiros = goleiros.filter((jid) => jid !== gk); goleiros.push(gk); }
+    // só manda pro fim da fila de goleiros se for goleiro de verdade. Se for um jogador de
+    // linha completando o gol por falta de goleiro (emergência, ver core/rachao.js §"filtro do
+    // goleiro"), ele NÃO é mexido aqui — mantém a posição que já tinha na fila de linha, como
+    // um "completar" do Campeonato: a partida não conta pra ele.
+    if (gk && sessao.goleiros.includes(gk)) { goleiros = goleiros.filter((jid) => jid !== gk); goleiros.push(gk); }
   };
   if (ladoQueFica !== "amarelo") mandarProTras("amarelo");
   if (ladoQueFica !== "azul") mandarProTras("azul");
@@ -410,6 +421,39 @@ function inserirNaFila(sessao, jogadorId, antesDeId, ehGoleiro) {
   return { ...sessao, [campo]: atual };
 }
 
+/* --- ordem de chegada combinada (linha + goleiro) e reclassificação --------
+ * ordemGeral: todo mundo do dia numa lista só, na ordem de chegada — é o que
+ * aparece na Lista de chegada (tela) e serve de referência tanto pra
+ * "posição X" no Adicionar à fila quanto pra reclassificarJogador abaixo.  */
+function ordemGeral(sessao, ordemIdx) {
+  const ids = [...new Set([...sessao.linha, ...sessao.goleiros])];
+  return ids.sort((a, b) => (ordemIdx[a] ?? Infinity) - (ordemIdx[b] ?? Infinity));
+}
+
+/* Muda um jogador de categoria pro resto do dia (linha -> goleiro ou o
+ * contrário) — pra quando alguém prefere jogar de outra posição, não só
+ * completar uma vaga vazia por uma partida. A partir daqui ele passa a
+ * valer as regras da categoria nova (fila própria, corte, etc.) — nada a
+ * ver com o "goleiro de emergência" do atribuirGoleiro/filtro do goleiro,
+ * que é só pra UMA partida e não muda a categoria de ninguém. Reencaixa na
+ * nova fila pela mesma posição relativa que já tinha na ordem de chegada
+ * geral (não joga pro início nem pro fim à toa). Não deve ser chamada com
+ * o jogador em quadra — quem chama garante isso (esconde a ação na tela).*/
+function reclassificarJogador(sessao, jogadorId, comoGoleiro, ordemIdx) {
+  const geral = ordemGeral(sessao, ordemIdx);
+  const meuIdx = geral.indexOf(jogadorId);
+  if (meuIdx === -1) return sessao;
+  const mesmoTipoNovo = (jid) => jid !== jogadorId && (comoGoleiro ? sessao.goleiros.includes(jid) : sessao.linha.includes(jid));
+  let antesDeId = null;
+  for (let i = meuIdx + 1; i < geral.length; i++) if (mesmoTipoNovo(geral[i])) { antesDeId = geral[i]; break; }
+  const semEle = {
+    ...sessao,
+    linha: sessao.linha.filter((jid) => jid !== jogadorId),
+    goleiros: sessao.goleiros.filter((jid) => jid !== jogadorId),
+  };
+  return inserirNaFila(semEle, jogadorId, antesDeId, comoGoleiro);
+}
+
 /* --- avisos e fechamento do dia --------------------------------------------*/
 
 function avisosSessao(sessao, presentesTotal) {
@@ -430,5 +474,6 @@ export {
   atribuirGoleiro, limparGoleiro, marcarGol,
   encerrarPartida, resolverParOuImpar, resolverPrimeiroGol,
   substituirLinha, removerJogador, inserirNaFila,
+  ordemGeral, reclassificarJogador,
   avisosSessao,
 };

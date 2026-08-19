@@ -5,7 +5,7 @@ import {
   criarSessao, aguardandoLinha, goleirosLivres, proximosTimes,
   podeIniciarPartida, iniciarPartida, atribuirGoleiro, limparGoleiro, marcarGol,
   encerrarPartida, resolverParOuImpar, resolverPrimeiroGol, substituirLinha, removerJogador,
-  inserirNaFila, avisosSessao, NOME_LADO,
+  inserirNaFila, ordemGeral, reclassificarJogador, avisosSessao, NOME_LADO,
 } from "../core/rachao";
 import {
   Botao, Painel, inputStyle, Campo, CabecalhoPagina, Secao, Segmento, IconeGoleiro,
@@ -80,14 +80,6 @@ function TelaRachao({ base, avisar }) {
  * Mistura goleiro e convidado numa lista única, na ordem em que cada um
  * entrou no dia. Não é a fila do jogo (aquela gira com vitória/derrota) —
  * é só uma referência de "quem chegou quando", meio apagada de propósito. */
-
-// todo mundo do dia (linha + goleiro), na ordem de chegada combinada — a mesma lista que
-// aparece na Lista de chegada. Usada também em AdicionarNaFila pra "posição X" significar a
-// mesma coisa nas duas telas, em vez de contar só dentro da fila do mesmo tipo.
-function ordemGeral(sessao, ordemIdx) {
-  const ids = [...new Set([...sessao.linha, ...sessao.goleiros])];
-  return ids.sort((a, b) => (ordemIdx[a] ?? Infinity) - (ordemIdx[b] ?? Infinity));
-}
 
 function ListaChegada({ sessao, convidados, nomes, ordemIdx }) {
   const ordenados = ordemGeral(sessao, ordemIdx);
@@ -276,7 +268,13 @@ function TimeQuadra({ lado, sessao, q, atualizar, avisar, nomes }) {
       <div className="space-y-1 px-2 pb-2">
         {time.goleiro ? (
           <div className="flex items-center justify-between rounded px-2 py-1.5" style={{ background: T.gkFraco }}>
-            <span className="flex items-center gap-1" style={{ fontSize: 12 }}><IconeGoleiro tam={12} />{nomes[time.goleiro] || "?"}</span>
+            <span className="flex items-center gap-1" style={{ fontSize: 12 }}>
+              <IconeGoleiro tam={12} />{nomes[time.goleiro] || "?"}
+              {!sessao.goleiros.includes(time.goleiro) && (
+                <span title="Jogador de linha completando o gol por falta de goleiro — não conta a partida pra ele (Art. 34º §10º, mesma lógica do Campeonato)"
+                  style={{ fontSize: 8, fontWeight: 800, color: T.laranja }}>LINHA NO GOL</span>
+              )}
+            </span>
             <button onClick={() => atualizar(limparGoleiro(sessao, lado))} title="Trocar goleiro" style={{ color: "rgba(255,255,255,.35)", fontSize: 12 }}>✕</button>
           </div>
         ) : (
@@ -284,6 +282,7 @@ function TimeQuadra({ lado, sessao, q, atualizar, avisar, nomes }) {
             style={{ ...inputStyle, padding: "7px 4px", fontSize: 11.5 }}>
             <option value="">— escolher goleiro —</option>
             {goleirosDisp.map((gid, i) => <option key={gid} value={gid}>{nomes[gid] || "?"}{i === 0 ? " · próximo da fila" : ""}</option>)}
+            {livres.map((jid) => <option key={jid} value={jid}>{nomes[jid] || "?"} · linha completando o gol</option>)}
           </select>
         )}
         {time.linha.map((jid) => (
@@ -390,6 +389,8 @@ function FilaEConvidados({ sessao, atualizar, avisar, base, convidados, setConvi
                   style={{ padding: "4px 7px", fontSize: 12, color: i === 0 ? "rgba(255,255,255,.15)" : T.secundario }}>▲</button>
                 <button disabled={i === filaLinha.length - 1} onClick={() => atualizar(inserirNaFila(sessao, jid, filaLinha[i + 2], false))}
                   style={{ padding: "4px 7px", fontSize: 12, color: i === filaLinha.length - 1 ? "rgba(255,255,255,.15)" : T.secundario }}>▼</button>
+                <button onClick={() => { atualizar(reclassificarJogador(sessao, jid, true, ordemIdx)); avisar(`${nomes[jid]} virou goleiro pro resto do dia`); }}
+                  title="Reclassificar como goleiro pro resto do dia" style={{ padding: "4px 6px", fontSize: 9, fontWeight: 800, color: T.gk }}>GOL</button>
                 <button onClick={() => { atualizar(removerJogador(sessao, jid)); avisar(`${nomes[jid]} saiu da fila`); }}
                   style={{ padding: "4px 7px", fontSize: 13, color: T.laranja }}>✕</button>
               </div>
@@ -414,7 +415,11 @@ function FilaEConvidados({ sessao, atualizar, avisar, base, convidados, setConvi
                   {ladoOcupado && <span style={{ fontSize: 8.5, fontWeight: 800, color: T.gk }}>EM QUADRA · {NOME_LADO[ladoOcupado]}</span>}
                 </span>
                 {!ladoOcupado && (
-                  <button onClick={() => { atualizar(removerJogador(sessao, jid)); avisar(`${nomes[jid]} saiu`); }} style={{ padding: "4px 7px", fontSize: 13, color: T.laranja }}>✕</button>
+                  <div className="flex items-center" style={{ gap: 2 }}>
+                    <button onClick={() => { atualizar(reclassificarJogador(sessao, jid, false, ordemIdx)); avisar(`${nomes[jid]} virou linha pro resto do dia`); }}
+                      title="Reclassificar como linha pro resto do dia" style={{ padding: "4px 6px", fontSize: 9, fontWeight: 800, color: T.secundario }}>LINHA</button>
+                    <button onClick={() => { atualizar(removerJogador(sessao, jid)); avisar(`${nomes[jid]} saiu`); }} style={{ padding: "4px 7px", fontSize: 13, color: T.laranja }}>✕</button>
+                  </div>
                 )}
               </div>
             );
