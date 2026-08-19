@@ -124,12 +124,15 @@ function AberturaRachao({ base, avisar, setSessao, setConvidados, setOrdemIdx })
 
         {rodadaDoDia ? (
           <p style={{ fontSize: 12, color: T.secundario }}>
-            Vou puxar a ordem de chegada da <b style={{ color: T.ouro }}>rodada {rodadaDoDia.numero}</b> do Campeonato
-            deste dia ({(rodadaDoDia.ordemChegada || []).length} jogador(es) já chamados) — dá pra ajustar a fila depois de abrir.
+            Lista de presença vindo da ordem de chegada do Campeonato. Total de: {(rodadaDoDia.ordemChegada || []).length} jogadores.
           </p>
         ) : (
           <p style={{ fontSize: 12, color: T.fraco }}>Nenhuma rodada do Campeonato encontrada nesta data — a fila abre vazia, dá pra adicionar todo mundo na mão.</p>
         )}
+        <p style={{ fontSize: 11, color: T.fraco, fontStyle: "italic" }}>
+          Alguém que só vai jogar hoje? Não cadastre pela chamada do Campeonato — isso entra pro elenco pra sempre.
+          Depois de abrir, adicione em "Adicionar à fila → Convidado do dia": fica só nesta sessão do Rachão.
+        </p>
         <Campo rotulo="Jogadores de linha por time">
           <Segmento valor={linhaPorTime} onChange={setLinhaPorTime}
             opcoes={[{ valor: 4, rotulo: "4 + 1 gol" }, { valor: 5, rotulo: "5 + 1 gol" }]} />
@@ -204,6 +207,9 @@ function QuadraAoVivo({ sessao, atualizar, avisar, nomes }) {
             }}>{corDe(lado).cor} venceu</Botao>
           ))}
         </div>
+        <Botao variante="secundario" className="w-full" onClick={() => atualizar({ ...sessao, quadra: { ...q, pendente: null } })}>
+          Voltar (cliquei sem querer)
+        </Botao>
       </Painel>
     );
   }
@@ -222,6 +228,9 @@ function QuadraAoVivo({ sessao, atualizar, avisar, nomes }) {
             }}>{corDe(lado).cor} fez o 1º gol</Botao>
           ))}
         </div>
+        <Botao variante="secundario" className="w-full" onClick={() => atualizar({ ...sessao, quadra: { ...q, pendente: null } })}>
+          Voltar (cliquei sem querer)
+        </Botao>
       </Painel>
     );
   }
@@ -438,7 +447,6 @@ function AdicionarNaFila({ sessao, atualizar, avisar, base, convidados, setConvi
   const [jogadorId, setJogadorId] = useState("");
   const [nome, setNome] = useState("");
   const [posicao, setPosicao] = useState("LINHA");
-  const [estrelas, setEstrelas] = useState(1);
   const [posicaoFila, setPosicaoFila] = useState("");
 
   const jaNaSessao = new Set([...sessao.linha, ...sessao.goleiros]);
@@ -482,9 +490,6 @@ function AdicionarNaFila({ sessao, atualizar, avisar, base, convidados, setConvi
             <select value={posicao} onChange={(e) => setPosicao(e.target.value)} style={{ ...inputStyle, width: "auto", padding: "10px 4px", fontSize: 12 }}>
               <option value="LINHA">Linha</option><option value="GOLEIRO">Gol</option>
             </select>
-            <select value={estrelas} onChange={(e) => setEstrelas(Number(e.target.value))} style={{ ...inputStyle, width: "auto", padding: "10px 4px", fontSize: 12 }}>
-              {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}★</option>)}
-            </select>
           </div>
         )}
         <Campo rotulo="Posição na ordem de chegada (vazio = no fim)" dica="conta linha e goleiro juntos, igual a lista da direita">
@@ -504,11 +509,11 @@ function AdicionarNaFila({ sessao, atualizar, avisar, base, convidados, setConvi
             const jid = id();
             const ehGoleiro = posicao === "GOLEIRO";
             const { antesDeIdTipo, anteriorIdGeral, antesDeIdGeral } = posicaoEscolhida(ehGoleiro);
-            setConvidados([...convidados, { id: jid, nome: nome.trim(), posicao, estrelas }]);
+            setConvidados([...convidados, { id: jid, nome: nome.trim(), posicao }]);
             atualizar(inserirNaFila(sessao, jid, antesDeIdTipo, ehGoleiro));
             setOrdemIdx((s) => ({ ...s, [jid]: novoOrdemIdx(s, anteriorIdGeral, antesDeIdGeral) }));
             avisar(`${nome.trim()} entrou como convidado do dia`);
-            setNome(""); setEstrelas(1);
+            setNome("");
           }
           setPosicaoFila("");
         }}>Adicionar</Botao>
