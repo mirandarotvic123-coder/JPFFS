@@ -3,7 +3,7 @@ import { T, ESCUDO } from "../theme";
 import { eventoDe, placarDe } from "../core/regras";
 import { csvClassificacao, imagemTabela, baixarArquivo } from "../core/exportacao";
 import {
-  Botao, Painel, Secao, SeloAtraso, CampoBusca, Estrelas, IconeGoleiro, Marcadores, AvatarJogador,
+  Botao, Painel, Secao, SeloAtraso, CampoBusca, Estrelas, IconeGoleiro, IconeLinha, Marcadores, AvatarJogador,
 } from "../components/ui";
 import { IconeSetaDireita } from "../components/icones";
 
@@ -194,6 +194,7 @@ function Resultados({ base, cfg }) {
             {estaAberta && (
               <div className="space-y-2" style={{ padding: 10, background: "rgba(0,0,0,.15)" }}>
                 <div className="flex flex-wrap items-center" style={{ gap: "6px 12px", fontSize: 10, color: T.fraco, paddingBottom: 2 }}>
+                  <span className="flex items-center" style={{ gap: 4 }}><IconeGoleiro tam={11} /> goleiro · <IconeLinha tam={11} /> linha</span>
                   <span>⚽ gol · 👟 assistência · 🟨 amarelo · 🟦 azul · 🟥 vermelho · 🔴 gol contra · ❔ gol não computado</span>
                   <span style={{ color: T.laranja, fontStyle: "italic" }}>● nome em laranja itálico = completou a equipe (§10º), não pontuou</span>
                 </div>
@@ -218,7 +219,7 @@ function Resultados({ base, cfg }) {
                     if (e.cv > 0) marcas.push(`🟥${(doisAmarelos || amareloAzul) ? " extra" : " direto"}${e.cv > 1 ? ` ×${e.cv}` : ""}`);
                     if (e.cz > 0 && !amareloAzul) marcas.push(`🟦${e.cz > 1 ? ` ×${e.cz}` : ""}`);
                     const completou = soCartoesJogo.has(j.jogadorId);
-                    return { nome: nomes[j.jogadorId] || "?", marcas, completou };
+                    return { nome: nomes[j.jogadorId] || "?", marcas, completou, ehGoleiro: !!j.atuaComoGoleiro };
                   });
                   const venceuA = p.A > p.B, venceuB = p.B > p.A;
                   const jogoAberto = !!jogosAbertos[jogo.id];
@@ -240,16 +241,24 @@ function Resultados({ base, cfg }) {
                       <div className="flex justify-between" style={{ gap: 10, marginTop: 8, fontSize: 11, lineHeight: 1.7 }}>
                         <div className="flex-1 text-right" style={{ color: T.secundario }}>
                           {linhaEventos(gA).map((r, i) => (
-                            <div key={i} style={{ color: r.completou ? T.laranja : T.secundario, fontStyle: r.completou ? "italic" : "normal" }}>
-                              {r.nome} {r.marcas.length > 0 && <span>{r.marcas.join(" ")}</span>}
+                            <div key={i} className="flex items-center justify-end" style={{ gap: 4, color: r.completou ? T.laranja : T.secundario, fontStyle: r.completou ? "italic" : "normal" }}>
+                              {r.ehGoleiro ? <IconeGoleiro tam={11} /> : <IconeLinha tam={11} />}
+                              <span>{r.nome}</span>
+                              {r.marcas.length > 0 && (
+                                <span style={{ paddingLeft: 6, marginLeft: 2, borderLeft: `1px solid ${T.borda}`, color: T.fraco, fontStyle: "normal" }}>{r.marcas.join(" ")}</span>
+                              )}
                             </div>
                           ))}
                         </div>
                         <div style={{ width: 1, background: T.borda }} />
                         <div className="flex-1" style={{ color: T.secundario }}>
                           {linhaEventos(gB).map((r, i) => (
-                            <div key={i} style={{ color: r.completou ? T.laranja : T.secundario, fontStyle: r.completou ? "italic" : "normal" }}>
-                              {r.marcas.length > 0 && <span>{r.marcas.join(" ")}</span>} {r.nome}
+                            <div key={i} className="flex items-center" style={{ gap: 4, color: r.completou ? T.laranja : T.secundario, fontStyle: r.completou ? "italic" : "normal" }}>
+                              {r.ehGoleiro ? <IconeGoleiro tam={11} /> : <IconeLinha tam={11} />}
+                              <span>{r.nome}</span>
+                              {r.marcas.length > 0 && (
+                                <span style={{ paddingLeft: 6, marginLeft: 2, borderLeft: `1px solid ${T.borda}`, color: T.fraco, fontStyle: "normal" }}>{r.marcas.join(" ")}</span>
+                              )}
                             </div>
                           ))}
                         </div>

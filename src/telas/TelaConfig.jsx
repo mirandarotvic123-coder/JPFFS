@@ -184,14 +184,6 @@ function TelaConfig({ base, setBase, dados, cfg, avisar }) {
       </p>
       <Historico {...{ base, setBase, avisar, nomes, dados }} />
 
-      <Painel className="p-3" style={{ borderColor: T.gk, background: T.gkFraco, fontSize: 11.5, lineHeight: 1.55, color: T.secundario }}>
-        <b style={{ color: T.gk }}>Goleiros.</b> Agora é um jogador normal: mesma escala de estrela de todo mundo (a posição geral
-        na tabela), sorteado junto com a linha e pesando igual no equilíbrio da equipe — pode ter goleiro 5★ com jogador 5★ no mesmo time.
-        A única regra fixa é de composição: toda equipe sai com 1 goleiro + 4 de linha. Faltando goleiro, a vaga de meta
-        fica em aberto para escolha manual — o sorteio nunca promove um jogador de linha a goleiro, e nunca coloca
-        dois goleiros na mesma equipe. Quem excede as vagas vira sobressalente da partida adicional (§10º).
-      </Painel>
-
       <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(270px, 1fr))", alignItems: "start" }}>
         <SecaoRecolhivel titulo="Pontuação" Icone={IconeTrofeu} aberto={pontuacaoAberta} onToggle={() => setPontuacaoAberta((v) => !v)}
           detalhe={<><IconeCadeado tam={11} /> bloqueado</>}>

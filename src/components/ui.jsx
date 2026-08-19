@@ -20,6 +20,13 @@ const IconeGoleiro = ({ tam = 15 }) => (
   }}>G</span>
 );
 
+const IconeLinha = ({ tam = 15 }) => (
+  <span title="Linha" style={{
+    display: "inline-flex", alignItems: "center", justifyContent: "center", width: tam, height: tam,
+    borderRadius: 4, background: T.tier3, border: `1px solid ${T.tier4}`, color: T.secundario, fontSize: tam * 0.66, fontWeight: 900, flexShrink: 0
+  }}>L</span>
+);
+
 const CampoBusca = ({ value, onChange, placeholder }) => (
   <div style={{ position: "relative" }}>
     <IconeBusca tam={16} cor={T.fraco} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
@@ -182,7 +189,7 @@ function Segmento({ valor, opcoes, onChange, titulo }) {
 
 
 export {
-  Estrelas, IconeGoleiro, CampoBusca, SeloAtraso, Botao, inputStyle, Campo,
+  Estrelas, IconeGoleiro, IconeLinha, CampoBusca, SeloAtraso, Botao, inputStyle, Campo,
   CabecalhoPagina, Secao, Painel, Chip, AvatarJogador, Marcadores, Contador,
   FaixaPartida, Interruptor, Segmento,
 };
