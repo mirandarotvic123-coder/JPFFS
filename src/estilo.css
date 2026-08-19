@@ -212,12 +212,16 @@ input:focus, select:focus {
 /* ============================================================================
  * Rachão — lista de ordem de chegada (só visual, ver TelaRachao.jsx)
  * ----------------------------------------------------------------------------
- * Empilha embaixo do conteúdo no celular; vira coluna à direita a partir de
- * ~tablet paisagem, grudada no topo ao rolar (sticky) — sem scroll interno
- * próprio, é a página inteira que rola quando a lista é mais alta que a tela.
+ * Empilha embaixo do conteúdo no celular. A partir de ~tablet paisagem vira
+ * um painel grudado na borda direita da TELA (position: fixed — não fica
+ * preso à largura do conteúdo central, por isso "sobra mais" à direita) e
+ * some do fluxo normal, por isso o conteúdo principal ganha um respiro à
+ * direita (.rachao-conteudo) pra não passar por baixo dela. Sem scroll
+ * interno de propósito — em listas muito compridas ela só cresce pra baixo.
  * ==========================================================================*/
 .rachao-layout { display: flex; flex-direction: column; gap: 16px; }
 @media (min-width: 1024px) {
   .rachao-layout { flex-direction: row; align-items: flex-start; }
-  .rachao-lista-chegada { width: 220px; flex-shrink: 0; position: sticky; top: 88px; }
+  .rachao-conteudo { padding-right: 232px; }
+  .rachao-lista-chegada { position: fixed; top: 88px; right: 18px; width: 204px; }
 }

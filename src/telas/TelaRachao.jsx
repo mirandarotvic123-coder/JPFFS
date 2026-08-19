@@ -9,7 +9,7 @@ import {
 } from "../core/rachao";
 import {
   Botao, Painel, inputStyle, Campo, CabecalhoPagina, Secao, Segmento, IconeGoleiro,
-  Contador, FaixaPartida,
+  Contador, FaixaPartida, SecaoRecolhivel,
 } from "../components/ui";
 
 /* =========================== TELA: RACHÃO =================================
@@ -44,7 +44,7 @@ function TelaRachao({ base, avisar }) {
 
   return (
     <div className="rachao-layout">
-      <div className="space-y-4" style={{ flex: 1, minWidth: 0 }}>
+      <div className="space-y-4 rachao-conteudo" style={{ flex: 1, minWidth: 0 }}>
         <CabecalhoPagina titulo="Rachão"
           descricao={new Date(sessao.data + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })} />
 
@@ -362,11 +362,12 @@ function ProximosTimesPainel({ sessao, nomes }) {
 
 function FilaEConvidados({ sessao, atualizar, avisar, base, convidados, setConvidados, nomes, ordemIdx, setOrdemIdx, proximoIdx }) {
   const filaLinha = aguardandoLinha(sessao);
+  const [filaAberta, setFilaAberta] = useState(false);
+  const [goleirosAberto, setGoleirosAberto] = useState(false);
 
   return (
-    <section className="space-y-3">
-      <div>
-        <Secao titulo="Fila (linha)" detalhe={`${filaLinha.length} aguardando`} />
+    <div className="space-y-3">
+      <SecaoRecolhivel titulo="Fila (linha)" detalhe={`${filaLinha.length} aguardando`} aberto={filaAberta} onToggle={() => setFilaAberta((v) => !v)}>
         <Painel className="space-y-1 p-2">
           {filaLinha.length === 0 && <p style={{ padding: 8, textAlign: "center", fontSize: 12, color: T.fraco }}>Ninguém aguardando.</p>}
           {filaLinha.map((jid, i) => (
@@ -383,10 +384,10 @@ function FilaEConvidados({ sessao, atualizar, avisar, base, convidados, setConvi
             </div>
           ))}
         </Painel>
-      </div>
+      </SecaoRecolhivel>
 
-      <div>
-        <Secao titulo="Goleiros presentes" detalhe={`${goleirosLivres(sessao).length} aguardando · ${sessao.goleiros.length} no dia`} />
+      <SecaoRecolhivel titulo="Goleiros presentes" detalhe={`${goleirosLivres(sessao).length} aguardando · ${sessao.goleiros.length} no dia`}
+        aberto={goleirosAberto} onToggle={() => setGoleirosAberto((v) => !v)}>
         <Painel className="space-y-1 p-2">
           {sessao.goleiros.length === 0 && <p style={{ padding: 8, textAlign: "center", fontSize: 12, color: T.fraco }}>Nenhum goleiro no dia ainda.</p>}
           {sessao.goleiros.map((jid) => {
@@ -407,14 +408,15 @@ function FilaEConvidados({ sessao, atualizar, avisar, base, convidados, setConvi
             );
           })}
         </Painel>
-      </div>
+      </SecaoRecolhivel>
 
       <AdicionarNaFila {...{ sessao, atualizar, avisar, base, convidados, setConvidados, ordemIdx, setOrdemIdx, proximoIdx }} />
-    </section>
+    </div>
   );
 }
 
 function AdicionarNaFila({ sessao, atualizar, avisar, base, convidados, setConvidados, ordemIdx, setOrdemIdx, proximoIdx }) {
+  const [aberto, setAberto] = useState(false);
   const [modo, setModo] = useState("elenco");
   const [jogadorId, setJogadorId] = useState("");
   const [nome, setNome] = useState("");
@@ -444,8 +446,7 @@ function AdicionarNaFila({ sessao, atualizar, avisar, base, convidados, setConvi
   };
 
   return (
-    <div>
-      <Secao titulo="Adicionar à fila" detalhe="do elenco ou convidado só do Rachão" />
+    <SecaoRecolhivel titulo="Adicionar à fila" detalhe="do elenco ou convidado" aberto={aberto} onToggle={() => setAberto((v) => !v)}>
       <Painel className="space-y-2 p-3">
         <Segmento valor={modo} onChange={setModo} opcoes={[{ valor: "elenco", rotulo: "Do elenco" }, { valor: "convidado", rotulo: "Convidado do dia" }]} />
         {modo === "elenco" ? (
@@ -490,17 +491,17 @@ function AdicionarNaFila({ sessao, atualizar, avisar, base, convidados, setConvi
           setPosicaoFila("");
         }}>Adicionar</Botao>
       </Painel>
-    </div>
+    </SecaoRecolhivel>
   );
 }
 
 /* --------------------------- Histórico do dia -------------------------------*/
 
 function HistoricoDoDia({ sessao }) {
+  const [aberto, setAberto] = useState(false);
   if (!sessao.historico.length) return null;
   return (
-    <section>
-      <Secao titulo="Partidas de hoje" detalhe={`${sessao.historico.length}`} />
+    <SecaoRecolhivel titulo="Partidas de hoje" detalhe={`${sessao.historico.length}`} aberto={aberto} onToggle={() => setAberto((v) => !v)}>
       <div className="space-y-1.5">
         {[...sessao.historico].reverse().map((h) => (
           <Painel key={h.numero} className="p-2.5">
@@ -514,7 +515,7 @@ function HistoricoDoDia({ sessao }) {
           </Painel>
         ))}
       </div>
-    </section>
+    </SecaoRecolhivel>
   );
 }
 

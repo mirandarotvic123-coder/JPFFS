@@ -33,15 +33,16 @@
  *  - Art. 29º §4º (25+ presentes → corte em 2) não é aplicado sozinho — vira
  *    só um aviso na tela; o organizador escolhe o limite de partidas na
  *    abertura do dia.
- *  - Empate é sempre decisão manual do organizador, em qualquer partida do
- *    dia (não só a 1ª — o Estatuto só fala da 1ª partida no Art. 30º, mas
- *    empate pode acontecer em qualquer uma, e o mesmo princípio serve): 0×0
- *    manda os dois times saírem se houver fila, senão pede o resultado do
- *    par ou ímpar (Art. 30º §2º); empate COM gols pede quem fez o 1º gol
- *    (Art. 30º caput) — o motor não tenta adivinhar sozinho, sempre pergunta
- *    (ver "pendente" em encerrarPartida). Exceção: na partida de corte
- *    (Art. 29º §1º) qualquer empate já manda os dois saírem, sem perguntar
- *    quem fez gol primeiro — o corte não depende disso.
+ *  - Empate na 1ª PARTIDA DO DIA pede decisão manual do organizador (Art.
+ *    30º, que só fala dessa partida mesmo — nenhum dos dois times tem
+ *    vantagem nenhuma ali): 0×0 manda os dois saírem se houver fila
+ *    suficiente pros DOIS times completos (senão pede o resultado do par ou
+ *    ímpar, Art. 30º §2º); empate COM gols pede quem fez o 1º gol (Art. 30º
+ *    caput) — ver "pendente" em encerrarPartida. Empate em qualquer OUTRA
+ *    partida do dia não pede nada: o incumbente já tem a vantagem de estar
+ *    em quadra e simplesmente permanece, contando pro corte do Art. 29º
+ *    igual uma vitória contaria. Exceção: na partida de corte (Art. 29º §1º)
+ *    qualquer empate já manda os dois saírem, direto, não importa a partida.
  */
 
 const RACHAO_PADRAO = { linhaPorTime: 4, limitePartidas: 3 };
@@ -179,9 +180,10 @@ function encerrarPartida(sessao) {
   const resultado = gA > gB ? "amarelo" : gB > gA ? "azul" : "empate";
   const vencedorNormal = resultado === "empate" ? null : resultado;
 
-  // Empate COM gols, fora da partida de corte: não dá pra decidir sozinho — precisa saber
-  // quem fez o 1º gol (Art. 30º). Devolve "pendente" e espera resolverPrimeiroGol.
-  if (resultado === "empate" && !q.forcarSaidaAoFim && !(gA === 0 && gB === 0)) {
+  // Empate na 1ª partida do dia COM gols: nenhum dos dois times tem vantagem nenhuma (os dois
+  // acabaram de se formar) — só quem fez o 1º gol decide (Art. 30º). Nas partidas seguintes
+  // isso não se aplica: o incumbente já chega com a vantagem de estar em quadra (ver abaixo).
+  if (resultado === "empate" && q.primeiraPartida && !(gA === 0 && gB === 0)) {
     return {
       sessao: { ...sessao, quadra: { ...q, pendente: "primeiroGol" } },
       aviso: "Empate — quem fez o 1º gol permanece em quadra (Art. 30º). Informe abaixo.",
@@ -194,7 +196,7 @@ function encerrarPartida(sessao) {
   if (q.forcarSaidaAoFim) {
     // Art. 29º: o incumbente já tinha completado o limite de partidas seguidas antes desta —
     // sai depois dela de qualquer jeito. Empate aqui (0×0 ou com gols, tanto faz) já manda os
-    // dois saírem — o corte não depende de quem fez gol primeiro.
+    // dois saírem — o corte não depende de quem fez gol primeiro nem de qual partida do dia é.
     if (resultado === "empate" || vencedorNormal === q.incumbente) {
       ladoQueFica = null;
       motivo = resultado === "empate"
@@ -204,10 +206,16 @@ function encerrarPartida(sessao) {
       ladoQueFica = vencedorNormal; partidasSeguidas = 1;
       motivo = `${NOME_LADO[vencedorNormal]} venceu e assume a quadra.`;
     }
-  } else if (resultado === "empate") {
-    // só sobra o caso 0×0 aqui — empate com gols já foi resolvido (pendente) acima.
+  } else if (resultado === "empate" && q.primeiraPartida) {
+    // só sobra o caso 0×0 na 1ª partida aqui — com gols já foi resolvido (pendente) acima.
     ladoQueFica = null;
-    motivo = "0×0 — os dois times saem.";
+    motivo = "0×0 na 1ª partida do dia — os dois times saem (Art. 30º §1º).";
+  } else if (resultado === "empate") {
+    // fora da 1ª partida do dia: o incumbente já tem a vantagem de estar em quadra — permanece
+    // sozinho, sem precisar de decisão nenhuma. Conta pro corte do Art. 29º igual uma vitória.
+    ladoQueFica = q.incumbente;
+    partidasSeguidas = q.partidasSeguidas + 1;
+    motivo = `Empate — ${q.incumbente ? NOME_LADO[q.incumbente] : "quem já estava"} permanece em quadra.`;
   } else {
     ladoQueFica = vencedorNormal;
     partidasSeguidas = ladoQueFica === q.incumbente ? q.partidasSeguidas + 1 : 1;
@@ -215,11 +223,15 @@ function encerrarPartida(sessao) {
   }
 
   if (ladoQueFica === null) {
-    const suficiente = aguardandoLinha(sessao).length >= sessao.linhaPorTime + 2;
+    // precisa de DOIS times completos de fora — não só "1 time + 2", senão o time que acaba
+    // de sair teria que ser misturado com quem já esperava pra fechar o segundo time, o que
+    // não é o que se espera aqui: só libera os dois saírem quando dá pra formar as duas
+    // equipes inteiramente com quem já estava aguardando.
+    const suficiente = aguardandoLinha(sessao).length >= sessao.linhaPorTime * 2;
     if (!suficiente) {
       return {
         sessao: { ...sessao, quadra: { ...q, pendente: "empateSemFila" } },
-        aviso: "Fila insuficiente pra os dois times saírem — decida no par ou ímpar quem fica (Art. 30º §2º).",
+        aviso: "Fila insuficiente pra formar os dois times completos — decida no par ou ímpar quem fica (Art. 30º §2º).",
         pendente: true,
       };
     }

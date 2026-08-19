@@ -4,7 +4,7 @@
 import { T } from "../theme";
 import { hashSeed } from "../core/rng";
 import { nivelInfo } from "../core/regras";
-import { IconeBusca } from "./icones";
+import { IconeBusca, IconeSetaDireita } from "./icones";
 
 const Estrelas = ({ n, tam = 12, goleiro }) => (
   <span title={goleiro ? "Classe (goleiro) — escala geral" : "Classe (linha) — escala geral"}
@@ -164,6 +164,31 @@ function Interruptor({ ligado, onChange, titulo, descricao, cor = T.ouro }) {
     </button>
   );
 }
+/* bloco recolhível padrão (drill-down) — painel com borda própria e um
+   cabeçalho-botão bem visível (chip com seta dentro de um círculo). Nasceu
+   na tela de Ajustes ("Rodadas registradas", "Pontuação"…) e é reaproveitado
+   em qualquer tela que precise organizar várias seções em blocos. */
+function SecaoRecolhivel({ titulo, Icone, detalhe, aberto, onToggle, children }) {
+  return (
+    <section>
+      <Painel style={{ borderColor: T.tier4, padding: 0, overflow: "hidden" }}>
+        <button onClick={onToggle} className="flex w-full items-center justify-between" style={{ gap: 8, padding: "12px 14px", background: aberto ? T.tier2 : "transparent" }}>
+          <span className="font-destaque flex items-center" style={{ gap: 7, fontSize: 13, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: T.ouro }}>
+            {Icone && <Icone tam={15} cor={T.ouro} />}{titulo}
+          </span>
+          <span className="flex items-center" style={{ gap: 7, fontSize: 11, color: T.secundario, flexShrink: 0 }}>
+            {detalhe}
+            <span className="flex items-center justify-center" style={{ width: 23, height: 23, borderRadius: 999, background: T.tier3, border: `1px solid ${T.tier4}` }}>
+              <IconeSetaDireita tam={12} cor={T.ouro} style={{ transform: aberto ? "rotate(90deg)" : "none", transition: "transform .15s" }} />
+            </span>
+          </span>
+        </button>
+        {aberto && <div style={{ padding: "2px 12px 12px" }}>{children}</div>}
+      </Painel>
+    </section>
+  );
+}
+
 function Segmento({ valor, opcoes, onChange, titulo }) {
   return (
     <div>
@@ -191,5 +216,5 @@ function Segmento({ valor, opcoes, onChange, titulo }) {
 export {
   Estrelas, IconeGoleiro, IconeLinha, CampoBusca, SeloAtraso, Botao, inputStyle, Campo,
   CabecalhoPagina, Secao, Painel, Chip, AvatarJogador, Marcadores, Contador,
-  FaixaPartida, Interruptor, Segmento,
+  FaixaPartida, Interruptor, Segmento, SecaoRecolhivel,
 };

@@ -5,10 +5,10 @@ import { CONFIG_PADRAO, placarDe } from "../core/regras";
 import { csvSumula, baixarArquivo } from "../core/exportacao";
 import { id, migrarBase } from "../core/repositorio";
 import { baseOficial } from "../data/baseOficial";
-import { Botao, Painel, inputStyle, Campo, CabecalhoPagina } from "../components/ui";
+import { Botao, Painel, inputStyle, Campo, CabecalhoPagina, SecaoRecolhivel } from "../components/ui";
 import {
   IconeTrofeu, IconeMartelo, IconeMedalha, IconeEmbaralhar, IconeCadeado,
-  IconeUpload, IconeDownload, IconeSetaDireita,
+  IconeUpload, IconeDownload,
 } from "../components/icones";
 
 /* ==================== TELA: HISTÓRICO E CONFIGURAÇÕES ====================*/
@@ -64,30 +64,6 @@ function LinhaToggle({ texto, ligado }) {
         background: ligado ? T.ouroFraco : "rgba(255,255,255,.06)", color: ligado ? T.ouroClaro : T.fraco,
       }}>{ligado ? "SIM" : "NÃO"}</span>
     </div>
-  );
-}
-
-/* bloco recolhível padrão — mesmo tratamento visual do "Rodadas registradas":
-   painel com borda própria (separação clara das outras áreas) e um cabeçalho-
-   botão de drill down bem visível (chip com seta dentro de um círculo). */
-function SecaoRecolhivel({ titulo, Icone, detalhe, aberto, onToggle, children }) {
-  return (
-    <section>
-      <Painel style={{ borderColor: T.tier4, padding: 0, overflow: "hidden" }}>
-        <button onClick={onToggle} className="flex w-full items-center justify-between" style={{ gap: 8, padding: "12px 14px", background: aberto ? T.tier2 : "transparent" }}>
-          <span className="font-destaque flex items-center" style={{ gap: 7, fontSize: 13, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: T.ouro }}>
-            {Icone && <Icone tam={15} cor={T.ouro} />}{titulo}
-          </span>
-          <span className="flex items-center" style={{ gap: 7, fontSize: 11, color: T.secundario, flexShrink: 0 }}>
-            {detalhe}
-            <span className="flex items-center justify-center" style={{ width: 23, height: 23, borderRadius: 999, background: T.tier3, border: `1px solid ${T.tier4}` }}>
-              <IconeSetaDireita tam={12} cor={T.ouro} style={{ transform: aberto ? "rotate(90deg)" : "none", transition: "transform .15s" }} />
-            </span>
-          </span>
-        </button>
-        {aberto && <div style={{ padding: "2px 12px 12px" }}>{children}</div>}
-      </Painel>
-    </section>
   );
 }
 
