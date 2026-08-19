@@ -30,10 +30,18 @@
  *    antiga) é lido como valendo só pro desfecho DESTA partida em que ele
  *    entrou — se o time dele continuar vencendo depois, ele vira um membro
  *    comum do time dali pra frente.
- *  - Art. 29º §4º (25+ presentes → corte em 2) e o "par ou ímpar" do
- *    Art. 30º §2º não são resolvidos sozinhos pelo motor — o organizador
- *    escolhe o limite de partidas na abertura do dia, e decide o par-ou-ímpar
- *    na mão quando a fila não é suficiente pra tirar os dois times.
+ *  - Art. 29º §4º (25+ presentes → corte em 2) não é aplicado sozinho — vira
+ *    só um aviso na tela; o organizador escolhe o limite de partidas na
+ *    abertura do dia.
+ *  - Empate é sempre decisão manual do organizador, em qualquer partida do
+ *    dia (não só a 1ª — o Estatuto só fala da 1ª partida no Art. 30º, mas
+ *    empate pode acontecer em qualquer uma, e o mesmo princípio serve): 0×0
+ *    manda os dois times saírem se houver fila, senão pede o resultado do
+ *    par ou ímpar (Art. 30º §2º); empate COM gols pede quem fez o 1º gol
+ *    (Art. 30º caput) — o motor não tenta adivinhar sozinho, sempre pergunta
+ *    (ver "pendente" em encerrarPartida). Exceção: na partida de corte
+ *    (Art. 29º §1º) qualquer empate já manda os dois saírem, sem perguntar
+ *    quem fez gol primeiro — o corte não depende disso.
  */
 
 const RACHAO_PADRAO = { linhaPorTime: 4, limitePartidas: 3 };
@@ -134,7 +142,7 @@ function iniciarPartida(sessao) {
       amarelo: { linha: amarelo.linha, goleiro: amarelo.goleiro, protegidos: [] },
       azul: { linha: azul.linha, goleiro: azul.goleiro, protegidos: [] },
     },
-    placar: { amarelo: 0, azul: 0 }, primeiroGol: null, pendente: null,
+    placar: { amarelo: 0, azul: 0 }, pendente: null,
   };
   return { ...sessao, quadra, timeEmEspera: null };
 }
@@ -157,14 +165,8 @@ function limparGoleiro(sessao, lado) {
 
 function marcarGol(sessao, lado, delta) {
   if (!sessao.quadra) return sessao;
-  const atual = sessao.quadra.placar[lado] || 0;
-  const novo = Math.max(0, atual + delta);
-  let primeiroGol = sessao.quadra.primeiroGol;
-  if (delta > 0 && atual === 0 && !primeiroGol) primeiroGol = lado; // Art. 30º — quem fez o 1º gol da partida
-  if (delta < 0 && novo === 0 && primeiroGol === lado && (sessao.quadra.placar[outroLado(lado)] || 0) === 0) {
-    primeiroGol = null; // desfez o próprio gol que tinha aberto o placar
-  }
-  const quadra = { ...sessao.quadra, placar: { ...sessao.quadra.placar, [lado]: novo }, primeiroGol };
+  const novo = Math.max(0, (sessao.quadra.placar[lado] || 0) + delta);
+  const quadra = { ...sessao.quadra, placar: { ...sessao.quadra.placar, [lado]: novo } };
   return { ...sessao, quadra };
 }
 
@@ -177,11 +179,22 @@ function encerrarPartida(sessao) {
   const resultado = gA > gB ? "amarelo" : gB > gA ? "azul" : "empate";
   const vencedorNormal = resultado === "empate" ? null : resultado;
 
+  // Empate COM gols, fora da partida de corte: não dá pra decidir sozinho — precisa saber
+  // quem fez o 1º gol (Art. 30º). Devolve "pendente" e espera resolverPrimeiroGol.
+  if (resultado === "empate" && !q.forcarSaidaAoFim && !(gA === 0 && gB === 0)) {
+    return {
+      sessao: { ...sessao, quadra: { ...q, pendente: "primeiroGol" } },
+      aviso: "Empate — quem fez o 1º gol permanece em quadra (Art. 30º). Informe abaixo.",
+      pendente: true,
+    };
+  }
+
   let ladoQueFica = null, partidasSeguidas = 0, motivo = "";
 
   if (q.forcarSaidaAoFim) {
     // Art. 29º: o incumbente já tinha completado o limite de partidas seguidas antes desta —
-    // sai depois dela de qualquer jeito.
+    // sai depois dela de qualquer jeito. Empate aqui (0×0 ou com gols, tanto faz) já manda os
+    // dois saírem — o corte não depende de quem fez gol primeiro.
     if (resultado === "empate" || vencedorNormal === q.incumbente) {
       ladoQueFica = null;
       motivo = resultado === "empate"
@@ -191,25 +204,10 @@ function encerrarPartida(sessao) {
       ladoQueFica = vencedorNormal; partidasSeguidas = 1;
       motivo = `${NOME_LADO[vencedorNormal]} venceu e assume a quadra.`;
     }
-  } else if (q.primeiraPartida && resultado === "empate") {
-    if (gA === 0 && gB === 0) {
-      ladoQueFica = null;
-      motivo = "0×0 na 1ª partida do dia — os dois times saem (Art. 30º §1º).";
-    } else if (q.primeiroGol) {
-      ladoQueFica = q.primeiroGol; partidasSeguidas = 1;
-      motivo = `Empate, mas ${NOME_LADO[q.primeiroGol]} fez o 1º gol — permanece em quadra (Art. 30º).`;
-    } else {
-      ladoQueFica = null;
-      motivo = "Empate na 1ª partida sem gol nenhum registrado — os dois times saem.";
-    }
   } else if (resultado === "empate") {
-    // fora da 1ª partida do dia o Estatuto não prevê empate (jogo tem 2 gols ou tempo esgotado
-    // com alguém na frente) — por bom senso, tratamos como o incumbente mantendo a vaga. Essa
-    // partida CONTA pro corte do Art. 29º igual uma vitória contaria — senão dava pra ficar
-    // em quadra pra sempre só empatando depois da 1ª vitória.
-    ladoQueFica = q.incumbente;
-    partidasSeguidas = q.partidasSeguidas + 1;
-    motivo = `Empate — ${q.incumbente ? NOME_LADO[q.incumbente] : "quem já estava"} permanece em quadra.`;
+    // só sobra o caso 0×0 aqui — empate com gols já foi resolvido (pendente) acima.
+    ladoQueFica = null;
+    motivo = "0×0 — os dois times saem.";
   } else {
     ladoQueFica = vencedorNormal;
     partidasSeguidas = ladoQueFica === q.incumbente ? q.partidasSeguidas + 1 : 1;
@@ -230,10 +228,22 @@ function encerrarPartida(sessao) {
 }
 
 function resolverParOuImpar(sessao, ladoVencedor) {
-  // só usado quando encerrarPartida sinalizou "pendente" — decisão manual da quadra.
+  // só usado quando encerrarPartida sinalizou pendente:"empateSemFila" — decisão manual,
+  // feita fisicamente na quadra (Art. 30º §2º).
   return aplicarDesfecho(sessao, {
     ladoQueFica: ladoVencedor, partidasSeguidas: 1,
     motivo: `${NOME_LADO[ladoVencedor]} venceu no par ou ímpar (Art. 30º §2º) e permanece em quadra.`,
+  });
+}
+
+function resolverPrimeiroGol(sessao, ladoQueFezPrimeiro) {
+  // só usado quando encerrarPartida sinalizou pendente:"primeiroGol" — o organizador informou
+  // quem fez o 1º gol da partida empatada (Art. 30º).
+  const q = sessao.quadra;
+  const partidasSeguidas = ladoQueFezPrimeiro === q.incumbente ? (q.partidasSeguidas || 0) + 1 : 1;
+  return aplicarDesfecho(sessao, {
+    ladoQueFica: ladoQueFezPrimeiro, partidasSeguidas,
+    motivo: `Empate — ${NOME_LADO[ladoQueFezPrimeiro]} fez o 1º gol e permanece em quadra (Art. 30º).`,
   });
 }
 
@@ -281,7 +291,7 @@ function aplicarDesfecho(sessao, { ladoQueFica, partidasSeguidas, motivo }) {
           [ladoQueFica]: { linha: q.lados[ladoQueFica].linha, goleiro: goleiroQueFica, protegidos: [] },
           [outro]: { linha: disponiveis.slice(0, sessao.linhaPorTime), goleiro: golDisponiveis[0] || null, protegidos: [] },
         },
-        placar: { amarelo: 0, azul: 0 }, primeiroGol: null, pendente: null,
+        placar: { amarelo: 0, azul: 0 }, pendente: null,
       };
     } else {
       // ninguém suficiente pro desafio — o time que fica espera de pé, pronto pra próxima
@@ -295,7 +305,7 @@ function aplicarDesfecho(sessao, { ladoQueFica, partidasSeguidas, motivo }) {
         amarelo: { linha: disponiveis.slice(0, sessao.linhaPorTime), goleiro: golDisponiveis[0] || null, protegidos: [] },
         azul: { linha: disponiveis.slice(sessao.linhaPorTime, sessao.linhaPorTime * 2), goleiro: golDisponiveis[1] || null, protegidos: [] },
       },
-      placar: { amarelo: 0, azul: 0 }, primeiroGol: null, pendente: null,
+      placar: { amarelo: 0, azul: 0 }, pendente: null,
     };
   }
 
@@ -367,13 +377,21 @@ function removerJogador(sessao, jogadorId, { substitutoId, passouDe5Min } = {}) 
   return { ...sessao, linha, goleiros, quadra, timeEmEspera };
 }
 
-/* --- convidado / reordenar manualmente na fila -----------------------------*/
-
-function inserirNaFila(sessao, jogadorId, posicao, ehGoleiro) {
+/* --- convidado / reordenar manualmente na fila -----------------------------
+ * Insere/move jogadorId na fila mestra (linha ou goleiros) IMEDIATAMENTE
+ * ANTES de antesDeId (ou no fim, se antesDeId for null/undefined). Recebe o
+ * ID do vizinho, não um índice numérico de propósito: a fila mestra guarda
+ * TODO MUNDO do dia (inclusive quem está em quadra agora), então um índice
+ * baseado só em quem está "aguardando" apontaria pro lugar errado da fila
+ * mestra sempre que alguém já estivesse jogando. Usando o ID do vizinho o
+ * ponto de inserção fica sempre certo, não importa quem mais esteja fora
+ * da lista de aguardando no momento.                                       */
+function inserirNaFila(sessao, jogadorId, antesDeId, ehGoleiro) {
   const campo = ehGoleiro ? "goleiros" : "linha";
   const atual = sessao[campo].filter((jid) => jid !== jogadorId);
-  const idx = Math.max(0, Math.min(posicao ?? atual.length, atual.length));
-  atual.splice(idx, 0, jogadorId);
+  const idx = antesDeId != null ? atual.indexOf(antesDeId) : -1;
+  const posicao = idx === -1 ? atual.length : idx;
+  atual.splice(posicao, 0, jogadorId);
   return { ...sessao, [campo]: atual };
 }
 
@@ -395,7 +413,7 @@ export {
   criarSessao, aguardandoLinha, goleirosLivres, proximosTimes,
   podeIniciarPartida, iniciarPartida,
   atribuirGoleiro, limparGoleiro, marcarGol,
-  encerrarPartida, resolverParOuImpar,
+  encerrarPartida, resolverParOuImpar, resolverPrimeiroGol,
   substituirLinha, removerJogador, inserirNaFila,
   avisosSessao,
 };

@@ -4,8 +4,8 @@ import { id } from "../core/repositorio";
 import {
   criarSessao, aguardandoLinha, goleirosLivres, proximosTimes,
   podeIniciarPartida, iniciarPartida, atribuirGoleiro, limparGoleiro, marcarGol,
-  encerrarPartida, resolverParOuImpar, substituirLinha, removerJogador, inserirNaFila,
-  avisosSessao, NOME_LADO,
+  encerrarPartida, resolverParOuImpar, resolverPrimeiroGol, substituirLinha, removerJogador,
+  inserirNaFila, avisosSessao, NOME_LADO,
 } from "../core/rachao";
 import {
   Botao, Painel, inputStyle, Campo, CabecalhoPagina, Secao, Segmento, IconeGoleiro,
@@ -44,7 +44,6 @@ function TelaRachao({ base, avisar }) {
 
   return (
     <div className="rachao-layout">
-      <ListaChegada {...{ sessao, convidados, nomes, ordemIdx }} />
       <div className="space-y-4" style={{ flex: 1, minWidth: 0 }}>
         <CabecalhoPagina titulo="Rachão"
           descricao={new Date(sessao.data + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })} />
@@ -72,6 +71,7 @@ function TelaRachao({ base, avisar }) {
           }
         }}>Encerrar jogos do Rachão</Botao>
       </div>
+      <ListaChegada {...{ sessao, convidados, nomes, ordemIdx }} />
     </div>
   );
 }
@@ -91,7 +91,7 @@ function ListaChegada({ sessao, convidados, nomes, ordemIdx }) {
   return (
     <aside className="rachao-lista-chegada" style={{ opacity: 0.62 }}>
       <p style={{ marginBottom: 8, fontSize: 10, fontWeight: 800, letterSpacing: ".14em", color: T.fraco }}>ORDEM DE CHEGADA</p>
-      <div className="space-y-1" style={{ maxHeight: 480, overflowY: "auto" }}>
+      <div className="space-y-1">
         {ordenados.map((jid, i) => (
           <div key={jid} className="flex items-center gap-1.5" style={{ padding: "3px 2px", fontSize: 11.5 }}>
             <span style={{ width: 18, textAlign: "right", color: T.fraco, flexShrink: 0 }}>{i + 1}</span>
@@ -209,6 +209,24 @@ function QuadraAoVivo({ sessao, atualizar, avisar, nomes }) {
     );
   }
 
+  if (q.pendente === "primeiroGol") {
+    return (
+      <Painel className="space-y-3 p-4" style={{ borderColor: T.laranja }}>
+        <p style={{ fontSize: 12.5, color: T.laranja }}>
+          Empate {q.placar.amarelo}×{q.placar.azul} — quem fez o 1º gol permanece em quadra (Art. 30º). Quem foi?
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          {["amarelo", "azul"].map((lado) => (
+            <Botao key={lado} style={{ background: corDe(lado).hex, color: "#fff" }} onClick={() => {
+              const r = resolverPrimeiroGol(sessao, lado);
+              atualizar(r.sessao); avisar(r.aviso);
+            }}>{corDe(lado).cor} fez o 1º gol</Botao>
+          ))}
+        </div>
+      </Painel>
+    );
+  }
+
   return (
     <Painel className="space-y-3 p-3">
       <FaixaPartida n={q.numero} />
@@ -237,14 +255,12 @@ function TimeQuadra({ lado, sessao, q, atualizar, avisar, nomes }) {
       <div className="flex items-center justify-between" style={{ padding: "7px 10px", background: `${cor.hex}22`, borderBottom: `2px solid ${cor.hex}` }}>
         <span style={{ fontSize: 11.5, fontWeight: 900, color: cor.hex }}>{cor.emoji} {cor.cor}</span>
         {q.incumbente === lado && (
-          <span style={{ fontSize: 8.5, fontWeight: 800, color: T.verde }}>
-            EM QUADRA{q.partidasSeguidas > 0 ? ` · ${q.partidasSeguidas}ª SEGUIDA` : ""}
+          <span title={q.forcarSaidaAoFim ? "Sai depois desta partida, seja qual for o resultado (Art. 29º)." : undefined}
+            style={{ fontSize: 8.5, fontWeight: 800, color: q.forcarSaidaAoFim ? T.laranja : T.verde }}>
+            EM QUADRA{q.partidasSeguidas > 0 ? ` · ${q.partidasSeguidas}ª` : ""}{q.forcarSaidaAoFim ? " · ÚLTIMA" : ""}
           </span>
         )}
       </div>
-      {q.forcarSaidaAoFim && q.incumbente === lado && (
-        <p style={{ padding: "4px 8px 0", fontSize: 9.5, color: T.laranja }}>Sai depois desta partida, seja qual for o resultado (Art. 29º).</p>
-      )}
       <div className="flex items-center justify-center gap-3 p-2">
         <button onClick={() => atualizar(marcarGol(sessao, lado, -1))} style={{ width: 36, height: 36, borderRadius: 8, background: "rgba(255,255,255,.08)", color: T.secundario, fontSize: 18 }}>−</button>
         <span className="font-destaque" style={{ width: 34, textAlign: "center", fontSize: 32, fontWeight: 700 }}>{q.placar[lado]}</span>
@@ -357,9 +373,9 @@ function FilaEConvidados({ sessao, atualizar, avisar, base, convidados, setConvi
             <div key={jid} className="flex items-center justify-between rounded px-2 py-1.5" style={{ background: "rgba(0,0,0,.18)" }}>
               <span style={{ fontSize: 12.5 }}><b style={{ marginRight: 6, color: T.fraco }}>{i + 1}º</b>{nomes[jid] || "?"}</span>
               <div className="flex items-center" style={{ gap: 2 }}>
-                <button disabled={i === 0} onClick={() => atualizar(inserirNaFila(sessao, jid, i - 1, false))}
+                <button disabled={i === 0} onClick={() => atualizar(inserirNaFila(sessao, jid, filaLinha[i - 1], false))}
                   style={{ padding: "4px 7px", fontSize: 12, color: i === 0 ? "rgba(255,255,255,.15)" : T.secundario }}>▲</button>
-                <button disabled={i === filaLinha.length - 1} onClick={() => atualizar(inserirNaFila(sessao, jid, i + 1, false))}
+                <button disabled={i === filaLinha.length - 1} onClick={() => atualizar(inserirNaFila(sessao, jid, filaLinha[i + 2], false))}
                   style={{ padding: "4px 7px", fontSize: 12, color: i === filaLinha.length - 1 ? "rgba(255,255,255,.15)" : T.secundario }}>▼</button>
                 <button onClick={() => { atualizar(removerJogador(sessao, jid)); avisar(`${nomes[jid]} saiu da fila`); }}
                   style={{ padding: "4px 7px", fontSize: 13, color: T.laranja }}>✕</button>
@@ -410,9 +426,21 @@ function AdicionarNaFila({ sessao, atualizar, avisar, base, convidados, setConvi
   const disponiveisElenco = base.jogadores.filter((j) => j.ativo !== false && !jaNaSessao.has(j.id))
     .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 
-  const indiceEscolhido = (ehGoleiro) => {
-    const fila = ehGoleiro ? sessao.goleiros : aguardandoLinha(sessao);
-    return posicaoFila === "" ? fila.length : Math.max(0, Math.min(Number(posicaoFila) - 1, fila.length));
+  // Acha onde encaixar na fila (aguardando) e devolve tanto o vizinho de referência pro
+  // inserirNaFila quanto os vizinhos pra calcular a posição na Lista de chegada — assim quem
+  // escolhe "posição 10" cai na 10ª posição das duas listas, não só na fila do jogo.
+  const posicaoNaFila = (ehGoleiro) => {
+    const fila = ehGoleiro ? goleirosLivres(sessao) : aguardandoLinha(sessao);
+    const idx = posicaoFila === "" ? fila.length : Math.max(0, Math.min(Number(posicaoFila) - 1, fila.length));
+    return { antesDeId: fila[idx] ?? null, anteriorId: fila[idx - 1] ?? null };
+  };
+  const novoOrdemIdx = (s, anteriorId, antesDeId) => {
+    const antes = anteriorId != null ? s[anteriorId] : undefined;
+    const depois = antesDeId != null ? s[antesDeId] : undefined;
+    if (antes === undefined && depois === undefined) return proximoIdx(s);
+    if (antes === undefined) return depois - 1;
+    if (depois === undefined) return antes + 1;
+    return (antes + depois) / 2;
   };
 
   return (
@@ -443,17 +471,19 @@ function AdicionarNaFila({ sessao, atualizar, avisar, base, convidados, setConvi
           if (modo === "elenco") {
             if (!jogadorId) return;
             const j = base.jogadores.find((x) => x.id === jogadorId);
-            atualizar(inserirNaFila(sessao, jogadorId, indiceEscolhido(j.posicao === "GOLEIRO"), j.posicao === "GOLEIRO"));
-            setOrdemIdx((s) => (jogadorId in s ? s : { ...s, [jogadorId]: proximoIdx(s) }));
+            const { antesDeId, anteriorId } = posicaoNaFila(j.posicao === "GOLEIRO");
+            atualizar(inserirNaFila(sessao, jogadorId, antesDeId, j.posicao === "GOLEIRO"));
+            setOrdemIdx((s) => (jogadorId in s ? s : { ...s, [jogadorId]: novoOrdemIdx(s, anteriorId, antesDeId) }));
             avisar(`${j.nome} entrou na fila`);
             setJogadorId("");
           } else {
             if (!nome.trim()) return;
             const jid = id();
             const ehGoleiro = posicao === "GOLEIRO";
+            const { antesDeId, anteriorId } = posicaoNaFila(ehGoleiro);
             setConvidados([...convidados, { id: jid, nome: nome.trim(), posicao, estrelas }]);
-            atualizar(inserirNaFila(sessao, jid, indiceEscolhido(ehGoleiro), ehGoleiro));
-            setOrdemIdx((s) => ({ ...s, [jid]: proximoIdx(s) }));
+            atualizar(inserirNaFila(sessao, jid, antesDeId, ehGoleiro));
+            setOrdemIdx((s) => ({ ...s, [jid]: novoOrdemIdx(s, anteriorId, antesDeId) }));
             avisar(`${nome.trim()} entrou como convidado do dia`);
             setNome(""); setEstrelas(1);
           }
