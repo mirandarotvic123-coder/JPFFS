@@ -201,9 +201,11 @@ function encerrarPartida(sessao) {
     }
   } else if (resultado === "empate") {
     // fora da 1ª partida do dia o Estatuto não prevê empate (jogo tem 2 gols ou tempo esgotado
-    // com alguém na frente) — por bom senso, tratamos como o incumbente mantendo a vaga.
+    // com alguém na frente) — por bom senso, tratamos como o incumbente mantendo a vaga. Essa
+    // partida CONTA pro corte do Art. 29º igual uma vitória contaria — senão dava pra ficar
+    // em quadra pra sempre só empatando depois da 1ª vitória.
     ladoQueFica = q.incumbente;
-    partidasSeguidas = q.partidasSeguidas;
+    partidasSeguidas = q.partidasSeguidas + 1;
     motivo = `Empate — ${q.incumbente ? NOME_LADO[q.incumbente] : "quem já estava"} permanece em quadra.`;
   } else {
     ladoQueFica = vencedorNormal;
