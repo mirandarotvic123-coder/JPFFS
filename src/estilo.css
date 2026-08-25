@@ -217,12 +217,16 @@ input:focus, select:focus {
  * um painel grudado na borda direita da TELA (position: fixed — não fica
  * preso à largura do conteúdo central, por isso "sobra mais" à direita) e
  * some do fluxo normal, por isso o conteúdo principal ganha um respiro à
- * direita (.rachao-conteudo) pra não passar por baixo dela. Sem scroll
- * interno de propósito — em listas muito compridas ela só cresce pra baixo.
+ * direita (.rachao-conteudo) pra não passar por baixo dela. Com muita gente
+ * no dia a lista cresce mais que a altura da tela — como ela é fixed (não
+ * acompanha o scroll da página), sem limite de altura o final dela ficava
+ * cortado embaixo da viewport e não tinha como chegar lá. Por isso ganha
+ * scroll interno próprio, limitado ao espaço vertical disponível abaixo do
+ * cabeçalho.
  * ==========================================================================*/
 .rachao-layout { display: flex; flex-direction: column; gap: 16px; }
 @media (min-width: 1024px) {
   .rachao-layout { flex-direction: row; align-items: flex-start; }
   .rachao-conteudo { padding-right: 232px; }
-  .rachao-lista-chegada { position: fixed; top: 88px; right: 18px; width: 204px; }
+  .rachao-lista-chegada { position: fixed; top: 88px; right: 18px; width: 204px; max-height: calc(100vh - 88px - 18px); overflow-y: auto; }
 }
