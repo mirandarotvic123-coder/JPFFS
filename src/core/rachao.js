@@ -50,6 +50,21 @@
  *    em quadra e simplesmente permanece, contando pro corte do Art. 29º
  *    igual uma vitória contaria. Exceção: na partida de corte (Art. 29º §1º)
  *    qualquer empate já manda os dois saírem, direto, não importa a partida.
+ *  - Exceção geral a tudo isso: havendo pelo menos "1 time e meio" de linha
+ *    esperando fora da quadra (6 com 4 na linha, 8 com 5 na linha) no momento
+ *    em que UMA PARTIDA QUALQUER termina empatada — não importa o placar, 0×0
+ *    ou com gols, nem se é a 1ª do dia ou não —, os dois times saem direto:
+ *    não pede par ou ímpar nem quem fez o 1º gol (1ª partida), e também não
+ *    deixa o incumbente permanecer (partidas seguintes) — com fila desse
+ *    tamanho o organizador não costuma querer parar o jogo pra decisão manual
+ *    nem deixar quem já ganhou vantagem ficar. Abaixo desse tanto de fila,
+ *    vale a regra de sempre (par ou ímpar / 1º gol na 1ª partida, incumbente
+ *    permanece nas seguintes). Não se aplica à partida de corte do Art. 29º:
+ *    ali qualquer empate já manda os dois saírem incondicionalmente, com ou
+ *    sem fila grande — mesmo desfecho, só não usa essa mensagem. As vagas dos
+ *    próximos times seguem a ordem normal da fila — quem já esperava entra
+ *    primeiro, e quem acabou de sair da quadra completa o resto, como já
+ *    acontece em qualquer desfecho.
  */
 
 const RACHAO_PADRAO = { linhaPorTime: 4, limitePartidas: 3 };
@@ -190,9 +205,27 @@ function encerrarPartida(sessao) {
   const resultado = gA > gB ? "amarelo" : gB > gA ? "azul" : "empate";
   const vencedorNormal = resultado === "empate" ? null : resultado;
 
-  // Empate na 1ª partida do dia COM gols: nenhum dos dois times tem vantagem nenhuma (os dois
-  // acabaram de se formar) — só quem fez o 1º gol decide (Art. 30º). Nas partidas seguintes
-  // isso não se aplica: o incumbente já chega com a vantagem de estar em quadra (ver abaixo).
+  // Empate com fila grande (≥ 1 time e meio de linha esperando): os dois times saem direto, não
+  // importa o placar nem qual partida do dia é — nem pede decisão manual (par ou ímpar / 1º gol,
+  // que só existem na 1ª partida) nem deixa o incumbente permanecer (vantagem que ele teria em
+  // qualquer outra partida, ver mais abaixo). Única exceção: a partida de corte do Art. 29º já
+  // manda os dois saírem incondicionalmente em qualquer empate (ver "forcarSaidaAoFim" abaixo) —
+  // essa regra de fila não muda esse desfecho, só a mensagem seria redundante, por isso fica de
+  // fora daqui.
+  if (resultado === "empate" && !q.forcarSaidaAoFim) {
+    const limiarFilaGrande = Math.ceil(sessao.linhaPorTime * 1.5); // 6 (4 na linha) ou 8 (5 na linha)
+    if (aguardandoLinha(sessao).length >= limiarFilaGrande) {
+      return aplicarDesfecho(sessao, {
+        ladoQueFica: null, partidasSeguidas: 0,
+        motivo: `Empate ${gA}×${gB} com fila grande (pelo menos 1 time e meio de linha esperando) — os dois times saem direto.`,
+      });
+    }
+  }
+
+  // Empate na 1ª partida do dia COM gols (e sem fila grande o bastante pra pular a decisão,
+  // ver acima): nenhum dos dois times tem vantagem nenhuma (os dois acabaram de se formar) —
+  // só quem fez o 1º gol decide (Art. 30º). Nas partidas seguintes isso não se aplica: o
+  // incumbente já chega com a vantagem de estar em quadra (ver abaixo).
   if (resultado === "empate" && q.primeiraPartida && !(gA === 0 && gB === 0)) {
     return {
       sessao: { ...sessao, quadra: { ...q, pendente: "primeiroGol" } },
@@ -221,8 +254,9 @@ function encerrarPartida(sessao) {
     ladoQueFica = null;
     motivo = "0×0 na 1ª partida do dia — os dois times saem (Art. 30º §1º).";
   } else if (resultado === "empate") {
-    // fora da 1ª partida do dia: o incumbente já tem a vantagem de estar em quadra — permanece
-    // sozinho, sem precisar de decisão nenhuma. Conta pro corte do Art. 29º igual uma vitória.
+    // fora da 1ª partida do dia e sem fila grande o bastante pra mandar os dois saírem (ver
+    // acima): o incumbente já tem a vantagem de estar em quadra — permanece sozinho, sem
+    // precisar de decisão nenhuma. Conta pro corte do Art. 29º igual uma vitória.
     ladoQueFica = q.incumbente;
     partidasSeguidas = q.partidasSeguidas + 1;
     motivo = `Empate — ${q.incumbente ? NOME_LADO[q.incumbente] : "quem já estava"} permanece em quadra.`;

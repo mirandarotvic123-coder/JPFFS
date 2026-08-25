@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { T, AMARELO, AZUL, corDe } from "../theme";
 import { id } from "../core/repositorio";
 import {
@@ -17,20 +17,39 @@ import {
  * (Art. 25º-30º do Estatuto). Totalmente separada do Campeonato: não mexe em
  * gols/cartões/pontos/tabela de ninguém.
  *
- * Nada aqui é salvo — a sessão e os convidados do dia vivem só no estado
- * local desta tela. Sair da aba/recarregar a página perde tudo, e é assim
- * mesmo: o Rachão roda dentro do dia e acaba com "Encerrar jogos do Rachão".
- * (Se um dia isso precisar sobreviver a um refresh, dá pra trocar os
- * useState abaixo por localStorage — sem precisar do Supabase pra isso.)  */
+ * A sessão e os convidados do dia vivem no localStorage do aparelho (chave
+ * abaixo) — não no Supabase, então não sincroniza entre dispositivos nem
+ * aparece no backup da base. Isso é de propósito: sobrevive a trocar de aba,
+ * fechar o navegador ou recarregar a página no meio do dia, e só some de
+ * verdade quando alguém aperta "Encerrar jogos do Rachão".               */
+
+const CHAVE_RACHAO = "jpffs:rachao";
+
+function carregarRachaoLocal() {
+  try {
+    const bruto = localStorage.getItem(CHAVE_RACHAO);
+    return bruto ? JSON.parse(bruto) : null;
+  } catch {
+    return null;
+  }
+}
+function salvarRachaoLocal(estado) {
+  try {
+    if (!estado.sessao) { localStorage.removeItem(CHAVE_RACHAO); return; }
+    localStorage.setItem(CHAVE_RACHAO, JSON.stringify(estado));
+  } catch { /* localStorage indisponível (modo privado, cota etc.) — segue só na memória */ }
+}
 
 function TelaRachao({ base, avisar }) {
-  const [sessao, setSessao] = useState(null);
-  const [convidados, setConvidados] = useState([]); // só desta sessão — não entra no elenco
+  const [sessao, setSessao] = useState(() => carregarRachaoLocal()?.sessao ?? null);
+  const [convidados, setConvidados] = useState(() => carregarRachaoLocal()?.convidados ?? []); // só desta sessão — não entra no elenco
   // ordem de chegada estável, só pra exibição (Lista de chegada) — cada jogador ganha um
   // índice na hora em que entra no dia e ele nunca muda depois, mesmo que a fila (que gira
   // com vitória/derrota) reordene. Não afeta regra nenhuma do jogo.
-  const [ordemIdx, setOrdemIdx] = useState({});
+  const [ordemIdx, setOrdemIdx] = useState(() => carregarRachaoLocal()?.ordemIdx ?? {});
   const proximoIdx = (atual) => (Object.keys(atual).length ? Math.max(...Object.values(atual)) + 1 : 0);
+
+  useEffect(() => { salvarRachaoLocal({ sessao, convidados, ordemIdx }); }, [sessao, convidados, ordemIdx]);
 
   const nomes = {
     ...Object.fromEntries(base.jogadores.map((j) => [j.id, j.nome])),
@@ -65,7 +84,7 @@ function TelaRachao({ base, avisar }) {
         <HistoricoDoDia sessao={sessao} />
 
         <Botao variante="secundario" className="w-full" onClick={() => {
-          if (confirm("Encerrar os jogos do Rachão? Nada foi salvo — a fila, a quadra e o histórico de hoje somem.")) {
+          if (confirm("Encerrar os jogos do Rachão? A fila, a quadra e o histórico de hoje são apagados de vez — não tem como desfazer.")) {
             setSessao(null); setConvidados([]); setOrdemIdx({});
             avisar("Rachão encerrado");
           }
@@ -116,7 +135,7 @@ function AberturaRachao({ base, avisar, setSessao, setConvidados, setOrdemIdx })
 
   return (
     <div className="space-y-4">
-      <CabecalhoPagina titulo="Rachão" descricao="Fila por ordem de chegada, Amarelo × Azul, vencedor fica em quadra. Nada fica salvo — roda só no dia." />
+      <CabecalhoPagina titulo="Rachão" descricao="Fila por ordem de chegada, Amarelo × Azul, vencedor fica em quadra. Fica salvo neste aparelho até você encerrar o dia." />
       <Painel className="p-4 space-y-3">
         <Campo rotulo="Data do rachão">
           <input type="date" value={data} onChange={(e) => setData(e.target.value)} style={inputStyle} />
