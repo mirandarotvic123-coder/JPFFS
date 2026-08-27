@@ -3,7 +3,7 @@ import { supabase } from "../supabase";
 import { T } from "../theme";
 import { CONFIG_PADRAO, placarDe } from "../core/regras";
 import { csvSumula, baixarArquivo } from "../core/exportacao";
-import { id, migrarBase, listarPerfis, decidirPerfil } from "../core/repositorio";
+import { id, migrarBase, listarPerfis, decidirPerfil, excluirPerfil } from "../core/repositorio";
 import { baseOficial } from "../data/baseOficial";
 import { Botao, Painel, inputStyle, Campo, CabecalhoPagina, SecaoRecolhivel } from "../components/ui";
 import {
@@ -155,28 +155,42 @@ function SecaoAprovacoes({ avisar, meuId }) {
     carregar();
   };
 
+  const excluir = async (p) => {
+    if (!confirm(`Excluir o cadastro de ${p.nome || p.email}? Ele perde o acesso e some dessa lista — pra apagar o login (e-mail/senha) por completo, é pelo painel do Supabase.`)) return;
+    setProcessandoId(p.id);
+    const ok = await excluirPerfil(p.id);
+    setProcessandoId(null);
+    if (!ok) { avisar("Falha ao excluir"); return; }
+    avisar(`${p.email} excluído`);
+    carregar();
+  };
+
   const Linha = (p) => (
-    <div key={p.id} className="flex items-center justify-between gap-2 rounded px-2.5 py-2" style={{ background: "rgba(0,0,0,.2)" }}>
-      <div className="min-w-0">
+    <div key={p.id} className="rounded-lg" style={{ background: "rgba(0,0,0,.2)", padding: "10px 12px" }}>
+      <div className="min-w-0" style={{ marginBottom: 8 }}>
         <p className="truncate" style={{ fontSize: 12.5, fontWeight: 700, color: T.texto }}>{p.nome || "(sem nome)"}</p>
-        <p className="truncate" style={{ fontSize: 11, color: T.secundario }}>{p.email} {p.telefone && `· ${p.telefone}`}</p>
-        <p style={{ fontSize: 10, color: T.fraco }}>
+        <p className="truncate" style={{ marginTop: 2, fontSize: 11, color: T.secundario }}>{p.email} {p.telefone && `· ${p.telefone}`}</p>
+        <p style={{ marginTop: 2, fontSize: 10, color: T.fraco }}>
           <span style={{ color: COR_STATUS[p.status], fontWeight: 800 }}>{ROTULO_STATUS[p.status]}</span> · pediu acesso em {dataHoraBR(p.criado_em)}
         </p>
       </div>
-      <div className="flex shrink-0" style={{ gap: 4 }}>
+      <div className="flex" style={{ gap: 6 }}>
         {p.status !== "aprovado" && (
           <button disabled={processandoId === p.id} onClick={() => decidir(p, "aprovado")}
-            style={{ borderRadius: 6, padding: "7px 9px", fontSize: 10, fontWeight: 800, textTransform: "uppercase", background: "rgba(61,214,140,.15)", color: T.verde, opacity: processandoId === p.id ? .5 : 1 }}>
+            style={{ borderRadius: 6, padding: "7px 10px", fontSize: 10, fontWeight: 800, textTransform: "uppercase", background: "rgba(61,214,140,.15)", color: T.verde, opacity: processandoId === p.id ? .5 : 1 }}>
             Aprovar
           </button>
         )}
         {p.status !== "recusado" && (
           <button disabled={processandoId === p.id} onClick={() => decidir(p, "recusado")}
-            style={{ borderRadius: 6, padding: "7px 9px", fontSize: 10, fontWeight: 800, textTransform: "uppercase", background: "rgba(255,107,107,.15)", color: T.vermelho, opacity: processandoId === p.id ? .5 : 1 }}>
+            style={{ borderRadius: 6, padding: "7px 10px", fontSize: 10, fontWeight: 800, textTransform: "uppercase", background: "rgba(255,107,107,.15)", color: T.vermelho, opacity: processandoId === p.id ? .5 : 1 }}>
             Recusar
           </button>
         )}
+        <button disabled={processandoId === p.id} onClick={() => excluir(p)}
+          style={{ borderRadius: 6, padding: "7px 10px", fontSize: 10, fontWeight: 800, textTransform: "uppercase", background: "rgba(255,255,255,.06)", color: T.fraco, opacity: processandoId === p.id ? .5 : 1, marginLeft: "auto" }}>
+          Excluir
+        </button>
       </div>
     </div>
   );

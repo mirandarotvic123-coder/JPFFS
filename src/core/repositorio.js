@@ -86,6 +86,22 @@ async function decidirPerfil(perfilId, status, decididoPorId) {
   }
 }
 
+/* Apaga só a linha de "perfis" (revoga acesso) — a conta de login em si
+ * (auth.users) continua existindo, fora do alcance do app sem a chave
+ * secreta do Supabase; pra apagar o login de verdade é pelo painel do
+ * Supabase (Authentication → Users → Delete user). Precisa da policy de
+ * DELETE em supabase-migracoes/003-*. */
+async function excluirPerfil(perfilId) {
+  try {
+    const { error } = await supabase.from("perfis").delete().eq("id", perfilId);
+    if (error) throw error;
+    return true;
+  } catch (e) {
+    console.error("Falha ao excluir perfil:", e);
+    return false;
+  }
+}
+
 /* Foto do jogador — bucket "avatares" no Supabase Storage. Se o bucket ainda
  * não foi criado no projeto (ver instruções passadas à parte), o upload falha
  * de forma controlada e a tela mostra aviso, sem quebrar o cadastro. */
@@ -129,4 +145,4 @@ function migrarBase(base) {
   // jogos do Rachão" descarta tudo. ordemChegada acima é a única ponte com o Campeonato.
   return b;
 }
-export { carregarBase, salvarBase, enviarFotoJogador, id, migrarBase, buscarPerfil, listarPerfis, decidirPerfil };
+export { carregarBase, salvarBase, enviarFotoJogador, id, migrarBase, buscarPerfil, listarPerfis, decidirPerfil, excluirPerfil };
