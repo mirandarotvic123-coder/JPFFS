@@ -57,6 +57,21 @@ input:focus, select:focus {
   border-color: #F5C518;
 }
 
+/* O navegador força fundo branco/amarelo em campo autopreenchido (senha
+   salva, autofill de e-mail), ignorando o "background" do componente — fica
+   um retângulo claro destoando do resto do formulário escuro. Trocado pelo
+   mesmo azul de fundo dos campos (T.tier2 em theme.js) via esse truque do
+   box-shadow inset gigante (não dá pra sobrescrever o fundo do autofill
+   direto). */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #132759 inset;
+  -webkit-text-fill-color: #DBE1FF;
+  caret-color: #DBE1FF;
+  transition: background-color 9999s ease-in-out 0s;
+}
+
 /* display */
 .block { display: block; }
 .flex { display: flex; }

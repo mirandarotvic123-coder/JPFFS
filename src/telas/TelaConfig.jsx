@@ -158,7 +158,8 @@ function SecaoAprovacoes({ avisar, meuId }) {
   const Linha = (p) => (
     <div key={p.id} className="flex items-center justify-between gap-2 rounded px-2.5 py-2" style={{ background: "rgba(0,0,0,.2)" }}>
       <div className="min-w-0">
-        <p className="truncate" style={{ fontSize: 12.5, color: T.texto }}>{p.email}</p>
+        <p className="truncate" style={{ fontSize: 12.5, fontWeight: 700, color: T.texto }}>{p.nome || "(sem nome)"}</p>
+        <p className="truncate" style={{ fontSize: 11, color: T.secundario }}>{p.email} {p.telefone && `· ${p.telefone}`}</p>
         <p style={{ fontSize: 10, color: T.fraco }}>
           <span style={{ color: COR_STATUS[p.status], fontWeight: 800 }}>{ROTULO_STATUS[p.status]}</span> · pediu acesso em {dataHoraBR(p.criado_em)}
         </p>
