@@ -2,35 +2,94 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./supabase";
 import { T, FUNDO_APP, ESCUDO } from "./theme";
 import { CONFIG_PADRAO, calcularClassificacao } from "./core/regras";
-import { carregarBase, salvarBase, migrarBase } from "./core/repositorio";
+import { carregarBase, salvarBase, migrarBase, buscarPerfil } from "./core/repositorio";
 import { baseOficial } from "./data/baseOficial";
 import {
   IconeTabela, IconeRodada, IconeElenco, IconeAjustes, IconeConta, IconeRachao,
 } from "./components/icones";
-import { ModalLogin } from "./components/ModalLogin";
+import { TelaLogin, TelaAguardandoAprovacao, TelaNovaSenha } from "./telas/TelaAcesso";
 import { TelaRodada } from "./telas/TelaRodada";
 import { TelaClassificacao } from "./telas/TelaClassificacao";
 import { TelaElenco } from "./telas/TelaElenco";
 import { TelaConfig } from "./telas/TelaConfig";
 import { TelaRachao } from "./telas/TelaRachao";
 
+/* Tela cheia de "carregando…" — usada nas várias etapas de resolver sessão/
+ * perfil/base antes do app de verdade poder aparecer. */
+function SpinnerCarregando({ texto }) {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center" style={{ background: FUNDO_APP, color: T.secundario, gap: 14 }}>
+      <img src={ESCUDO} alt="JPFFS" style={{ height: 88, width: "auto", opacity: 0.9 }} />
+      <span style={{ fontSize: 12, letterSpacing: ".14em", textTransform: "uppercase" }}>{texto}</span>
+    </div>
+  );
+}
+
 export default function App() {
   const [base, setBase] = useState(null);
   const [aba, setAba] = useState("tabela");
   const [aviso, setAviso] = useState(null);
   const [sessao, setSessao] = useState(null);
-  const [mostrarLogin, setMostrarLogin] = useState(false);
+  const [sessaoResolvida, setSessaoResolvida] = useState(false);
+  const [perfil, setPerfil] = useState(null);
+  const [perfilResolvido, setPerfilResolvido] = useState(false);
+  const [modoRecuperacao, setModoRecuperacao] = useState(false);
   const pularProximoSalvar = useRef(false);
   const salvandoPendenteRef = useRef(false); // true enquanto há uma alteração local ainda não gravada
 
+  /* Todo mundo precisa logar hoje em dia (ver supabase-migracoes/001-*) —
+   * "organizador" é quem tem papel=organizador E status=aprovado no perfil;
+   * "jogador" aprovado só enxerga a Tabela, igual o visitante público de
+   * antes. PASSWORD_RECOVERY é o evento que o Supabase dispara quando a
+   * pessoa clica no link de "esqueci minha senha". */
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSessao(data.session));
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSessao(s));
+    supabase.auth.getSession().then(({ data }) => { setSessao(data.session); setSessaoResolvida(true); });
+    const { data: sub } = supabase.auth.onAuthStateChange((evento, s) => {
+      setSessao(s);
+      if (evento === "PASSWORD_RECOVERY") setModoRecuperacao(true);
+    });
     return () => sub.subscription.unsubscribe();
   }, []);
-  useEffect(() => { (async () => setBase((await carregarBase()) || baseOficial()))(); }, []);
+
+  /* Busca o perfil (papel/status) sempre que a sessão muda, e de novo quando
+   * a aba volta a ficar visível — assim, quem está na tela de "aguardando
+   * aprovação" entra sozinho assim que o organizador aprovar, sem precisar
+   * deslogar e logar de novo. */
+  useEffect(() => {
+    if (!sessao) { setPerfil(null); setPerfilResolvido(true); return; }
+    let cancelado = false;
+    const buscar = async () => {
+      const p = await buscarPerfil(sessao.user.id);
+      if (!cancelado) { setPerfil(p); setPerfilResolvido(true); }
+    };
+    setPerfilResolvido(false);
+    buscar();
+    const aoFicarVisivel = () => { if (document.visibilityState === "visible") buscar(); };
+    document.addEventListener("visibilitychange", aoFicarVisivel);
+    window.addEventListener("focus", aoFicarVisivel);
+    return () => {
+      cancelado = true;
+      document.removeEventListener("visibilitychange", aoFicarVisivel);
+      window.removeEventListener("focus", aoFicarVisivel);
+    };
+  }, [sessao?.user?.id]);
+
+  const souOrganizador = perfil?.papel === "organizador" && perfil?.status === "aprovado";
+  const souAprovado = perfil?.status === "aprovado";
+
+  /* A base só é buscada depois que o perfil está aprovado — antes disso a
+   * RLS do banco bloqueia a leitura mesmo (ver migração), então nem vale
+   * tentar. Refaz sozinho se a aprovação chegar sem reload (ver efeito acima). */
+  useEffect(() => {
+    if (!souAprovado) return;
+    let cancelado = false;
+    (async () => { const b = await carregarBase(); if (!cancelado) setBase(b || baseOficial()); })();
+    return () => { cancelado = true; };
+  }, [souAprovado]);
+
   useEffect(() => {
     const sincronizar = async () => {
+      if (!souAprovado) return;
       if (document.visibilityState !== "visible") return;
       if (salvandoPendenteRef.current) return; // há alteração local pendente de salvar — não sobrescrever
       const nova = await carregarBase();
@@ -42,7 +101,7 @@ export default function App() {
       document.removeEventListener("visibilitychange", sincronizar);
       window.removeEventListener("focus", sincronizar);
     };
-  }, []);
+  }, [souAprovado]);
   useEffect(() => {
     const canal = supabase
       .channel("base:realtime")
@@ -62,33 +121,33 @@ export default function App() {
   useEffect(() => {
     if (!base) return;
     if (pularProximoSalvar.current) { pularProximoSalvar.current = false; return; }
-    if (!sessao) return;
+    if (!souOrganizador) return; // só organizador grava — jogador aprovado é só leitura
     salvandoPendenteRef.current = true;
     const t = setTimeout(async () => {
       await salvarBase(base);
       salvandoPendenteRef.current = false;
     }, 250);
     return () => clearTimeout(t);
-  }, [base, sessao]);
+  }, [base, souOrganizador]);
 
   useEffect(() => { if (aviso) { const t = setTimeout(() => setAviso(null), 3600); return () => clearTimeout(t); } }, [aviso]);
-  useEffect(() => { if (!sessao && aba !== "tabela") setAba("tabela"); }, [sessao, aba]);
+  useEffect(() => { if (!souOrganizador && aba !== "tabela") setAba("tabela"); }, [souOrganizador, aba]);
 
   const dados = useMemo(() => (base ? calcularClassificacao(base) : null), [base]);
-  if (!base || !dados)
-    return (
-      <div className="flex min-h-screen flex-col items-center justify-center" style={{ background: FUNDO_APP, color: T.secundario, gap: 14 }}>
-        <img src={ESCUDO} alt="JPFFS" style={{ height: 88, width: "auto", opacity: 0.9 }} />
-        <span style={{ fontSize: 12, letterSpacing: ".14em", textTransform: "uppercase" }}>Carregando base…</span>
-      </div>
-    );
+
+  if (modoRecuperacao) return <TelaNovaSenha avisar={setAviso} onConcluir={() => setModoRecuperacao(false)} />;
+  if (!sessaoResolvida) return <SpinnerCarregando texto="Carregando…" />;
+  if (!sessao) return <TelaLogin avisar={setAviso} />;
+  if (!perfilResolvido) return <SpinnerCarregando texto="Carregando…" />;
+  if (!souAprovado) return <TelaAguardandoAprovacao perfil={perfil} sessao={sessao} />;
+  if (!base || !dados) return <SpinnerCarregando texto="Carregando base…" />;
 
   const cfg = { ...CONFIG_PADRAO, ...base.config, pesos: { ...CONFIG_PADRAO.pesos, ...(base.config?.pesos || {}) } };
   const abas = [
     { id: "tabela", rotulo: "Tabela", Icone: IconeTabela }, { id: "rodada", rotulo: "Rodada", Icone: IconeRodada },
     { id: "rachao", rotulo: "Rachão", Icone: IconeRachao },
     { id: "elenco", rotulo: "Elenco", Icone: IconeElenco }, { id: "config", rotulo: "Ajustes", Icone: IconeAjustes },
-  ].filter((a) => sessao || a.id === "tabela");
+  ].filter((a) => souOrganizador || a.id === "tabela");
 
   return (
     <div style={{ minHeight: "100vh", background: FUNDO_APP, color: T.texto, fontVariantNumeric: "tabular-nums", fontFamily: "var(--fonte-corpo)" }}>
@@ -99,38 +158,30 @@ export default function App() {
             <span className="font-destaque truncate" style={{ fontSize: 15.5, fontWeight: 700, letterSpacing: ".01em", color: T.texto }}>Campeonato JPFFS</span>
           </div>
           <div className="flex items-center" style={{ gap: 10, flexShrink: 0 }}>
-            {sessao && <span className="font-destaque" style={{
+            {souOrganizador && <span className="font-destaque" style={{
               fontSize: 9.5, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase",
               color: T.ouro, border: `1px solid ${T.ouro}`, borderRadius: 999, padding: "3px 9px",
             }}>Organizador</span>}
             <button
-              onClick={() => sessao ? supabase.auth.signOut() : setMostrarLogin(true)}
+              onClick={() => supabase.auth.signOut()}
               className="flex items-center rounded-full"
-              style={{
-                gap: 6, fontSize: 11, fontWeight: 800, letterSpacing: ".04em",
-                padding: sessao ? 8 : "7px 13px 7px 9px",
-                border: `1px solid ${sessao ? T.tier4 : T.borda}`,
-                color: sessao ? T.secundario : T.texto, background: "transparent",
-              }}
-              title={sessao ? `Sair — logado como ${sessao.user.email}` : "Entrar como organizador"}>
+              style={{ gap: 6, padding: 8, border: `1px solid ${T.tier4}`, color: T.secundario, background: "transparent" }}
+              title={`Sair — logado como ${sessao.user.email}`}>
               <IconeConta tam={15} />
-              {!sessao && "Entrar"}
             </button>
           </div>
         </div>
       </header>
 
-      {mostrarLogin && <ModalLogin fechar={() => setMostrarLogin(false)} avisar={setAviso} />}
-
       {aviso && <div className="fixed left-1/2 z-30 w-11/12 max-w-sm -translate-x-1/2 rounded-lg px-4 py-3 text-center"
         style={{ bottom: 150, background: T.ouro, color: T.sobreOuro, fontWeight: 800, fontSize: 13.5, boxShadow: "0 8px 28px rgba(0,0,0,.5)" }}>{aviso}</div>}
 
       <main className="conteudo-principal mx-auto max-w-5xl px-3 pt-4" style={{ paddingBottom: 104 }}>
-        {aba === "rodada" && sessao && <TelaRodada {...{ base, setBase, dados, cfg, avisar: setAviso }} />}
-        {aba === "rachao" && sessao && <TelaRachao {...{ base, avisar: setAviso }} />}
+        {aba === "rodada" && souOrganizador && <TelaRodada {...{ base, setBase, dados, cfg, avisar: setAviso }} />}
+        {aba === "rachao" && souOrganizador && <TelaRachao {...{ base, avisar: setAviso }} />}
         {aba === "tabela" && <TelaClassificacao {...{ base, dados, cfg, avisar: setAviso }} />}
-        {aba === "elenco" && sessao && <TelaElenco {...{ base, setBase, dados, cfg, avisar: setAviso }} />}
-        {aba === "config" && sessao && <TelaConfig {...{ base, setBase, dados, cfg, avisar: setAviso }} />}
+        {aba === "elenco" && souOrganizador && <TelaElenco {...{ base, setBase, dados, cfg, avisar: setAviso }} />}
+        {aba === "config" && souOrganizador && <TelaConfig {...{ base, setBase, dados, cfg, avisar: setAviso, sessao }} />}
       </main>
 
       <nav className="nav-principal fixed bottom-0 left-0 right-0 z-20" style={{ background: "rgba(0,16,57,.97)", borderTop: `1px solid ${T.borda}` }}>

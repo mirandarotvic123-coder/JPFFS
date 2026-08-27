@@ -1,14 +1,14 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { supabase } from "../supabase";
 import { T } from "../theme";
 import { CONFIG_PADRAO, placarDe } from "../core/regras";
 import { csvSumula, baixarArquivo } from "../core/exportacao";
-import { id, migrarBase } from "../core/repositorio";
+import { id, migrarBase, listarPerfis, decidirPerfil } from "../core/repositorio";
 import { baseOficial } from "../data/baseOficial";
 import { Botao, Painel, inputStyle, Campo, CabecalhoPagina, SecaoRecolhivel } from "../components/ui";
 import {
   IconeTrofeu, IconeMartelo, IconeMedalha, IconeEmbaralhar, IconeCadeado,
-  IconeUpload, IconeDownload,
+  IconeUpload, IconeDownload, IconeConta,
 } from "../components/icones";
 
 /* ==================== TELA: HISTÓRICO E CONFIGURAÇÕES ====================*/
@@ -121,7 +121,93 @@ function Historico({ base, setBase, avisar, nomes, dados }) {
   );
 }
 
-function TelaConfig({ base, setBase, dados, cfg, avisar }) {
+/* "2026-08-27T13:45:00.000Z" -> "27/08/2026 13:45" — criado_em vem com hora
+   junto (timestamptz), por isso não reaproveita o dataBR de cima (que espera
+   só a data, sem hora, e concatena "T12:00:00" na marra). */
+const dataHoraBR = (iso) => new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+const ROTULO_STATUS = { pendente: "Pendente", aprovado: "Aprovado", recusado: "Recusado" };
+const COR_STATUS = { pendente: T.laranja, aprovado: T.verde, recusado: T.vermelho };
+
+/* Cadastros de acesso (tabela "perfis", ver supabase-migracoes/001-*) — quem
+ * se cadastra sozinho ("Criar usuário" na tela de login) entra como
+ * jogador/pendente e só aparece pra todo mundo depois que um organizador
+ * aprova aqui. A decisão pode ser revista a qualquer momento (aprovar
+ * alguém recusado por engano, ou revogar um acesso aprovado). */
+function SecaoAprovacoes({ avisar, meuId }) {
+  const [aberta, setAberta] = useState(false);
+  const [perfis, setPerfis] = useState(null); // null = ainda não carregou
+  const [processandoId, setProcessandoId] = useState(null);
+
+  const carregar = async () => setPerfis(await listarPerfis());
+  useEffect(() => { if (aberta && perfis === null) carregar(); }, [aberta]);
+
+  const jogadores = (perfis || []).filter((p) => p.papel === "jogador");
+  const pendentes = jogadores.filter((p) => p.status === "pendente");
+  const decididos = jogadores.filter((p) => p.status !== "pendente");
+
+  const decidir = async (p, status) => {
+    setProcessandoId(p.id);
+    const ok = await decidirPerfil(p.id, status, meuId);
+    setProcessandoId(null);
+    if (!ok) { avisar("Falha ao salvar a decisão"); return; }
+    avisar(`${p.email} — ${ROTULO_STATUS[status].toLowerCase()}`);
+    carregar();
+  };
+
+  const Linha = (p) => (
+    <div key={p.id} className="flex items-center justify-between gap-2 rounded px-2.5 py-2" style={{ background: "rgba(0,0,0,.2)" }}>
+      <div className="min-w-0">
+        <p className="truncate" style={{ fontSize: 12.5, color: T.texto }}>{p.email}</p>
+        <p style={{ fontSize: 10, color: T.fraco }}>
+          <span style={{ color: COR_STATUS[p.status], fontWeight: 800 }}>{ROTULO_STATUS[p.status]}</span> · pediu acesso em {dataHoraBR(p.criado_em)}
+        </p>
+      </div>
+      <div className="flex shrink-0" style={{ gap: 4 }}>
+        {p.status !== "aprovado" && (
+          <button disabled={processandoId === p.id} onClick={() => decidir(p, "aprovado")}
+            style={{ borderRadius: 6, padding: "7px 9px", fontSize: 10, fontWeight: 800, textTransform: "uppercase", background: "rgba(61,214,140,.15)", color: T.verde, opacity: processandoId === p.id ? .5 : 1 }}>
+            Aprovar
+          </button>
+        )}
+        {p.status !== "recusado" && (
+          <button disabled={processandoId === p.id} onClick={() => decidir(p, "recusado")}
+            style={{ borderRadius: 6, padding: "7px 9px", fontSize: 10, fontWeight: 800, textTransform: "uppercase", background: "rgba(255,107,107,.15)", color: T.vermelho, opacity: processandoId === p.id ? .5 : 1 }}>
+            Recusar
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <SecaoRecolhivel titulo="Cadastros de acesso" Icone={IconeConta} aberto={aberta} onToggle={() => setAberta((v) => !v)}
+      detalhe={perfis !== null && pendentes.length > 0 ? `${pendentes.length} pendente(s)` : undefined}>
+      {perfis === null ? (
+        <p style={{ padding: 8, textAlign: "center", fontSize: 12, color: T.fraco }}>Carregando…</p>
+      ) : jogadores.length === 0 ? (
+        <p style={{ padding: 8, textAlign: "center", fontSize: 12, color: T.fraco }}>Ninguém criou usuário ainda.</p>
+      ) : (
+        <div className="space-y-3">
+          {pendentes.length > 0 && (
+            <div className="space-y-1.5">
+              <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: T.laranja }}>Aguardando decisão</p>
+              {pendentes.map(Linha)}
+            </div>
+          )}
+          {decididos.length > 0 && (
+            <div className="space-y-1.5">
+              <p style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: T.fraco }}>Já decididos</p>
+              {decididos.map(Linha)}
+            </div>
+          )}
+        </div>
+      )}
+    </SecaoRecolhivel>
+  );
+}
+
+function TelaConfig({ base, setBase, dados, cfg, avisar, sessao }) {
   const inputRef = useRef(null);
   const [pontuacaoAberta, setPontuacaoAberta] = useState(false);
   const [disciplinaAberta, setDisciplinaAberta] = useState(false);
@@ -161,6 +247,7 @@ function TelaConfig({ base, setBase, dados, cfg, avisar }) {
       <p style={{ marginTop: -12, fontSize: 11, color: T.fraco }}>
         O JSON exportado é salvo neste dispositivo e funciona sem internet — é o seu backup e o jeito de levar os dados para outro aparelho.
       </p>
+      <SecaoAprovacoes avisar={avisar} meuId={sessao?.user?.id} />
       <Historico {...{ base, setBase, avisar, nomes, dados }} />
 
       <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(270px, 1fr))", alignItems: "start" }}>
