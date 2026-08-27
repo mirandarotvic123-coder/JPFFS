@@ -17,10 +17,14 @@
  * código; só se precisar. Por isso o teste em aparelho de verdade vem primeiro.
  */
 
-const SEGUNDOS_ANTES = 15;
+/* Alvo: clipe de ~20s. O arquivo final é [fatia-cabeçalho] + [antes] + [depois].
+ * A fatia-cabeçalho sozinha já vale ~1s de vídeo (o 1º segundo desde que a
+ * câmera ligou — sem ela o arquivo remontado não abre), então miramos 14+5 pra
+ * o total fechar perto de 20. Ajuste estes dois números se quiser mais/menos. */
+const SEGUNDOS_ANTES = 14;
 const SEGUNDOS_DEPOIS = 5;
 const FATIA_MS = 1000;
-const MARGEM_ANEL_MS = (SEGUNDOS_ANTES + 2) * 1000; // guarda 2s a mais de folga
+const MARGEM_ANEL_MS = (SEGUNDOS_ANTES + 2) * 1000; // anel guarda um pouco mais que o corte
 
 export function formatosSuportados() {
   const cand = [
@@ -104,8 +108,8 @@ export function criarGravador(stream, { aoMudarEstado } = {}) {
     for (const cap of capturas.values()) {
       if (!cap.coletando) continue;
       cap.depois.push(ev.data);
-      cap.faltaMs -= FATIA_MS;
-      if (cap.faltaMs <= 0) fecharCaptura(cap);
+      cap.restantes -= 1;
+      if (cap.restantes <= 0) fecharCaptura(cap);
     }
     aoMudarEstado?.(estado());
   }
@@ -128,11 +132,14 @@ export function criarGravador(stream, { aoMudarEstado } = {}) {
       if (!rodando) return null;
       if ([...capturas.values()].some((c) => c.coletando)) return null;
       podarAnel();
+      // pega só as fatias dos últimos SEGUNDOS_ANTES — não o anel inteiro, que
+      // guarda folga a mais e faria o clipe passar de 20s.
+      const corte = performance.now() - SEGUNDOS_ANTES * 1000;
       const cap = {
         id,
-        antes: anel.map((f) => f.blob),
+        antes: anel.filter((f) => f.t >= corte).map((f) => f.blob),
         depois: [],
-        faltaMs: SEGUNDOS_DEPOIS * 1000,
+        restantes: Math.max(1, Math.round((SEGUNDOS_DEPOIS * 1000) / FATIA_MS)),
         coletando: true,
         resolver: null,
       };
