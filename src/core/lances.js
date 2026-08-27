@@ -1,30 +1,31 @@
 /* core/lances — motor de captura de lances (replay automático de ~20s).
  *
- * IDEIA: um único MediaRecorder roda a partida inteira em "fatias" (timeslice)
- * de 1s. Guardamos só as fatias dos últimos ~15s num anel (as mais velhas são
- * descartadas) MAIS, sempre, a primeira fatia — ela carrega o cabeçalho do
- * arquivo e, sem ela, o WebM/MP4 remontado não abre. No sinal de gol/lance,
- * congela-se o que está no anel e grava-se +5s; o clipe final é só a
- * concatenação [cabeçalho, ...anel congelado, ...5s de depois] — mesma sessão
- * de gravação, fatias sequenciais, sem ffmpeg nem processamento em servidor.
- * Resolve sozinho o "padronizar iPhone×Android": cada formato toca no <video>.
+ * IDEIA (buffer duplo): dois MediaRecorder gravam o MESMO stream ao mesmo
+ * tempo, defasados meio ciclo. Cada um grava no máximo JANELA segundos e então
+ * "recicla" (para e recomeça do zero). No sinal de gol/lance, escolhemos o
+ * gravador que já tem mais história acumulada, deixamos ele rodar +5s e
+ * chamamos stop() — o Blob que sai daí é um arquivo ENCERRADO de verdade pelo
+ * navegador: duração correta, sem buracos, toca do começo ao fim em qualquer
+ * player. O outro gravador continua cobrindo a partida.
  *
- * RISCO CONHECIDO: quando a captura acontece com a partida já adiantada, existe
- * um buraco de tempo entre o cabeçalho (fatia 0) e a janela dos últimos 15s.
- * A maioria dos players do Chrome/Safari toca assim mesmo (a barra de duração
- * fica torta), mas se em celular real travar, o plano B é buffer duplo — dois
- * MediaRecorder defasados, cada um gerando um arquivo completo. Bem mais
- * código; só se precisar. Por isso o teste em aparelho de verdade vem primeiro.
+ * Por que não juntar "pedaços" de uma gravação só: MediaRecorder só finaliza os
+ * metadados (duração, índice de busca) no stop(). Concatenar chunks no meio do
+ * caminho gera um arquivo com duração errada e um vão de tempo morto — foi o
+ * que aconteceu na 1ª versão (o player mostrava 1:00 e a barra não andava).
+ *
+ * Custo: o aparelho codifica 720p duas vezes em paralelo. Celular dos últimos
+ * ~5 anos aguenta; se algum device velho engasgar, baixar a resolução em
+ * abrirCamera() (ou o videoBitsPerSecond) é o primeiro ajuste.
+ *
+ * Com JANELA=20s e DEFASAGEM=10s, o gravador "mais velho" sempre tem entre ~10s
+ * e ~20s de história — ou seja, o clipe sai com 10–20s ANTES do sinal + 5s
+ * depois (~15–25s no total, quase sempre perto de 20).
  */
 
-/* Alvo: clipe de ~20s. O arquivo final é [fatia-cabeçalho] + [antes] + [depois].
- * A fatia-cabeçalho sozinha já vale ~1s de vídeo (o 1º segundo desde que a
- * câmera ligou — sem ela o arquivo remontado não abre), então miramos 14+5 pra
- * o total fechar perto de 20. Ajuste estes dois números se quiser mais/menos. */
-const SEGUNDOS_ANTES = 14;
-const SEGUNDOS_DEPOIS = 5;
-const FATIA_MS = 1000;
-const MARGEM_ANEL_MS = (SEGUNDOS_ANTES + 2) * 1000; // anel guarda um pouco mais que o corte
+const JANELA_MS = 20000; // cada gravador grava no máximo isso, aí recicla
+const DEFASAGEM_MS = 10000; // 2º gravador começa meio ciclo depois do 1º
+const DEPOIS_MS = 5000; // quanto grava depois do sinal
+const FATIA_MS = 1000; // timeslice — só pra ter dado parcial e status ao vivo
 
 export function formatosSuportados() {
   const cand = [
@@ -60,110 +61,142 @@ export async function abrirCamera() {
   });
 }
 
-/* Cria o gravador em cima de um stream já aberto. `aoMudarEstado` recebe um
- * objeto { rodando, bufferSegundos, capturando, formato, ext } a cada mudança. */
+/* Cria o gravador em cima de um stream já aberto. `aoMudarEstado` recebe
+ * { rodando, bufferSegundos, capturando, formato, ext } a cada mudança. */
 export function criarGravador(stream, { aoMudarEstado } = {}) {
   const mime = formatosSuportados()[0] || "";
   const ext = mime.startsWith("video/mp4") ? "mp4" : "webm";
+  const opts = { videoBitsPerSecond: 1_800_000, ...(mime ? { mimeType: mime } : {}) };
 
-  let cabecalho = null; // 1ª fatia — nunca descartada
-  let anel = []; // { blob, t } das fatias recentes
-  const capturas = new Map(); // id -> captura em andamento
-  let rec = null;
   let rodando = false;
+  let inicioGeral = 0;
+  let idCaptura = null; // id da captura em andamento (trava local durante os +5s)
+  const canais = []; // { rec, chunks, inicio, fase, timer, alvo, resolver }
 
-  function podarAnel() {
-    const limite = performance.now() - MARGEM_ANEL_MS;
-    while (anel.length > 1 && anel[0].t < limite) anel.shift();
+  const idade = (c) => performance.now() - c.inicio;
+  const gravando = (c) => c.rec && c.rec.state === "recording";
+
+  function notificar() {
+    aoMudarEstado?.(estado());
   }
 
   function estado() {
-    const seg = anel.length
-      ? Math.round((anel[anel.length - 1].t - anel[0].t) / 1000)
-      : 0;
+    const ativos = canais.filter(gravando);
+    const maisVelho = ativos.length ? Math.max(...ativos.map(idade)) : 0;
     return {
       rodando,
-      bufferSegundos: Math.min(SEGUNDOS_ANTES, seg),
-      capturando: [...capturas.values()].some((c) => c.coletando),
+      bufferSegundos: Math.min(Math.round(JANELA_MS / 1000), Math.round(maisVelho / 1000)),
+      capturando: idCaptura != null,
       formato: mime,
       ext,
     };
   }
 
-  function fecharCaptura(cap) {
-    cap.coletando = false;
-    const partes = [cabecalho, ...cap.antes, ...cap.depois].filter(Boolean);
-    const vistos = new Set();
-    const blobs = partes.filter((b) => (vistos.has(b) ? false : vistos.add(b)));
-    cap.resolver(new Blob(blobs, { type: mime || "video/webm" }));
-    capturas.delete(cap.id);
-    aoMudarEstado?.(estado());
+  /* próximo instante em que este canal deve reciclar, travado numa grade
+   * absoluta (fase + k*JANELA) pra os dois canais não entrarem em fase com o
+   * tempo por causa de pequenos atrasos de restart. */
+  function agendarReciclagem(canal) {
+    clearTimeout(canal.timer);
+    const decorrido = performance.now() - inicioGeral;
+    const k = Math.max(1, Math.ceil((decorrido - canal.fase) / JANELA_MS));
+    const alvoMs = inicioGeral + canal.fase + k * JANELA_MS;
+    canal.timer = setTimeout(() => {
+      if (!rodando || canal.alvo === "captura") return;
+      canal.alvo = "reciclar";
+      try { canal.rec.stop(); } catch { /* já parado */ }
+    }, Math.max(1000, alvoMs - performance.now()));
   }
 
-  function aoDado(ev) {
-    if (!ev.data || !ev.data.size) return;
-    if (!cabecalho) cabecalho = ev.data;
-    anel.push({ blob: ev.data, t: performance.now() });
-    podarAnel();
-    for (const cap of capturas.values()) {
-      if (!cap.coletando) continue;
-      cap.depois.push(ev.data);
-      cap.restantes -= 1;
-      if (cap.restantes <= 0) fecharCaptura(cap);
-    }
-    aoMudarEstado?.(estado());
+  function iniciarCanal(canal) {
+    canal.chunks = [];
+    canal.alvo = null;
+    canal.resolver = null;
+    canal.inicio = performance.now();
+    const rec = new MediaRecorder(stream, opts);
+    canal.rec = rec;
+    rec.ondataavailable = (ev) => {
+      if (ev.data && ev.data.size) canal.chunks.push(ev.data);
+      notificar();
+    };
+    rec.onstop = () => {
+      const eraCaptura = canal.alvo === "captura";
+      if (eraCaptura && canal.resolver) {
+        canal.resolver(new Blob(canal.chunks.slice(), { type: mime || "video/webm" }));
+      }
+      if (eraCaptura) idCaptura = null;
+      if (rodando) {
+        iniciarCanal(canal);
+        agendarReciclagem(canal);
+      }
+      notificar();
+    };
+    try { rec.start(FATIA_MS); } catch { /* stream encerrado */ }
   }
 
   return {
     iniciar() {
       if (rodando) return;
-      const opts = { videoBitsPerSecond: 1_800_000 };
-      if (mime) opts.mimeType = mime;
-      rec = new MediaRecorder(stream, opts);
-      rec.ondataavailable = aoDado;
-      rec.start(FATIA_MS);
       rodando = true;
-      aoMudarEstado?.(estado());
+      inicioGeral = performance.now();
+      const a = { fase: 0 };
+      const b = { fase: DEFASAGEM_MS };
+      canais.push(a, b);
+      iniciarCanal(a);
+      agendarReciclagem(a);
+      setTimeout(() => {
+        if (!rodando) return;
+        iniciarCanal(b);
+        agendarReciclagem(b);
+      }, DEFASAGEM_MS);
+      notificar();
     },
 
-    /* Congela o anel atual e passa a coletar +5s. Devolve Promise<Blob> do
-     * clipe, ou null se já houver captura em andamento (trava local). */
+    /* Escolhe o gravador com mais história, deixa rodar +5s e para pra fechar o
+     * arquivo. Devolve Promise<Blob> do clipe, ou null se já houver captura em
+     * andamento (trava local) ou a câmera estiver desligada. */
     capturar(id) {
-      if (!rodando) return null;
-      if ([...capturas.values()].some((c) => c.coletando)) return null;
-      podarAnel();
-      // pega só as fatias dos últimos SEGUNDOS_ANTES — não o anel inteiro, que
-      // guarda folga a mais e faria o clipe passar de 20s.
-      const corte = performance.now() - SEGUNDOS_ANTES * 1000;
-      const cap = {
-        id,
-        antes: anel.filter((f) => f.t >= corte).map((f) => f.blob),
-        depois: [],
-        restantes: Math.max(1, Math.round((SEGUNDOS_DEPOIS * 1000) / FATIA_MS)),
-        coletando: true,
-        resolver: null,
-      };
-      const p = new Promise((res) => { cap.resolver = res; });
-      capturas.set(id, cap);
-      aoMudarEstado?.(estado());
+      if (!rodando || idCaptura != null) return null;
+      const cands = canais.filter(gravando);
+      if (!cands.length) return null;
+      const canal = cands.reduce((m, c) => (idade(c) > idade(m) ? c : m));
+      idCaptura = id;
+      canal.alvo = "captura";
+      clearTimeout(canal.timer);
+      const p = new Promise((res) => { canal.resolver = res; });
+      setTimeout(() => {
+        if (canal.alvo === "captura" && canal.rec) {
+          try { canal.rec.stop(); } catch { /* já parado */ }
+        }
+        // rede de segurança: se o stop não disparar o onstop, libera a trava
+        setTimeout(() => { if (idCaptura === id) { idCaptura = null; notificar(); } }, 3000);
+      }, DEPOIS_MS);
+      notificar();
       return p;
     },
 
     descartarCaptura(id) {
-      capturas.delete(id);
-      aoMudarEstado?.(estado());
+      if (idCaptura === id) idCaptura = null;
+      notificar();
     },
 
     estado,
 
     parar() {
       rodando = false;
-      try { if (rec && rec.state !== "inactive") rec.stop(); } catch { /* já parado */ }
+      for (const c of canais) {
+        clearTimeout(c.timer);
+        try {
+          if (c.rec && c.rec.state !== "inactive") {
+            c.alvo = null;
+            c.rec.onstop = null;
+            c.rec.stop();
+          }
+        } catch { /* já parado */ }
+      }
+      canais.length = 0;
+      idCaptura = null;
       stream.getTracks().forEach((t) => t.stop());
-      capturas.clear();
-      anel = [];
-      cabecalho = null;
-      aoMudarEstado?.(estado());
+      notificar();
     },
   };
 }
