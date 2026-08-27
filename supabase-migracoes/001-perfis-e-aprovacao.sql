@@ -32,6 +32,13 @@ create table if not exists public.perfis (
 
 alter table public.perfis enable row level security;
 
+-- RLS (mais abaixo) controla quais LINHAS cada um vê — mas isso é uma camada
+-- separada do GRANT básico de acesso à tabela em si. Tabela criada por SQL
+-- direto (diferente de criar pelo Table Editor visual, que faz esse grant
+-- sozinho) não vem com esse acesso liberado por padrão — sem isso, todo
+-- mundo toma "permission denied for table perfis" mesmo com a policy certa.
+grant select, update on public.perfis to authenticated;
+
 -- 2) Gatilho: toda conta nova ganha um perfil "jogador"/"pendente" sozinha --
 -- O client NUNCA insere em "perfis" diretamente (não existe policy de INSERT
 -- pra authenticated mais abaixo) — só este gatilho grava, rodando com
