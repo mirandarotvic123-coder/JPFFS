@@ -46,6 +46,46 @@ async function salvarBase(b) {
     catch (e2) { console.error("Falha ao salvar a base (persistido só localmente):", e2); return false; }
   }
 }
+/* Perfil de login (tabela "perfis") — papel (jogador/organizador) e status
+ * (pendente/aprovado/recusado) de cada conta. Ver supabase-migracoes/001-*
+ * pro desenho completo: quem se cadastra sozinho ("Criar usuário") entra
+ * como jogador/pendente e só enxerga a Tabela depois que um organizador
+ * aprova; a segurança de verdade é a RLS no banco, isto aqui só busca/decide. */
+async function buscarPerfil(userId) {
+  try {
+    const { data, error } = await supabase.from("perfis").select("*").eq("id", userId).single();
+    if (error) throw error;
+    return data;
+  } catch (e) {
+    console.error("Falha ao carregar perfil:", e);
+    return null;
+  }
+}
+
+async function listarPerfis() {
+  try {
+    const { data, error } = await supabase.from("perfis").select("*").order("criado_em", { ascending: true });
+    if (error) throw error;
+    return data || [];
+  } catch (e) {
+    console.error("Falha ao listar perfis:", e);
+    return [];
+  }
+}
+
+async function decidirPerfil(perfilId, status, decididoPorId) {
+  try {
+    const { error } = await supabase.from("perfis")
+      .update({ status, decidido_em: new Date().toISOString(), decidido_por: decididoPorId })
+      .eq("id", perfilId);
+    if (error) throw error;
+    return true;
+  } catch (e) {
+    console.error("Falha ao decidir perfil:", e);
+    return false;
+  }
+}
+
 /* Foto do jogador — bucket "avatares" no Supabase Storage. Se o bucket ainda
  * não foi criado no projeto (ver instruções passadas à parte), o upload falha
  * de forma controlada e a tela mostra aviso, sem quebrar o cadastro. */
@@ -89,4 +129,4 @@ function migrarBase(base) {
   // jogos do Rachão" descarta tudo. ordemChegada acima é a única ponte com o Campeonato.
   return b;
 }
-export { carregarBase, salvarBase, enviarFotoJogador, id, migrarBase };
+export { carregarBase, salvarBase, enviarFotoJogador, id, migrarBase, buscarPerfil, listarPerfis, decidirPerfil };
