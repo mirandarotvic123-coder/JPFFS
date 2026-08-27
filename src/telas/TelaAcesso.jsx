@@ -2,7 +2,19 @@ import React, { useState } from "react";
 import { supabase } from "../supabase";
 import { T, FUNDO_APP, ESCUDO } from "../theme";
 import { Botao } from "../components/ui";
-import { IconeEmail, IconeCadeado, IconeSetaDireita, IconeOlhoFechado } from "../components/icones";
+import { IconeEmail, IconeTelefone, IconeCadeado, IconeConta, IconeSetaDireita, IconeOlhoFechado } from "../components/icones";
+
+/* "11987654321" -> "11 9 8765-4321", formatando enquanto digita. Sempre
+ * baseado só nos dígitos (ignora o que já tava formatado antes), então
+ * apagar/colar no meio do campo não trava. */
+function formatarTelefone(valor) {
+  const d = valor.replace(/\D/g, "").slice(0, 11);
+  let f = d.slice(0, 2);
+  if (d.length > 2) f += " " + d.slice(2, 3);
+  if (d.length > 3) f += " " + d.slice(3, 7);
+  if (d.length > 7) f += "-" + d.slice(7, 11);
+  return f;
+}
 
 /* ============================================================================
  * Telas de acesso — login passou a ser obrigatório pra todo mundo (ver
@@ -37,16 +49,33 @@ function CampoSenha({ valor, onChange, placeholder, onEnter }) {
   );
 }
 
-function Moldura({ children }) {
+/* compacta: header menor (usado no modo "criar", o formulário mais comprido
+ * — com 5 campos, sobra menos altura de tela em celular; encolher a marca
+ * evita que a página role antes mesmo de chegar no botão). */
+function Moldura({ compacta, children }) {
   return (
-    <div className="flex min-h-screen items-center justify-center px-4" style={{ background: FUNDO_APP }}>
+    <div className="flex min-h-screen items-center justify-center px-4 py-8" style={{ background: FUNDO_APP }}>
       <div className="w-full max-w-sm rounded-xl p-6" style={{ background: T.painel, border: `1px solid ${T.borda}`, color: T.texto }}>
-        <div className="flex flex-col items-center text-center" style={{ marginBottom: 20 }}>
-          <img src={ESCUDO} alt="" style={{ height: 52, width: "auto", marginBottom: 10, filter: "drop-shadow(0 2px 6px rgba(0,0,0,.5))" }} />
+        <div className="flex flex-col items-center text-center" style={{ marginBottom: compacta ? 14 : 22 }}>
+          <img src={ESCUDO} alt="" style={{ height: compacta ? 40 : 52, width: "auto", marginBottom: 8, filter: "drop-shadow(0 2px 6px rgba(0,0,0,.5))" }} />
           <h2 className="font-destaque" style={{ fontSize: 19, fontWeight: 700 }}>Campeonato JPFFS</h2>
         </div>
         {children}
       </div>
+    </div>
+  );
+}
+
+/* Caixa de aviso — texto de apoio (neutro), erro ou mensagem de sucesso.
+ * Um único visual pras 3 telas de acesso, em vez de texto solto flutuando
+ * com margem própria em cada lugar. */
+function Aviso({ tom = "neutro", children }) {
+  const cor = { neutro: T.secundario, erro: T.vermelho, sucesso: T.verde }[tom];
+  const fundo = { neutro: "rgba(255,255,255,.04)", erro: "rgba(255,107,107,.1)", sucesso: "rgba(61,214,140,.1)" }[tom];
+  const borda = { neutro: T.borda, erro: "rgba(255,107,107,.35)", sucesso: "rgba(61,214,140,.35)" }[tom];
+  return (
+    <div style={{ background: fundo, border: `1px solid ${borda}`, borderRadius: 10, padding: "10px 12px", fontSize: 12, lineHeight: 1.55, color: cor }}>
+      {children}
     </div>
   );
 }
@@ -60,11 +89,13 @@ function TelaLogin({ avisar }) {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [confirmarSenha, setConfirmarSenha] = useState("");
+  const [nome, setNome] = useState("");
+  const [telefone, setTelefone] = useState("");
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
   const [mensagem, setMensagem] = useState("");
 
-  const trocarModo = (m) => { setModo(m); setErro(""); setMensagem(""); setSenha(""); setConfirmarSenha(""); };
+  const trocarModo = (m) => { setModo(m); setErro(""); setMensagem(""); setSenha(""); setConfirmarSenha(""); setNome(""); setTelefone(""); };
 
   const entrar = async () => {
     setCarregando(true); setErro("");
@@ -75,10 +106,15 @@ function TelaLogin({ avisar }) {
   };
 
   const criarConta = async () => {
+    if (!nome.trim()) { setErro("Informe seu nome."); return; }
+    if (telefone.replace(/\D/g, "").length < 10) { setErro("Informe um telefone válido, com DDD."); return; }
     if (senha.length < 6) { setErro("A senha precisa de pelo menos 6 caracteres."); return; }
     if (senha !== confirmarSenha) { setErro("As senhas não são iguais."); return; }
     setCarregando(true); setErro(""); setMensagem("");
-    const { data, error } = await supabase.auth.signUp({ email: email.trim(), password: senha });
+    const { data, error } = await supabase.auth.signUp({
+      email: email.trim(), password: senha,
+      options: { data: { nome: nome.trim(), telefone } },
+    });
     setCarregando(false);
     if (error) { setErro(error.message === "User already registered" ? "Já existe uma conta com esse e-mail — tente entrar." : "Não deu pra criar a conta: " + error.message); return; }
     if (data.session) {
@@ -98,64 +134,72 @@ function TelaLogin({ avisar }) {
   };
 
   return (
-    <Moldura>
+    <Moldura compacta={modo === "criar"}>
       {modo === "entrar" && (
-        <>
-          <p style={{ fontSize: 12.5, color: T.secundario, marginBottom: 14, lineHeight: 1.4, textAlign: "center" }}>
-            Entre com seu e-mail e senha pra acessar o sistema.
-          </p>
-          <div className="space-y-2">
+        <div className="space-y-4">
+          <Aviso>Entre com seu e-mail e senha pra acessar o sistema.</Aviso>
+          <div className="space-y-2.5">
             <CampoComIcone Icone={IconeEmail} type="email" placeholder="E-mail" value={email} autoFocus onChange={(e) => setEmail(e.target.value)} />
             <CampoSenha valor={senha} onChange={setSenha} placeholder="Senha" onEnter={entrar} />
           </div>
-          {erro && <div style={{ color: T.vermelho, fontSize: 12, marginTop: 10 }}>{erro}</div>}
-          <Botao className="mt-4 flex w-full items-center justify-center" style={{ gap: 6 }} onClick={entrar} disabled={carregando || !email || !senha}>
-            {carregando ? "Entrando…" : <>Entrar <IconeSetaDireita tam={16} /></>}
-          </Botao>
-          <div className="mt-3 flex items-center justify-between" style={{ fontSize: 11.5 }}>
-            <button onClick={() => trocarModo("criar")} style={{ color: T.secundario, textDecoration: "underline" }}>Criar usuário</button>
-            <button onClick={() => trocarModo("recuperar")} style={{ color: T.secundario, textDecoration: "underline" }}>Esqueci minha senha</button>
+          {erro && <Aviso tom="erro">{erro}</Aviso>}
+          <div>
+            <Botao className="flex w-full items-center justify-center" style={{ gap: 6 }} onClick={entrar} disabled={carregando || !email || !senha}>
+              {carregando ? "Entrando…" : <>Entrar <IconeSetaDireita tam={16} /></>}
+            </Botao>
+            <div className="mt-5 flex items-center justify-between" style={{ fontSize: 11.5 }}>
+              <button onClick={() => trocarModo("criar")} style={{ color: T.secundario, textDecoration: "underline" }}>Criar usuário</button>
+              <button onClick={() => trocarModo("recuperar")} style={{ color: T.secundario, textDecoration: "underline" }}>Esqueci minha senha</button>
+            </div>
           </div>
-        </>
+        </div>
       )}
 
       {modo === "criar" && (
-        <>
-          <p style={{ fontSize: 12.5, color: T.secundario, marginBottom: 14, lineHeight: 1.4, textAlign: "center" }}>
-            Crie sua conta com e-mail e senha. Depois do cadastro, o organizador precisa aprovar antes de você conseguir ver o sistema.
-          </p>
-          <div className="space-y-2">
-            <CampoComIcone Icone={IconeEmail} type="email" placeholder="E-mail" value={email} autoFocus onChange={(e) => setEmail(e.target.value)} />
+        <div className="space-y-4">
+          <Aviso>
+            <ol style={{ paddingLeft: 16 }}>
+              <li>Preencha seus dados, um e-mail válido e crie uma senha.</li>
+              <li className="mt-1">Confirme o e-mail — chega um link do Supabase na sua caixa de entrada (confira o spam).</li>
+              <li className="mt-1">Aguarde a aprovação do organizador — depois disso é só entrar.</li>
+            </ol>
+          </Aviso>
+          <div className="space-y-2.5">
+            <CampoComIcone Icone={IconeConta} type="text" placeholder="Nome" value={nome} autoFocus onChange={(e) => setNome(e.target.value)} />
+            <CampoComIcone Icone={IconeTelefone} type="tel" placeholder="DDD 9 9999-9999" value={telefone} onChange={(e) => setTelefone(formatarTelefone(e.target.value))} />
+            <CampoComIcone Icone={IconeEmail} type="email" placeholder="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} />
             <CampoSenha valor={senha} onChange={setSenha} placeholder="Crie uma senha (mín. 6 caracteres)" />
             <CampoSenha valor={confirmarSenha} onChange={setConfirmarSenha} placeholder="Confirme a senha" onEnter={criarConta} />
           </div>
-          {erro && <div style={{ color: T.vermelho, fontSize: 12, marginTop: 10 }}>{erro}</div>}
-          {mensagem && <div style={{ color: T.verde, fontSize: 12, marginTop: 10, lineHeight: 1.4 }}>{mensagem}</div>}
-          <Botao className="mt-4 flex w-full items-center justify-center" style={{ gap: 6 }} onClick={criarConta}
-            disabled={carregando || !email || !senha || !confirmarSenha}>
-            {carregando ? "Criando…" : "Criar usuário"}
-          </Botao>
-          <button className="mt-3 w-full" onClick={() => trocarModo("entrar")} style={{ fontSize: 11.5, color: T.secundario, textDecoration: "underline" }}>
-            Já tenho conta — entrar
-          </button>
-        </>
+          {erro && <Aviso tom="erro">{erro}</Aviso>}
+          {mensagem && <Aviso tom="sucesso">{mensagem}</Aviso>}
+          <div>
+            <Botao className="flex w-full items-center justify-center" style={{ gap: 6 }} onClick={criarConta}
+              disabled={carregando || !nome || !telefone || !email || !senha || !confirmarSenha}>
+              {carregando ? "Criando…" : "Criar usuário"}
+            </Botao>
+            <button className="mt-5 w-full" onClick={() => trocarModo("entrar")} style={{ fontSize: 11.5, color: T.secundario, textDecoration: "underline" }}>
+              Já tenho conta — entrar
+            </button>
+          </div>
+        </div>
       )}
 
       {modo === "recuperar" && (
-        <>
-          <p style={{ fontSize: 12.5, color: T.secundario, marginBottom: 14, lineHeight: 1.4, textAlign: "center" }}>
-            Informe o e-mail da sua conta — mandamos um link pra você criar uma senha nova.
-          </p>
+        <div className="space-y-4">
+          <Aviso>Informe o e-mail da sua conta — mandamos um link pra você criar uma senha nova.</Aviso>
           <CampoComIcone Icone={IconeEmail} type="email" placeholder="E-mail" value={email} autoFocus onChange={(e) => setEmail(e.target.value)} />
-          {erro && <div style={{ color: T.vermelho, fontSize: 12, marginTop: 10 }}>{erro}</div>}
-          {mensagem && <div style={{ color: T.verde, fontSize: 12, marginTop: 10, lineHeight: 1.4 }}>{mensagem}</div>}
-          <Botao className="mt-4 flex w-full items-center justify-center" style={{ gap: 6 }} onClick={recuperar} disabled={carregando || !email}>
-            {carregando ? "Enviando…" : "Enviar link de recuperação"}
-          </Botao>
-          <button className="mt-3 w-full" onClick={() => trocarModo("entrar")} style={{ fontSize: 11.5, color: T.secundario, textDecoration: "underline" }}>
-            Voltar
-          </button>
-        </>
+          {erro && <Aviso tom="erro">{erro}</Aviso>}
+          {mensagem && <Aviso tom="sucesso">{mensagem}</Aviso>}
+          <div>
+            <Botao className="flex w-full items-center justify-center" style={{ gap: 6 }} onClick={recuperar} disabled={carregando || !email}>
+              {carregando ? "Enviando…" : "Enviar link de recuperação"}
+            </Botao>
+            <button className="mt-5 w-full" onClick={() => trocarModo("entrar")} style={{ fontSize: 11.5, color: T.secundario, textDecoration: "underline" }}>
+              Voltar
+            </button>
+          </div>
+        </div>
       )}
     </Moldura>
   );
@@ -169,16 +213,16 @@ function TelaAguardandoAprovacao({ perfil, sessao }) {
   const recusado = perfil?.status === "recusado";
   return (
     <Moldura>
-      <div className="text-center">
-        <p style={{ fontSize: 15, fontWeight: 700, color: recusado ? T.vermelho : T.ouro, marginBottom: 8 }}>
+      <div className="space-y-4 text-center">
+        <p style={{ fontSize: 15, fontWeight: 700, color: recusado ? T.vermelho : T.ouro }}>
           {recusado ? "Cadastro não aprovado" : "Cadastro em análise"}
         </p>
-        <p style={{ fontSize: 13, color: T.secundario, lineHeight: 1.5, marginBottom: 4 }}>
+        <Aviso tom={recusado ? "erro" : "neutro"}>
           {recusado
             ? "O organizador não aprovou este cadastro. Se achar que foi engano, fale direto com ele."
             : "Sua conta foi criada e está esperando um organizador aprovar o acesso. Assim que aprovar, é só entrar de novo."}
-        </p>
-        <p style={{ fontSize: 12, color: T.fraco, marginBottom: 20 }}>{sessao?.user?.email}</p>
+        </Aviso>
+        <p style={{ fontSize: 12, color: T.fraco }}>{sessao?.user?.email}</p>
         <Botao variante="secundario" className="w-full" onClick={() => supabase.auth.signOut()}>Sair</Botao>
       </div>
     </Moldura>
@@ -208,17 +252,17 @@ function TelaNovaSenha({ avisar, onConcluir }) {
 
   return (
     <Moldura>
-      <p style={{ fontSize: 12.5, color: T.secundario, marginBottom: 14, lineHeight: 1.4, textAlign: "center" }}>
-        Defina sua nova senha.
-      </p>
-      <div className="space-y-2">
-        <CampoSenha valor={senha} onChange={setSenha} placeholder="Senha nova (mín. 6 caracteres)" />
-        <CampoSenha valor={confirmarSenha} onChange={setConfirmarSenha} placeholder="Confirme a senha nova" onEnter={salvar} />
+      <div className="space-y-4">
+        <Aviso>Defina sua nova senha.</Aviso>
+        <div className="space-y-2.5">
+          <CampoSenha valor={senha} onChange={setSenha} placeholder="Senha nova (mín. 6 caracteres)" />
+          <CampoSenha valor={confirmarSenha} onChange={setConfirmarSenha} placeholder="Confirme a senha nova" onEnter={salvar} />
+        </div>
+        {erro && <Aviso tom="erro">{erro}</Aviso>}
+        <Botao className="flex w-full items-center justify-center" style={{ gap: 6 }} onClick={salvar} disabled={carregando || !senha || !confirmarSenha}>
+          {carregando ? "Salvando…" : "Salvar senha"}
+        </Botao>
       </div>
-      {erro && <div style={{ color: T.vermelho, fontSize: 12, marginTop: 10 }}>{erro}</div>}
-      <Botao className="mt-4 flex w-full items-center justify-center" style={{ gap: 6 }} onClick={salvar} disabled={carregando || !senha || !confirmarSenha}>
-        {carregando ? "Salvando…" : "Salvar senha"}
-      </Botao>
     </Moldura>
   );
 }
