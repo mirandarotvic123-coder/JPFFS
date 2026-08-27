@@ -30,10 +30,11 @@ const IconeDownload = (p) => <Svg {...p}><path d="M12 15V3" /><path d="M21 15v4a
 const IconeControles = (p) => <Svg {...p}><path d="M10 5H3" /><path d="M12 19H3" /><path d="M14 3v4" /><path d="M16 17v4" /><path d="M21 12h-9" /><path d="M21 19h-5" /><path d="M21 5h-7" /><path d="M8 10v4" /><path d="M8 12H3" /></Svg>;
 // "quem vence fica" — fila que gira: repeat.
 const IconeRachao = (p) => <Svg {...p}><path d="m17 2 4 4-4 4" /><path d="M3 11v-1a4 4 0 0 1 4-4h14" /><path d="m7 22-4-4 4-4" /><path d="M21 13v1a4 4 0 0 1-4 4H3" /></Svg>;
+const IconeCamera = (p) => <Svg {...p}><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5" /><rect x="2" y="6" width="14" height="12" rx="2" /></Svg>;
 
 export {
   Svg, IconeTabela, IconeRodada, IconeElenco, IconeAjustes, IconeBusca, IconeConta,
   IconeTrofeu, IconeMartelo, IconeMedalha, IconeEmbaralhar, IconeCadeado,
   IconeSetaDireita, IconeSetaEsquerda, IconeEmail, IconeTelefone, IconeOlhoFechado,
-  IconeUpload, IconeDownload, IconeControles, IconeRachao,
+  IconeUpload, IconeDownload, IconeControles, IconeRachao, IconeCamera,
 };

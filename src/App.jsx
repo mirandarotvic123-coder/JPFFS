@@ -5,7 +5,7 @@ import { CONFIG_PADRAO, calcularClassificacao } from "./core/regras";
 import { carregarBase, salvarBase, migrarBase, buscarPerfil } from "./core/repositorio";
 import { baseOficial } from "./data/baseOficial";
 import {
-  IconeTabela, IconeRodada, IconeElenco, IconeAjustes, IconeConta, IconeRachao,
+  IconeTabela, IconeRodada, IconeElenco, IconeAjustes, IconeConta, IconeRachao, IconeCamera,
 } from "./components/icones";
 import { TelaLogin, TelaAguardandoAprovacao, TelaNovaSenha } from "./telas/TelaAcesso";
 import { TelaRodada } from "./telas/TelaRodada";
@@ -13,6 +13,7 @@ import { TelaClassificacao } from "./telas/TelaClassificacao";
 import { TelaElenco } from "./telas/TelaElenco";
 import { TelaConfig } from "./telas/TelaConfig";
 import { TelaRachao } from "./telas/TelaRachao";
+import { TelaLances } from "./telas/TelaLances";
 
 /* Tela cheia de "carregando…" — usada nas várias etapas de resolver sessão/
  * perfil/base antes do app de verdade poder aparecer. */
@@ -131,7 +132,9 @@ export default function App() {
   }, [base, souOrganizador]);
 
   useEffect(() => { if (aviso) { const t = setTimeout(() => setAviso(null), 3600); return () => clearTimeout(t); } }, [aviso]);
-  useEffect(() => { if (!souOrganizador && aba !== "tabela") setAba("tabela"); }, [souOrganizador, aba]);
+  useEffect(() => {
+    if (!souOrganizador && aba !== "tabela" && aba !== "lances") setAba("tabela");
+  }, [souOrganizador, aba]);
 
   const dados = useMemo(() => (base ? calcularClassificacao(base) : null), [base]);
 
@@ -146,8 +149,9 @@ export default function App() {
   const abas = [
     { id: "tabela", rotulo: "Tabela", Icone: IconeTabela }, { id: "rodada", rotulo: "Rodada", Icone: IconeRodada },
     { id: "rachao", rotulo: "Rachão", Icone: IconeRachao },
+    { id: "lances", rotulo: "Lances", Icone: IconeCamera },
     { id: "elenco", rotulo: "Elenco", Icone: IconeElenco }, { id: "config", rotulo: "Ajustes", Icone: IconeAjustes },
-  ].filter((a) => souOrganizador || a.id === "tabela");
+  ].filter((a) => souOrganizador || a.id === "tabela" || a.id === "lances");
 
   return (
     <div style={{ minHeight: "100vh", background: FUNDO_APP, color: T.texto, fontVariantNumeric: "tabular-nums", fontFamily: "var(--fonte-corpo)" }}>
@@ -179,6 +183,7 @@ export default function App() {
       <main className="conteudo-principal mx-auto max-w-5xl px-3 pt-4" style={{ paddingBottom: 104 }}>
         {aba === "rodada" && souOrganizador && <TelaRodada {...{ base, setBase, dados, cfg, avisar: setAviso }} />}
         {aba === "rachao" && souOrganizador && <TelaRachao {...{ base, avisar: setAviso }} />}
+        {aba === "lances" && souAprovado && <TelaLances {...{ perfil, avisar: setAviso }} />}
         {aba === "tabela" && <TelaClassificacao {...{ base, dados, cfg, avisar: setAviso }} />}
         {aba === "elenco" && souOrganizador && <TelaElenco {...{ base, setBase, dados, cfg, avisar: setAviso }} />}
         {aba === "config" && souOrganizador && <TelaConfig {...{ base, setBase, dados, cfg, avisar: setAviso, sessao }} />}

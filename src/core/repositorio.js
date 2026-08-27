@@ -114,6 +114,65 @@ async function enviarFotoJogador(jogadorId, arquivo) {
   return data.publicUrl;
 }
 
+/* Lances (replay de gols) — tabela "lances" + bucket privado "lances".
+ * Ver supabase-migracoes/004-*: qualquer aprovado grava e lê, só organizador
+ * apaga; o vídeo em si só sai por link assinado (createSignedUrl), nunca
+ * público. Clipes de teste usam partidaId = "teste-camera". */
+async function enviarLance({ modalidade, partidaId, tipo, jogadorId, jogadorNome, angulo, blob, formato }) {
+  const ext = (formato || "").startsWith("video/mp4") ? "mp4" : "webm";
+  const caminho = `${partidaId}/${Date.now()}-a${angulo}.${ext}`;
+  const { error: erroUpload } = await supabase.storage
+    .from("lances")
+    .upload(caminho, blob, { contentType: formato || "video/webm", upsert: false });
+  if (erroUpload) throw erroUpload;
+
+  const { data: s } = await supabase.auth.getSession();
+  const { data, error } = await supabase
+    .from("lances")
+    .insert({
+      modalidade,
+      partida_id: partidaId,
+      tipo,
+      jogador_id: jogadorId || null,
+      jogador_nome: jogadorNome || null,
+      angulo,
+      caminho_storage: caminho,
+      formato: formato || "video/webm",
+      criado_por: s?.session?.user?.id || null,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+async function listarLances(partidaId) {
+  try {
+    let q = supabase.from("lances").select("*").order("criado_em", { ascending: false });
+    if (partidaId) q = q.eq("partida_id", partidaId);
+    const { data, error } = await q;
+    if (error) throw error;
+    return data || [];
+  } catch (e) {
+    console.error("Falha ao listar lances:", e);
+    return [];
+  }
+}
+
+async function urlAssinadaLance(caminhoStorage, segundos = 3600) {
+  const { data, error } = await supabase.storage.from("lances").createSignedUrl(caminhoStorage, segundos);
+  if (error) throw error;
+  return data.signedUrl;
+}
+
+async function excluirLance(lance) {
+  const { error: erroStorage } = await supabase.storage.from("lances").remove([lance.caminho_storage]);
+  if (erroStorage) throw erroStorage;
+  const { error } = await supabase.from("lances").delete().eq("id", lance.id);
+  if (error) throw error;
+  return true;
+}
+
 const id = () => Math.random().toString(36).slice(2, 10);
 
 /* corrige texto salvo com "double-encoding" de UTF-8 (ex.: "ClassificaÃ§Ã£o"
@@ -145,4 +204,8 @@ function migrarBase(base) {
   // jogos do Rachão" descarta tudo. ordemChegada acima é a única ponte com o Campeonato.
   return b;
 }
-export { carregarBase, salvarBase, enviarFotoJogador, id, migrarBase, buscarPerfil, listarPerfis, decidirPerfil, excluirPerfil };
+export {
+  carregarBase, salvarBase, enviarFotoJogador, id, migrarBase, buscarPerfil,
+  listarPerfis, decidirPerfil, excluirPerfil,
+  enviarLance, listarLances, urlAssinadaLance, excluirLance,
+};
