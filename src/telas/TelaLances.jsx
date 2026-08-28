@@ -62,7 +62,8 @@ function TelaLances({ perfil, avisar }) {
   const [ligada, setLigada] = useState(false);
   const [modoGravacao, setModoGravacao] = useState(false);
   const [erro, setErro] = useState(null);
-  const [estGrav, setEstGrav] = useState({ rodando: false, bufferSegundos: 0, capturando: false, formato: "", largura: 0, altura: 0, retrato: false });
+  const [estGrav, setEstGrav] = useState({ rodando: false, bufferSegundos: 0, capturando: false, formato: "" });
+  const [dimVid, setDimVid] = useState(null); // { w, h, retrato } — lido do <video>, reflete a orientação REAL (getSettings mente no iOS)
   const [conectado, setConectado] = useState(false);
   const [angulo, setAngulo] = useState(1);
   const [numCameras, setNumCameras] = useState(1);
@@ -102,6 +103,36 @@ function TelaLances({ perfil, avisar }) {
       v.play?.().catch(() => {});
     }
   }, [modoGravacao, ligada]);
+
+  /* orientação real da gravação. Sinais: as dimensões do <video> e a orientação
+   * da tela. O iOS às vezes reporta o vídeo como "deitado" (1280×720) mesmo com
+   * o celular em pé e a imagem certa — nesse caso a tela em retrato desempata. */
+  useEffect(() => {
+    if (!ligada) { setDimVid(null); return; }
+    const v = videoRef.current;
+    if (!v) return;
+    const ler = () => {
+      const w = v.videoWidth, h = v.videoHeight;
+      if (!w || !h) return;
+      const telaRetrato = window.matchMedia?.("(orientation: portrait)")?.matches
+        ?? window.innerHeight > window.innerWidth;
+      const retrato = h > w || (w > h && telaRetrato);
+      setDimVid({ w, h, retrato });
+    };
+    ler();
+    v.addEventListener("loadedmetadata", ler);
+    v.addEventListener("resize", ler);
+    window.addEventListener("orientationchange", ler);
+    window.addEventListener("resize", ler);
+    const iv = setInterval(ler, 1500);
+    return () => {
+      v.removeEventListener("loadedmetadata", ler);
+      v.removeEventListener("resize", ler);
+      window.removeEventListener("orientationchange", ler);
+      window.removeEventListener("resize", ler);
+      clearInterval(iv);
+    };
+  }, [ligada, modoGravacao]);
 
   /* toast do modo gravação: reage à última captura mudando de fase. */
   useEffect(() => {
@@ -302,8 +333,8 @@ function TelaLances({ perfil, avisar }) {
    * e todo o HUD fica dentro das margens seguras (notch/barra), pra nada ser
    * cortado. */
   if (modoGravacao && ligada) {
-    const resTxt = estGrav.largura > 0
-      ? `${estGrav.largura}×${estGrav.altura} · ${estGrav.retrato ? "vertical" : "deitado"}`
+    const resTxt = dimVid
+      ? `${dimVid.w}×${dimVid.h} · ${dimVid.retrato ? "vertical" : "deitado"}`
       : null;
     return (
       <div ref={telaRef} style={{ position: "fixed", inset: 0, zIndex: 60, background: "#000", overflow: "hidden" }}>
@@ -327,7 +358,7 @@ function TelaLances({ perfil, avisar }) {
             <span style={{ ...pilula, color: conectado ? "#fff" : T.laranja }}>
               {conectado ? `buffer ${estGrav.bufferSegundos}s` : "reconectando…"}
             </span>
-            {resTxt && <span style={{ ...pilula, color: estGrav.retrato ? T.verde : T.laranja }}>{resTxt}</span>}
+            {resTxt && <span style={{ ...pilula, color: dimVid.retrato ? T.verde : T.laranja }}>{resTxt}</span>}
           </div>
           <button onClick={() => setModoGravacao(false)}
             style={{ ...pilula, background: "rgba(0,0,0,.7)", padding: "8px 14px", fontSize: 12, flexShrink: 0 }}>
@@ -374,11 +405,11 @@ function TelaLances({ perfil, avisar }) {
         </Painel>
       )}
 
-      {ligada && estGrav.largura > 0 && !estGrav.retrato && (
+      {ligada && dimVid && !dimVid.retrato && (
         <Painel className="p-3" style={{ borderColor: T.laranja, background: "rgba(255,165,61,.1)" }}>
           <p style={{ fontSize: 12, color: T.laranja }}>
-            A câmera veio <b>deitada</b> ({estGrav.largura}×{estGrav.altura}) — o clipe não vai ficar pronto pra postar em stories.
-            Segure/apoie o celular <b>em pé</b>, com a trava de rotação ligada, e toque em Ligar câmera de novo.
+            A prévia está <b>deitada</b> ({dimVid.w}×{dimVid.h}) — o clipe não vai ficar pronto pra postar em stories.
+            Apoie o celular <b>em pé</b>, com a trava de rotação ligada, e toque em Ligar câmera de novo.
           </p>
         </Painel>
       )}
@@ -414,11 +445,11 @@ function TelaLances({ perfil, avisar }) {
             {ligada ? (
               <>
                 buffer {estGrav.bufferSegundos}s · {conectado ? "canal ok" : "conectando…"}
-                {estGrav.largura > 0 && (
+                {dimVid && (
                   <>
                     {" · "}
-                    <span style={{ color: estGrav.retrato ? T.verde : T.laranja, fontWeight: 700 }}>
-                      {estGrav.largura}×{estGrav.altura} {estGrav.retrato ? "(vertical)" : "(deitado)"}
+                    <span style={{ color: dimVid.retrato ? T.verde : T.laranja, fontWeight: 700 }}>
+                      {dimVid.w}×{dimVid.h} {dimVid.retrato ? "(vertical)" : "(deitado)"}
                     </span>
                   </>
                 )}

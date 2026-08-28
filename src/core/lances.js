@@ -87,16 +87,12 @@ export function criarGravador(stream, { aoMudarEstado } = {}) {
   function estado() {
     const ativos = canais.filter(gravando);
     const maisVelho = ativos.length ? Math.max(...ativos.map(idade)) : 0;
-    const s = stream.getVideoTracks()[0]?.getSettings?.() || {};
     return {
       rodando,
       bufferSegundos: Math.min(Math.round(JANELA_MS / 1000), Math.round(maisVelho / 1000)),
       capturando: idCaptura != null,
       formato: mime,
       ext,
-      largura: s.width || 0,
-      altura: s.height || 0,
-      retrato: !!(s.width && s.height && s.height > s.width), // câmera "em pé"
     };
   }
 
