@@ -1,28 +1,22 @@
 import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
 import { T } from "../theme";
-import { id as gerarId, enviarLance, listarLances, urlAssinadaLance, excluirLance } from "../core/repositorio";
+import { id as gerarId, enviarLance, listarLances, excluirLance } from "../core/repositorio";
 import { cameraDisponivel, abrirCamera, criarGravador } from "../core/lances";
-import { Botao, Painel, CabecalhoPagina, Secao, Chip } from "../components/ui";
+import { Botao, Painel, CabecalhoPagina, Secao } from "../components/ui";
 import { IconeCamera } from "../components/icones";
+import { ListaClipes } from "./lances/ListaClipes";
 
-/* =============================== TELA: LANCES ==============================
- * Etapa 2 da Gravação de Lances (ver supabase-migracoes/004-lances.sql e a
- * memória do projeto). Esta é a TELA DE CÂMERA em modo de teste:
+/* =============================== TELA: CÂMERA ============================
+ * Aberta pelo link separado (?camera=1) — mandado só pra quem vai
+ * disponibilizar o celular. Liga a câmera, entra no canal Realtime da
+ * "partida" (fixa em 'teste-camera'), Presence define o ângulo, no sinal
+ * Gol/Lance grava ~20s e sobe pro bucket privado 'lances'.
  *
- *  - liga a câmera do aparelho e roda o motor de buffer duplo (core/lances)
- *    mantendo ~15s de história pronta o tempo todo;
- *  - entra num canal Realtime da "partida" (aqui fixa em 'teste-camera') e
- *    usa Presence pra descobrir o número do ângulo (ordem de entrada);
- *  - no sinal "Gol"/"Lance" (fase 1), grava o clipe de ~20s;
- *  - no "Salvar"/"Descartar" (fase 2), faz upload pro bucket privado 'lances'
- *    ou joga fora.
- *
- * "Modo gravação": tela cheia só com o vídeo + infos mínimas, trava a tela
- * acesa (Wake Lock). É como os celulares-câmera vão ficar no dia do jogo —
- * ninguém toca neles depois de posicionar. Os botões Gol/Lance/Salvar aqui são
- * só pra teste; na etapa 3 quem dispara é a TelaRachão do organizador.
- * ========================================================================= */
+ * "Modo gravação": tela cheia só com o vídeo + wake lock — como o celular
+ * fica no jogo. Os botões Gol/Lance/Salvar aqui são só de teste; no jogo o
+ * sinal vem da tela do Rachão/Campeonato (etapa 3).
+ * ======================================================================= */
 
 const PARTIDA_ID = "teste-camera";
 const MODALIDADE = "rachao";
@@ -55,7 +49,7 @@ const pilula = {
   borderRadius: 999, padding: "3px 9px", fontSize: 10.5, fontWeight: 800, color: "#fff",
 };
 
-function TelaLances({ perfil, avisar }) {
+function TelaCamera({ perfil, avisar }) {
   const souOrganizador = perfil?.papel === "organizador" && perfil?.status === "aprovado";
 
   const [suportado] = useState(() => cameraDisponivel());
@@ -63,13 +57,12 @@ function TelaLances({ perfil, avisar }) {
   const [modoGravacao, setModoGravacao] = useState(false);
   const [erro, setErro] = useState(null);
   const [estGrav, setEstGrav] = useState({ rodando: false, bufferSegundos: 0, capturando: false, formato: "" });
-  const [dimVid, setDimVid] = useState(null); // { w, h, retrato } — lido do <video>, reflete a orientação REAL (getSettings mente no iOS)
+  const [dimVid, setDimVid] = useState(null); // { w, h, retrato } — lido do <video> (getSettings mente no iOS)
   const [conectado, setConectado] = useState(false);
   const [angulo, setAngulo] = useState(1);
   const [numCameras, setNumCameras] = useState(1);
   const [pendentes, setPendentes] = useState([]); // { id, tipo, fase, erro? }
   const [lances, setLances] = useState([]);
-  const [verUrl, setVerUrl] = useState(null);
   const [avisoModo, setAvisoModo] = useState(null); // toast curto dentro do modo gravação
 
   const videoRef = useRef(null);
@@ -94,8 +87,7 @@ function TelaLances({ perfil, avisar }) {
   useEffect(() => { listarLances(PARTIDA_ID).then(setLances); }, []);
   useEffect(() => () => { desligar(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /* mantém o <video> preso ao stream quando ele troca de lugar (card <-> tela
-   * cheia) — remontar o elemento perde o srcObject. */
+  /* mantém o <video> preso ao stream quando ele troca de lugar (card <-> tela cheia) */
   useEffect(() => {
     const v = videoRef.current;
     if (v && streamRef.current && v.srcObject !== streamRef.current) {
@@ -104,9 +96,8 @@ function TelaLances({ perfil, avisar }) {
     }
   }, [modoGravacao, ligada]);
 
-  /* orientação real da gravação. Sinais: as dimensões do <video> e a orientação
-   * da tela. O iOS às vezes reporta o vídeo como "deitado" (1280×720) mesmo com
-   * o celular em pé e a imagem certa — nesse caso a tela em retrato desempata. */
+  /* orientação real: dimensões do <video> + orientação da tela (o iOS reporta
+   * o vídeo como "deitado" mesmo com o celular em pé e a imagem certa). */
   useEffect(() => {
     if (!ligada) { setDimVid(null); return; }
     const v = videoRef.current;
@@ -116,8 +107,7 @@ function TelaLances({ perfil, avisar }) {
       if (!w || !h) return;
       const telaRetrato = window.matchMedia?.("(orientation: portrait)")?.matches
         ?? window.innerHeight > window.innerWidth;
-      const retrato = h > w || (w > h && telaRetrato);
-      setDimVid({ w, h, retrato });
+      setDimVid({ w, h, retrato: h > w || (w > h && telaRetrato) });
     };
     ler();
     v.addEventListener("loadedmetadata", ler);
@@ -134,7 +124,7 @@ function TelaLances({ perfil, avisar }) {
     };
   }, [ligada, modoGravacao]);
 
-  /* toast do modo gravação: reage à última captura mudando de fase. */
+  /* toast do modo gravação */
   useEffect(() => {
     const ult = pendentes[0];
     if (!ult) return;
@@ -150,14 +140,14 @@ function TelaLances({ perfil, avisar }) {
     return () => clearTimeout(t);
   }, [pendentes]);
 
-  /* --- Wake Lock (trava a tela acesa) ------------------------------------- */
+  /* --- Wake Lock (trava a tela acesa) --------------------------------- */
   async function pedirWakeLock() {
     try {
       if ("wakeLock" in navigator && !wakeLockRef.current) {
         wakeLockRef.current = await navigator.wakeLock.request("screen");
         wakeLockRef.current.addEventListener?.("release", () => { wakeLockRef.current = null; });
       }
-    } catch { /* sem suporte / negado — segue sem */ }
+    } catch { /* sem suporte / negado */ }
   }
   function soltarWakeLock() {
     try { wakeLockRef.current?.release?.(); } catch {}
@@ -170,13 +160,13 @@ function TelaLances({ perfil, avisar }) {
       return;
     }
     pedirWakeLock();
-    telaRef.current?.requestFullscreen?.({ navigationUI: "hide" }).catch(() => {}); // iOS ignora em <div>, o overlay fixo cobre mesmo assim
+    telaRef.current?.requestFullscreen?.({ navigationUI: "hide" }).catch(() => {});
     const aoVoltar = () => { if (document.visibilityState === "visible") pedirWakeLock(); };
     document.addEventListener("visibilitychange", aoVoltar);
     return () => document.removeEventListener("visibilitychange", aoVoltar);
   }, [modoGravacao]);
 
-  /* --- Captura ----------------------------------------------------------- */
+  /* --- Captura ------------------------------------------------------- */
   function sumirDepois(pid, ms = 6000) {
     setTimeout(() => setPendentes((ps) => ps.filter((x) => x.id !== pid)), ms);
   }
@@ -221,7 +211,7 @@ function TelaLances({ perfil, avisar }) {
       capturasRef.current.delete(cid);
       setPendentes((ps) => ps.map((x) => (x.id === cid ? { ...x, fase: "enviado" } : x)));
       recarregarLances();
-      enviarSinal("salvo", {}); // avisa os outros aparelhos pra atualizar a lista
+      enviarSinal("salvo", {});
       sumirDepois(cid);
     } catch (e) {
       console.error("Falha ao enviar lance:", e);
@@ -317,7 +307,7 @@ function TelaLances({ perfil, avisar }) {
   if (!suportado) {
     return (
       <div className="space-y-4">
-        <CabecalhoPagina titulo="Lances" descricao="Gravação automática de gols e lances." />
+        <CabecalhoPagina titulo="Câmera de lances" descricao="Gravação automática de gols e lances." />
         <Painel className="p-4" style={{ borderColor: T.laranja, background: "rgba(255,165,61,.1)" }}>
           <p style={{ fontSize: 13, color: T.laranja }}>
             Este navegador não tem suporte a gravação de vídeo (MediaRecorder / câmera).
@@ -328,20 +318,14 @@ function TelaLances({ perfil, avisar }) {
     );
   }
 
-  /* ---------- Modo gravação (tela cheia) --------------------------------
-   * Otimizado pro celular EM PÉ (vídeo vertical): o <video> cobre a tela toda
-   * e todo o HUD fica dentro das margens seguras (notch/barra), pra nada ser
-   * cortado. */
+  /* ---------- Modo gravação (tela cheia) ---------------------------------- */
   if (modoGravacao && ligada) {
-    const resTxt = dimVid
-      ? `${dimVid.w}×${dimVid.h} · ${dimVid.retrato ? "vertical" : "deitado"}`
-      : null;
+    const resTxt = dimVid ? `${dimVid.w}×${dimVid.h} · ${dimVid.retrato ? "vertical" : "deitado"}` : null;
     return (
       <div ref={telaRef} style={{ position: "fixed", inset: 0, zIndex: 60, background: "#000", overflow: "hidden" }}>
         <video ref={videoRef} muted playsInline autoPlay
           style={{ width: "100%", height: "100%", objectFit: "cover" }} />
 
-        {/* barra superior: infos à esquerda, Sair à direita — respeita as margens seguras */}
         <div style={{
           position: "absolute", top: 0, left: 0, right: 0,
           paddingTop: "calc(env(safe-area-inset-top, 0px) + 10px)",
@@ -391,12 +375,12 @@ function TelaLances({ perfil, avisar }) {
     );
   }
 
-  /* ---------- Tela normal --------------------------------------------------- */
+  /* ---------- Tela de preparação ---------------------------------------- */
   return (
     <div className="space-y-4">
       <CabecalhoPagina
-        titulo="Lances"
-        descricao="Modo de teste — clipes de ~20s vão para a partida “teste-camera” no bucket privado. Deixe o celular apoiado EM PÉ (vídeo vertical, pronto pra postar), ligue a câmera e use Gol/Lance para simular o sinal."
+        titulo="Câmera de lances"
+        descricao="Este celular vira uma câmera de gravação. Apoie ele EM PÉ (vídeo vertical, pronto pra postar), ligue a câmera e entre em Modo gravação."
       />
 
       {erro && (
@@ -416,13 +400,8 @@ function TelaLances({ perfil, avisar }) {
 
       <Painel className="overflow-hidden">
         <div style={{ position: "relative", background: "#000", aspectRatio: "3 / 4", maxWidth: 300, margin: "0 auto" }}>
-          <video
-            ref={videoRef}
-            muted
-            playsInline
-            autoPlay
-            style={{ width: "100%", height: "100%", objectFit: "cover", display: ligada ? "block" : "none" }}
-          />
+          <video ref={videoRef} muted playsInline autoPlay
+            style={{ width: "100%", height: "100%", objectFit: "cover", display: ligada ? "block" : "none" }} />
           {!ligada && (
             <div className="flex h-full w-full flex-col items-center justify-center" style={{ gap: 10, color: T.fraco }}>
               <IconeCamera tam={34} cor={T.fraco} />
@@ -473,24 +452,17 @@ function TelaLances({ perfil, avisar }) {
             Modo gravação (tela cheia)
           </Botao>
           <p style={{ marginTop: -6, fontSize: 10.5, color: T.fraco, lineHeight: 1.4 }}>
-            Só o vídeo na tela (em pé) e a tela travada acesa — é assim que os celulares-câmera ficam no jogo.
+            Só o vídeo na tela (em pé) e a tela travada acesa — é assim que o celular fica no jogo.
           </p>
 
           <Painel className="p-3">
             <div className="grid grid-cols-2 gap-2">
-              <Botao
-                disabled={!conectado || estGrav.capturando}
-                onClick={() => enviarSinal("disparo", { id: gerarId(), tipo: "gol" })}
-                style={{ minHeight: 56 }}
-              >
+              <Botao disabled={!conectado || estGrav.capturando}
+                onClick={() => enviarSinal("disparo", { id: gerarId(), tipo: "gol" })} style={{ minHeight: 56 }}>
                 Gol
               </Botao>
-              <Botao
-                variante="secundario"
-                disabled={!conectado || estGrav.capturando}
-                onClick={() => enviarSinal("disparo", { id: gerarId(), tipo: "lance" })}
-                style={{ minHeight: 56 }}
-              >
+              <Botao variante="secundario" disabled={!conectado || estGrav.capturando}
+                onClick={() => enviarSinal("disparo", { id: gerarId(), tipo: "lance" })} style={{ minHeight: 56 }}>
                 Lance
               </Botao>
             </div>
@@ -535,63 +507,15 @@ function TelaLances({ perfil, avisar }) {
         </section>
       )}
 
-      <section>
-        <Secao titulo="Clipes de teste" detalhe={`${lances.length}`} />
-        {lances.length === 0 ? (
-          <Painel className="p-4 text-center" style={{ borderStyle: "dashed" }}>
-            <p style={{ fontSize: 12, color: T.fraco }}>Nenhum clipe salvo ainda nesta partida de teste.</p>
-          </Painel>
-        ) : (
-          <div className="space-y-1.5">
-            {lances.map((l) => (
-              <Painel key={l.id} className="flex items-center justify-between p-3" style={{ gap: 8 }}>
-                <div className="min-w-0">
-                  <p style={{ fontSize: 12.5, color: T.texto }}>
-                    {rotuloTipo(l.tipo)}
-                    {l.jogador_nome ? ` · ${l.jogador_nome}` : ""}
-                    <Chip contorno>ângulo {l.angulo}</Chip>
-                  </p>
-                  <p style={{ fontSize: 10.5, color: T.fraco }}>
-                    {new Date(l.criado_em).toLocaleString("pt-BR")} · {(l.formato || "").replace("video/", "")}
-                  </p>
-                </div>
-                <div className="flex items-center" style={{ gap: 6, flexShrink: 0 }}>
-                  <Botao
-                    variante="secundario"
-                    onClick={() => urlAssinadaLance(l.caminho_storage).then(setVerUrl).catch((e) => setErro(msgErro(e)))}
-                    style={{ minHeight: 36, fontSize: 10.5 }}
-                  >
-                    Ver
-                  </Botao>
-                  {souOrganizador && (
-                    <Botao variante="perigo" onClick={() => apagarLance(l)} style={{ minHeight: 36, fontSize: 10.5 }}>
-                      Apagar
-                    </Botao>
-                  )}
-                </div>
-              </Painel>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {verUrl && (
-        <div
-          onClick={() => setVerUrl(null)}
-          style={{ position: "fixed", inset: 0, zIndex: 40, background: "rgba(0,0,0,.85)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}
-        >
-          <video
-            src={verUrl}
-            controls
-            autoPlay
-            playsInline
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: "100%", maxHeight: "100%", borderRadius: 10, background: "#000" }}
-          />
-        </div>
-      )}
+      <ListaClipes
+        lances={lances}
+        titulo="Clipes salvos"
+        vazio="Nada salvo ainda nesta partida de teste."
+        souOrganizador={souOrganizador}
+        onApagar={apagarLance}
+      />
     </div>
   );
 }
 
-export { TelaLances };
+export { TelaCamera };
