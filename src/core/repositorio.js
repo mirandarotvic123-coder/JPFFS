@@ -118,7 +118,7 @@ async function enviarFotoJogador(jogadorId, arquivo) {
  * Ver supabase-migracoes/004-*: qualquer aprovado grava e lê, só organizador
  * apaga; o vídeo em si só sai por link assinado (createSignedUrl), nunca
  * público. Clipes de teste usam partidaId = "teste-camera". */
-async function enviarLance({ modalidade, partidaId, tipo, jogadorId, jogadorNome, angulo, blob, formato }) {
+async function enviarLance({ modalidade, partidaId, partidaRotulo, tipo, jogadorId, jogadorNome, angulo, blob, formato }) {
   const ext = (formato || "").startsWith("video/mp4") ? "mp4" : "webm";
   const caminho = `${partidaId}/${Date.now()}-a${angulo}.${ext}`;
   const { error: erroUpload } = await supabase.storage
@@ -132,6 +132,7 @@ async function enviarLance({ modalidade, partidaId, tipo, jogadorId, jogadorNome
     .insert({
       modalidade,
       partida_id: partidaId,
+      partida_rotulo: partidaRotulo || null,
       tipo,
       jogador_id: jogadorId || null,
       jogador_nome: jogadorNome || null,
@@ -146,10 +147,14 @@ async function enviarLance({ modalidade, partidaId, tipo, jogadorId, jogadorNome
   return data;
 }
 
-async function listarLances(partidaId) {
+/* Lista clipes. `filtro` pode ser { partidaId } ou { modalidade }; sem filtro
+ * traz tudo. Nunca lança — devolve [] em erro (a Galeria não pode quebrar). */
+async function listarLances(filtro) {
   try {
-    let q = supabase.from("lances").select("*").order("criado_em", { ascending: false });
-    if (partidaId) q = q.eq("partida_id", partidaId);
+    let q = supabase.from("lances").select("*").order("criado_em", { ascending: false }).limit(400);
+    if (typeof filtro === "string") q = q.eq("partida_id", filtro); // compat: string = partidaId
+    else if (filtro?.partidaId) q = q.eq("partida_id", filtro.partidaId);
+    else if (filtro?.modalidade) q = q.eq("modalidade", filtro.modalidade);
     const { data, error } = await q;
     if (error) throw error;
     return data || [];
@@ -157,6 +162,15 @@ async function listarLances(partidaId) {
     console.error("Falha ao listar lances:", e);
     return [];
   }
+}
+
+/* Título automático do clipe (formato da doc, seção 5.2):
+ *   Tipo — Jogador (ou "sem jogador") — HH:mm — Ângulo N          */
+function tituloLance(l) {
+  const tipo = l.tipo === "gol" ? "Gol" : "Lance";
+  const jogador = (l.jogador_nome || "").trim() || "sem jogador";
+  const hora = new Date(l.criado_em).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return `${tipo} — ${jogador} — ${hora} — Ângulo ${l.angulo}`;
 }
 
 async function urlAssinadaLance(caminhoStorage, segundos = 3600) {
@@ -207,5 +221,5 @@ function migrarBase(base) {
 export {
   carregarBase, salvarBase, enviarFotoJogador, id, migrarBase, buscarPerfil,
   listarPerfis, decidirPerfil, excluirPerfil,
-  enviarLance, listarLances, urlAssinadaLance, excluirLance,
+  enviarLance, listarLances, urlAssinadaLance, excluirLance, tituloLance,
 };

@@ -11,6 +11,8 @@ import {
   Botao, Painel, inputStyle, Campo, CabecalhoPagina, Secao, Segmento, IconeGoleiro,
   Contador, FaixaPartida, SecaoRecolhivel,
 } from "../components/ui";
+import { LimiteErro } from "../components/LimiteErro";
+import { GatilhoLancesRachao } from "./lances/GatilhoLancesRachao";
 
 /* =========================== TELA: RACHÃO =================================
  * Fila por ordem de chegada, times Amarelo × Azul, vencedor fica em quadra
@@ -79,6 +81,9 @@ function TelaRachao({ base, avisar }) {
         ))}
 
         <QuadraAoVivo {...{ sessao, atualizar: setSessao, avisar, nomes }} />
+        <LimiteErro>
+          <GatilhoLancesRachao {...{ sessao, nomes, souOrganizador: true, avisar }} />
+        </LimiteErro>
         <ProximosTimesPainel {...{ sessao, nomes }} />
         <FilaEConvidados {...{ sessao, atualizar: setSessao, avisar, base, convidados, setConvidados, nomes, ordemIdx, setOrdemIdx, proximoIdx }} />
         <HistoricoDoDia sessao={sessao} />

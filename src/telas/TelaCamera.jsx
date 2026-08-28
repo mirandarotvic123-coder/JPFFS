@@ -18,8 +18,12 @@ import { ListaClipes } from "./lances/ListaClipes";
  * sinal vem da tela do Rachão/Campeonato (etapa 3).
  * ======================================================================= */
 
-const PARTIDA_ID = "teste-camera";
-const MODALIDADE = "rachao";
+/* A partida vem na URL do link de câmera (?camera=1&p=...&r=...). Sem isso,
+ * cai no modo de teste. `m` (modalidade) é derivada do prefixo do id. */
+const PARAMS = new URLSearchParams(window.location.search);
+const PARTIDA_ID = PARAMS.get("p") || "teste-camera";
+const PARTIDA_ROTULO = PARAMS.get("r") || "Teste";
+const MODALIDADE = PARTIDA_ID.startsWith("camp-") ? "campeonato" : "rachao";
 const CHAVE_DEVICE = "jpffs:camera-device";
 
 function idDispositivo() {
@@ -171,13 +175,18 @@ function TelaCamera({ perfil, avisar }) {
     setTimeout(() => setPendentes((ps) => ps.filter((x) => x.id !== pid)), ms);
   }
 
-  function aoDisparo({ id: cid, tipo }) {
+  function aoDisparo({ id: cid, tipo, modalidade, partidaRotulo }) {
     const g = gravadorRef.current;
     if (!g) return;
     const clipe = g.capturar(cid);
     if (!clipe) return; // câmera off ou já capturando (trava local)
-    capturasRef.current.set(cid, { tipo, clipe });
-    setPendentes((ps) => [{ id: cid, tipo, fase: "gravando" }, ...ps.filter((x) => x.id !== cid)]);
+    capturasRef.current.set(cid, {
+      tipo: tipo || "lance",
+      modalidade: modalidade || MODALIDADE,
+      partidaRotulo: partidaRotulo || PARTIDA_ROTULO,
+      clipe,
+    });
+    setPendentes((ps) => [{ id: cid, tipo: tipo || "lance", fase: "gravando" }, ...ps.filter((x) => x.id !== cid)]);
     clipe.then((blob) => {
       const reg = capturasRef.current.get(cid);
       if (reg) reg.clipe = blob;
@@ -185,7 +194,7 @@ function TelaCamera({ perfil, avisar }) {
     });
   }
 
-  async function aoDecisao({ id: cid, acao, jogadorNome }) {
+  async function aoDecisao({ id: cid, acao, jogadorNome, tipo: tipoDecisao }) {
     const reg = capturasRef.current.get(cid);
     if (acao === "descartar") {
       gravadorRef.current?.descartarCaptura(cid);
@@ -195,14 +204,16 @@ function TelaCamera({ perfil, avisar }) {
       return;
     }
     if (!reg) return;
-    setPendentes((ps) => ps.map((x) => (x.id === cid ? { ...x, fase: "enviando" } : x)));
+    const tipoFinal = tipoDecisao || reg.tipo;
+    setPendentes((ps) => ps.map((x) => (x.id === cid ? { ...x, fase: "enviando", tipo: tipoFinal } : x)));
     try {
       const blob = await Promise.resolve(reg.clipe);
       if (!blob || !blob.size) throw new Error("clipe vazio");
       await enviarLance({
-        modalidade: MODALIDADE,
+        modalidade: reg.modalidade || MODALIDADE,
         partidaId: PARTIDA_ID,
-        tipo: reg.tipo,
+        partidaRotulo: reg.partidaRotulo || PARTIDA_ROTULO,
+        tipo: tipoFinal,
         jogadorNome: jogadorNome || null,
         angulo: anguloRef.current,
         blob,
@@ -380,7 +391,7 @@ function TelaCamera({ perfil, avisar }) {
     <div className="space-y-4">
       <CabecalhoPagina
         titulo="Câmera de lances"
-        descricao="Este celular vira uma câmera de gravação. Apoie ele EM PÉ (vídeo vertical, pronto pra postar), ligue a câmera e entre em Modo gravação."
+        descricao={`Partida: ${PARTIDA_ROTULO}. Apoie o celular EM PÉ (vídeo vertical, pronto pra postar), ligue a câmera e entre em Modo gravação.`}
       />
 
       {erro && (
@@ -455,21 +466,29 @@ function TelaCamera({ perfil, avisar }) {
             Só o vídeo na tela (em pé) e a tela travada acesa — é assim que o celular fica no jogo.
           </p>
 
-          <Painel className="p-3">
-            <div className="grid grid-cols-2 gap-2">
-              <Botao disabled={!conectado || estGrav.capturando}
-                onClick={() => enviarSinal("disparo", { id: gerarId(), tipo: "gol" })} style={{ minHeight: 56 }}>
-                Gol
-              </Botao>
-              <Botao variante="secundario" disabled={!conectado || estGrav.capturando}
-                onClick={() => enviarSinal("disparo", { id: gerarId(), tipo: "lance" })} style={{ minHeight: 56 }}>
-                Lance
-              </Botao>
-            </div>
-            <p style={{ marginTop: 8, fontSize: 10.5, color: T.fraco, lineHeight: 1.4 }}>
-              Só pra teste — no jogo o sinal vem da tela do Rachão/Campeonato. Enquanto uma captura está nos +5s, novos cliques ficam travados.
-            </p>
-          </Painel>
+          {PARTIDA_ID === "teste-camera" ? (
+            <Painel className="p-3">
+              <div className="grid grid-cols-2 gap-2">
+                <Botao disabled={!conectado || estGrav.capturando}
+                  onClick={() => enviarSinal("disparo", { id: gerarId(), tipo: "gol", modalidade: MODALIDADE, partidaRotulo: PARTIDA_ROTULO })} style={{ minHeight: 56 }}>
+                  Gol
+                </Botao>
+                <Botao variante="secundario" disabled={!conectado || estGrav.capturando}
+                  onClick={() => enviarSinal("disparo", { id: gerarId(), tipo: "lance", modalidade: MODALIDADE, partidaRotulo: PARTIDA_ROTULO })} style={{ minHeight: 56 }}>
+                  Lance
+                </Botao>
+              </div>
+              <p style={{ marginTop: 8, fontSize: 10.5, color: T.fraco, lineHeight: 1.4 }}>
+                Botões só do modo de teste — no jogo o sinal vem da tela do Rachão/Campeonato.
+              </p>
+            </Painel>
+          ) : (
+            <Painel className="p-3" style={{ background: "rgba(61,214,140,.08)", borderColor: T.verde }}>
+              <p style={{ fontSize: 11.5, color: T.verde, lineHeight: 1.4 }}>
+                Câmera pronta. O organizador dispara os lances pela tela do Rachão — não precisa tocar em mais nada neste aparelho.
+              </p>
+            </Painel>
+          )}
         </>
       )}
 
@@ -490,7 +509,7 @@ function TelaCamera({ perfil, avisar }) {
                   {p.fase === "erro" && p.erro && (
                     <p style={{ marginTop: 4, fontSize: 10.5, color: T.vermelho }}>{p.erro}</p>
                   )}
-                  {p.fase === "aguardando" && (
+                  {p.fase === "aguardando" && PARTIDA_ID === "teste-camera" && (
                     <div className="mt-2 grid grid-cols-2 gap-2">
                       <Botao onClick={() => enviarSinal("decisao", { id: p.id, acao: "salvar" })} style={{ minHeight: 40, fontSize: 11 }}>
                         Salvar
@@ -499,6 +518,9 @@ function TelaCamera({ perfil, avisar }) {
                         Descartar
                       </Botao>
                     </div>
+                  )}
+                  {p.fase === "aguardando" && PARTIDA_ID !== "teste-camera" && (
+                    <p style={{ marginTop: 4, fontSize: 10.5, color: T.fraco }}>o organizador decide na tela do Rachão…</p>
                   )}
                 </Painel>
               );
@@ -509,8 +531,8 @@ function TelaCamera({ perfil, avisar }) {
 
       <ListaClipes
         lances={lances}
-        titulo="Clipes salvos"
-        vazio="Nada salvo ainda nesta partida de teste."
+        titulo="Clipes desta partida"
+        vazio="Nada salvo ainda."
         souOrganizador={souOrganizador}
         onApagar={apagarLance}
       />

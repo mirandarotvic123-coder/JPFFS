@@ -15,6 +15,7 @@ import { TelaConfig } from "./telas/TelaConfig";
 import { TelaRachao } from "./telas/TelaRachao";
 import { TelaGaleria } from "./telas/TelaGaleria";
 import { TelaCamera } from "./telas/TelaCamera";
+import { LimiteErro } from "./components/LimiteErro";
 
 /* ?camera=1 na URL → o aparelho vira uma câmera de gravação (link mandado só
  * pra quem vai disponibilizar o celular). Continua exigindo login aprovado. */
@@ -167,7 +168,9 @@ export default function App() {
         {aviso && <div className="fixed left-1/2 z-30 w-11/12 max-w-sm -translate-x-1/2 rounded-lg px-4 py-3 text-center"
           style={{ bottom: 24, background: T.ouro, color: T.sobreOuro, fontWeight: 800, fontSize: 13.5, boxShadow: "0 8px 28px rgba(0,0,0,.5)" }}>{aviso}</div>}
         <main className="mx-auto px-3 pt-4" style={{ maxWidth: 520, paddingBottom: 40 }}>
-          <TelaCamera perfil={perfil} avisar={setAviso} />
+          <LimiteErro fallback={<p style={{ padding: 16, color: T.vermelho, fontSize: 13 }}>Erro ao abrir a câmera. Recarregue a página.</p>}>
+            <TelaCamera perfil={perfil} avisar={setAviso} />
+          </LimiteErro>
         </main>
       </div>
     );
@@ -213,7 +216,11 @@ export default function App() {
       <main className="conteudo-principal mx-auto max-w-5xl px-3 pt-4" style={{ paddingBottom: 104 }}>
         {aba === "rodada" && souOrganizador && <TelaRodada {...{ base, setBase, dados, cfg, avisar: setAviso }} />}
         {aba === "rachao" && souOrganizador && <TelaRachao {...{ base, avisar: setAviso }} />}
-        {aba === "lances" && souAprovado && <TelaGaleria {...{ perfil, avisar: setAviso }} />}
+        {aba === "lances" && souAprovado && (
+          <LimiteErro fallback={<p style={{ padding: 16, color: T.fraco, fontSize: 13 }}>Não foi possível carregar a galeria de lances.</p>}>
+            <TelaGaleria {...{ perfil, avisar: setAviso }} />
+          </LimiteErro>
+        )}
         {aba === "tabela" && <TelaClassificacao {...{ base, dados, cfg, avisar: setAviso }} />}
         {aba === "elenco" && souOrganizador && <TelaElenco {...{ base, setBase, dados, cfg, avisar: setAviso }} />}
         {aba === "config" && souOrganizador && <TelaConfig {...{ base, setBase, dados, cfg, avisar: setAviso, sessao }} />}
