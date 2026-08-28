@@ -120,7 +120,8 @@ function TelaLogin({ avisar }) {
     if (data.session) {
       avisar("Cadastro criado — aguardando aprovação do organizador");
     } else {
-      setMensagem("Cadastro criado! Confirme seu e-mail (chegou um link na sua caixa de entrada) e depois aguarde a aprovação do organizador.");
+      // só cai aqui se a confirmação de e-mail estiver ligada no Supabase
+      setMensagem("Cadastro criado! Se pedirem confirmação de e-mail, confira sua caixa de entrada (e o spam). Depois é só aguardar a aprovação do organizador.");
     }
   };
 
@@ -160,8 +161,8 @@ function TelaLogin({ avisar }) {
           <Aviso>
             <ol style={{ paddingLeft: 16 }}>
               <li>Preencha seus dados, um e-mail válido e crie uma senha.</li>
-              <li className="mt-1">Confirme o e-mail — chega um link do Supabase na sua caixa de entrada (confira o spam).</li>
-              <li className="mt-1">Aguarde a aprovação do organizador — depois disso é só entrar.</li>
+              <li className="mt-1">Aguarde a aprovação do organizador.</li>
+              <li className="mt-1">Assim que ele aprovar, é só entrar com esse e-mail e senha.</li>
             </ol>
           </Aviso>
           <div className="space-y-2.5">
