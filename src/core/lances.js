@@ -49,81 +49,16 @@ export function cameraDisponivel() {
   );
 }
 
-/* Pede sempre em PAISAGEM (width > height + aspectRatio 16:9). O celular vai
- * ficar deitado no campo e não vamos girar a orientação depois da tela cheia,
- * então o arquivo tem que sair na horizontal. iOS/Safari já entrega paisagem
- * por padrão; no Android as constraints abaixo forçam. */
 export async function abrirCamera() {
   return navigator.mediaDevices.getUserMedia({
     video: {
       facingMode: { ideal: "environment" },
       width: { ideal: 1280 },
       height: { ideal: 720 },
-      aspectRatio: { ideal: 16 / 9 },
       frameRate: { ideal: 30 },
     },
     audio: true,
   });
-}
-
-/* Quando a câmera entrega RETRATO (celular deitado mas com a rotação travada —
- * comum no iPhone), o arquivo sairia em pé. Isto joga cada quadro girado 90°
- * num canvas 16:9 e devolve um stream novo (vídeo do canvas + áudio original)
- * que já sai deitado. `sentido` = 1 ou -1 (qual lado; troque se ficar de cabeça
- * pra baixo). Se a câmera já vier deitada, devolve o stream original intacto. */
-export function criarStreamPaisagem(streamOrig, sentido = 1) {
-  const st = streamOrig.getVideoTracks()[0]?.getSettings?.() || {};
-  const ehRetrato = st.width && st.height && st.height > st.width;
-  if (!ehRetrato) return { stream: streamOrig, ehCanvas: false, largura: st.width || 0, altura: st.height || 0, parar() {} };
-
-  const largura = st.height;
-  const altura = st.width;
-
-  const video = document.createElement("video");
-  video.srcObject = streamOrig;
-  video.muted = true;
-  video.playsInline = true;
-  const pp = video.play();
-  if (pp?.catch) pp.catch(() => {});
-
-  const canvas = document.createElement("canvas");
-  canvas.width = largura;
-  canvas.height = altura;
-  const ctx = canvas.getContext("2d");
-
-  let raf = 0;
-  const passo = () => {
-    const vw = video.videoWidth, vh = video.videoHeight;
-    if (vw && vh) {
-      ctx.save();
-      ctx.translate(canvas.width / 2, canvas.height / 2);
-      ctx.rotate((sentido * Math.PI) / 2);
-      ctx.drawImage(video, -vw / 2, -vh / 2, vw, vh);
-      ctx.restore();
-    }
-    raf = requestAnimationFrame(passo);
-  };
-  passo();
-
-  const saida = canvas.captureStream(30);
-  // clona o áudio: assim dá pra parar este wrapper (ex.: ao trocar o sentido do
-  // giro) sem matar a faixa de áudio original, que serve pro próximo wrapper.
-  const audio = streamOrig.getAudioTracks()[0];
-  const audioClone = audio ? audio.clone() : null;
-  if (audioClone) saida.addTrack(audioClone);
-
-  return {
-    stream: saida,
-    ehCanvas: true,
-    largura,
-    altura,
-    parar() {
-      cancelAnimationFrame(raf);
-      try { audioClone?.stop(); } catch { /* nada */ }
-      try { video.pause(); } catch { /* nada */ }
-      video.srcObject = null;
-    },
-  };
 }
 
 /* Cria o gravador em cima de um stream já aberto. `aoMudarEstado` recebe
@@ -148,16 +83,12 @@ export function criarGravador(stream, { aoMudarEstado } = {}) {
   function estado() {
     const ativos = canais.filter(gravando);
     const maisVelho = ativos.length ? Math.max(...ativos.map(idade)) : 0;
-    const s = stream.getVideoTracks()[0]?.getSettings?.() || {};
     return {
       rodando,
       bufferSegundos: Math.min(Math.round(JANELA_MS / 1000), Math.round(maisVelho / 1000)),
       capturando: idCaptura != null,
       formato: mime,
       ext,
-      largura: s.width || 0,
-      altura: s.height || 0,
-      retrato: !!(s.width && s.height && s.height > s.width), // câmera veio "em pé"
     };
   }
 

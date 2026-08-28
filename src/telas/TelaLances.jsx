@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
 import { T } from "../theme";
 import { id as gerarId, enviarLance, listarLances, urlAssinadaLance, excluirLance } from "../core/repositorio";
-import { cameraDisponivel, abrirCamera, criarGravador, criarStreamPaisagem } from "../core/lances";
+import { cameraDisponivel, abrirCamera, criarGravador } from "../core/lances";
 import { Botao, Painel, CabecalhoPagina, Secao, Chip } from "../components/ui";
 import { IconeCamera } from "../components/icones";
 
@@ -62,7 +62,7 @@ function TelaLances({ perfil, avisar }) {
   const [ligada, setLigada] = useState(false);
   const [modoGravacao, setModoGravacao] = useState(false);
   const [erro, setErro] = useState(null);
-  const [estGrav, setEstGrav] = useState({ rodando: false, bufferSegundos: 0, capturando: false, formato: "", largura: 0, altura: 0, retrato: false });
+  const [estGrav, setEstGrav] = useState({ rodando: false, bufferSegundos: 0, capturando: false, formato: "" });
   const [conectado, setConectado] = useState(false);
   const [angulo, setAngulo] = useState(1);
   const [numCameras, setNumCameras] = useState(1);
@@ -70,14 +70,10 @@ function TelaLances({ perfil, avisar }) {
   const [lances, setLances] = useState([]);
   const [verUrl, setVerUrl] = useState(null);
   const [avisoModo, setAvisoModo] = useState(null); // toast curto dentro do modo gravação
-  const [girado, setGirado] = useState(false); // true = stream passa pelo canvas p/ virar paisagem
-  const [sentidoGiro, setSentidoGiro] = useState(1); // 1 ou -1 — qual lado girar
 
   const videoRef = useRef(null);
   const telaRef = useRef(null);
-  const streamRef = useRef(null); // o stream que alimenta preview + gravador (já corrigido)
-  const streamOrigRef = useRef(null); // stream cru da câmera
-  const wrapperRef = useRef(null); // { stream, ehCanvas, parar }
+  const streamRef = useRef(null);
   const gravadorRef = useRef(null);
   const canalRef = useRef(null);
   const capturasRef = useRef(new Map()); // id -> { tipo, clipe: Promise<Blob>|Blob }
@@ -143,9 +139,7 @@ function TelaLances({ perfil, avisar }) {
       return;
     }
     pedirWakeLock();
-    telaRef.current?.requestFullscreen?.({ navigationUI: "hide" })
-      .then(() => { try { screen.orientation?.lock?.("landscape"); } catch {} })
-      .catch(() => {}); // iOS ignora em <div>; o overlay fixo cobre a tela mesmo assim
+    telaRef.current?.requestFullscreen?.({ navigationUI: "hide" }).catch(() => {}); // iOS ignora em <div>, o overlay fixo cobre mesmo assim
     const aoVoltar = () => { if (document.visibilityState === "visible") pedirWakeLock(); };
     document.addEventListener("visibilitychange", aoVoltar);
     return () => document.removeEventListener("visibilitychange", aoVoltar);
@@ -232,35 +226,18 @@ function TelaLances({ perfil, avisar }) {
     });
   }
 
-  /* (re)monta wrapper de paisagem + gravador em cima do stream cru já aberto. */
-  function montarPipeline(sentido) {
-    try { gravadorRef.current?.parar(); } catch {}
-    try { wrapperRef.current?.parar(); } catch {}
-    const w = criarStreamPaisagem(streamOrigRef.current, sentido);
-    wrapperRef.current = w;
-    setGirado(w.ehCanvas);
-    streamRef.current = w.stream;
-    if (videoRef.current) {
-      videoRef.current.srcObject = w.stream;
-      videoRef.current.play?.().catch(() => {});
-    }
-    const g = criarGravador(w.stream, { aoMudarEstado: setEstGrav });
-    gravadorRef.current = g;
-    g.iniciar();
-  }
-
-  function girarVideo() {
-    const novo = sentidoGiro === 1 ? -1 : 1;
-    setSentidoGiro(novo);
-    if (streamOrigRef.current) montarPipeline(novo);
-  }
-
   async function ligarCamera() {
     setErro(null);
     try {
-      const orig = await abrirCamera();
-      streamOrigRef.current = orig;
-      montarPipeline(sentidoGiro);
+      const stream = await abrirCamera();
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play?.().catch(() => {});
+      }
+      const g = criarGravador(stream, { aoMudarEstado: setEstGrav });
+      gravadorRef.current = g;
+      g.iniciar();
       await conectarCanal();
       setLigada(true);
     } catch (e) {
@@ -281,17 +258,12 @@ function TelaLances({ perfil, avisar }) {
     soltarWakeLock();
     try { gravadorRef.current?.parar(); } catch {}
     gravadorRef.current = null;
-    try { wrapperRef.current?.parar(); } catch {}
-    wrapperRef.current = null;
-    try { streamOrigRef.current?.getTracks().forEach((t) => t.stop()); } catch {}
-    streamOrigRef.current = null;
     if (canalRef.current) { supabase.removeChannel(canalRef.current); canalRef.current = null; }
     if (videoRef.current) videoRef.current.srcObject = null;
     streamRef.current = null;
     capturasRef.current.clear();
     setLigada(false);
     setConectado(false);
-    setGirado(false);
     setPendentes([]);
   }
 
@@ -330,7 +302,7 @@ function TelaLances({ perfil, avisar }) {
     return (
       <div ref={telaRef} style={{ position: "fixed", inset: 0, zIndex: 60, background: "#000" }}>
         <video ref={videoRef} muted playsInline autoPlay
-          style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+          style={{ width: "100%", height: "100%", objectFit: "cover" }} />
 
         <div style={{ position: "absolute", top: "calc(env(safe-area-inset-top, 0px) + 10px)", left: 12, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           <span style={pilula}>
@@ -341,11 +313,6 @@ function TelaLances({ perfil, avisar }) {
           <span style={{ ...pilula, color: conectado ? "#fff" : T.laranja }}>
             {conectado ? `buffer ${estGrav.bufferSegundos}s` : "reconectando…"}
           </span>
-          {estGrav.largura > 0 && (
-            <span style={{ ...pilula, color: estGrav.retrato ? T.laranja : "#fff" }}>
-              {estGrav.largura}×{estGrav.altura}{estGrav.retrato ? " · EM PÉ!" : ""}
-            </span>
-          )}
         </div>
 
         <button
@@ -385,18 +352,6 @@ function TelaLances({ perfil, avisar }) {
         </Painel>
       )}
 
-      {ligada && girado && (
-        <Painel className="p-3" style={{ borderColor: T.gk, background: "rgba(59,147,238,.1)" }}>
-          <p style={{ fontSize: 12, color: T.gk }}>
-            A câmera do aparelho veio “em pé”, então o vídeo está sendo <b>girado pra paisagem</b> automaticamente.
-            Se a prévia estiver de cabeça pra baixo ou de lado, toque em <b>Girar vídeo</b>.
-          </p>
-          <Botao variante="secundario" className="mt-2" onClick={girarVideo} style={{ minHeight: 40, fontSize: 11 }}>
-            Girar vídeo
-          </Botao>
-        </Painel>
-      )}
-
       <Painel className="overflow-hidden">
         <div style={{ position: "relative", background: "#000", aspectRatio: "16 / 9" }}>
           <video
@@ -428,7 +383,6 @@ function TelaLances({ perfil, avisar }) {
             {ligada ? (
               <>
                 buffer {estGrav.bufferSegundos}s · {conectado ? "canal ok" : "conectando…"}
-                {estGrav.largura > 0 ? ` · ${estGrav.largura}×${estGrav.altura}` : ""}
                 {estGrav.formato ? ` · ${estGrav.formato.replace("video/", "")}` : ""}
               </>
             ) : (
