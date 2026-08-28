@@ -5,7 +5,7 @@ import { CONFIG_PADRAO, calcularClassificacao } from "./core/regras";
 import { carregarBase, salvarBase, migrarBase, buscarPerfil } from "./core/repositorio";
 import { baseOficial } from "./data/baseOficial";
 import {
-  IconeTabela, IconeRodada, IconeElenco, IconeAjustes, IconeConta, IconeRachao,
+  IconeTabela, IconeRodada, IconeElenco, IconeAjustes, IconeConta, IconeRachao, IconeCamera,
 } from "./components/icones";
 import { TelaLogin, TelaAguardandoAprovacao, TelaNovaSenha } from "./telas/TelaAcesso";
 import { TelaRodada } from "./telas/TelaRodada";
@@ -13,6 +13,13 @@ import { TelaClassificacao } from "./telas/TelaClassificacao";
 import { TelaElenco } from "./telas/TelaElenco";
 import { TelaConfig } from "./telas/TelaConfig";
 import { TelaRachao } from "./telas/TelaRachao";
+import { TelaGaleria } from "./telas/TelaGaleria";
+import { TelaCamera } from "./telas/TelaCamera";
+import { LimiteErro } from "./components/LimiteErro";
+
+/* ?camera=1 na URL → o aparelho vira uma câmera de gravação (link mandado só
+ * pra quem vai disponibilizar o celular). Continua exigindo login aprovado. */
+const MODO_CAMERA = new URLSearchParams(window.location.search).get("camera") === "1";
 
 /* Tela cheia de "carregando…" — usada nas várias etapas de resolver sessão/
  * perfil/base antes do app de verdade poder aparecer. */
@@ -131,7 +138,9 @@ export default function App() {
   }, [base, souOrganizador]);
 
   useEffect(() => { if (aviso) { const t = setTimeout(() => setAviso(null), 3600); return () => clearTimeout(t); } }, [aviso]);
-  useEffect(() => { if (!souOrganizador && aba !== "tabela") setAba("tabela"); }, [souOrganizador, aba]);
+  useEffect(() => {
+    if (!souOrganizador && aba !== "tabela" && aba !== "lances") setAba("tabela");
+  }, [souOrganizador, aba]);
 
   const dados = useMemo(() => (base ? calcularClassificacao(base) : null), [base]);
 
@@ -140,14 +149,42 @@ export default function App() {
   if (!sessao) return <TelaLogin avisar={setAviso} />;
   if (!perfilResolvido) return <SpinnerCarregando texto="Carregando…" />;
   if (!souAprovado) return <TelaAguardandoAprovacao perfil={perfil} sessao={sessao} />;
+
+  /* Modo câmera: shell mínimo (sem navegação) — o aparelho é só uma câmera. */
+  if (MODO_CAMERA) {
+    return (
+      <div style={{ minHeight: "100vh", background: FUNDO_APP, color: T.texto, fontFamily: "var(--fonte-corpo)" }}>
+        <header className="sticky top-0 z-20 flex items-center justify-between px-4 py-2.5"
+          style={{ background: "rgba(0,16,57,.94)", borderBottom: `1px solid ${T.borda}` }}>
+          <div className="flex items-center" style={{ gap: 9 }}>
+            <img src={ESCUDO} alt="" style={{ height: 24, width: "auto" }} />
+            <span className="font-destaque" style={{ fontSize: 14, fontWeight: 700 }}>Câmera JPFFS</span>
+          </div>
+          <button onClick={() => supabase.auth.signOut()} title={`Sair — ${sessao.user.email}`}
+            style={{ padding: 8, border: `1px solid ${T.tier4}`, borderRadius: 999, color: T.secundario, background: "transparent" }}>
+            <IconeConta tam={15} />
+          </button>
+        </header>
+        {aviso && <div className="fixed left-1/2 z-30 w-11/12 max-w-sm -translate-x-1/2 rounded-lg px-4 py-3 text-center"
+          style={{ bottom: 24, background: T.ouro, color: T.sobreOuro, fontWeight: 800, fontSize: 13.5, boxShadow: "0 8px 28px rgba(0,0,0,.5)" }}>{aviso}</div>}
+        <main className="mx-auto px-3 pt-4" style={{ maxWidth: 520, paddingBottom: 40 }}>
+          <LimiteErro fallback={<p style={{ padding: 16, color: T.vermelho, fontSize: 13 }}>Erro ao abrir a câmera. Recarregue a página.</p>}>
+            <TelaCamera perfil={perfil} avisar={setAviso} />
+          </LimiteErro>
+        </main>
+      </div>
+    );
+  }
+
   if (!base || !dados) return <SpinnerCarregando texto="Carregando base…" />;
 
   const cfg = { ...CONFIG_PADRAO, ...base.config, pesos: { ...CONFIG_PADRAO.pesos, ...(base.config?.pesos || {}) } };
   const abas = [
     { id: "tabela", rotulo: "Tabela", Icone: IconeTabela }, { id: "rodada", rotulo: "Rodada", Icone: IconeRodada },
     { id: "rachao", rotulo: "Rachão", Icone: IconeRachao },
+    { id: "lances", rotulo: "Lances", Icone: IconeCamera },
     { id: "elenco", rotulo: "Elenco", Icone: IconeElenco }, { id: "config", rotulo: "Ajustes", Icone: IconeAjustes },
-  ].filter((a) => souOrganizador || a.id === "tabela");
+  ].filter((a) => souOrganizador || a.id === "tabela" || a.id === "lances");
 
   return (
     <div style={{ minHeight: "100vh", background: FUNDO_APP, color: T.texto, fontVariantNumeric: "tabular-nums", fontFamily: "var(--fonte-corpo)" }}>
@@ -179,6 +216,11 @@ export default function App() {
       <main className="conteudo-principal mx-auto max-w-5xl px-3 pt-4" style={{ paddingBottom: 104 }}>
         {aba === "rodada" && souOrganizador && <TelaRodada {...{ base, setBase, dados, cfg, avisar: setAviso }} />}
         {aba === "rachao" && souOrganizador && <TelaRachao {...{ base, avisar: setAviso }} />}
+        {aba === "lances" && souAprovado && (
+          <LimiteErro fallback={<p style={{ padding: 16, color: T.fraco, fontSize: 13 }}>Não foi possível carregar a galeria de lances.</p>}>
+            <TelaGaleria {...{ perfil, avisar: setAviso }} />
+          </LimiteErro>
+        )}
         {aba === "tabela" && <TelaClassificacao {...{ base, dados, cfg, avisar: setAviso }} />}
         {aba === "elenco" && souOrganizador && <TelaElenco {...{ base, setBase, dados, cfg, avisar: setAviso }} />}
         {aba === "config" && souOrganizador && <TelaConfig {...{ base, setBase, dados, cfg, avisar: setAviso, sessao }} />}
