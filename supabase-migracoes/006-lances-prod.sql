@@ -11,11 +11,16 @@
 --     (bytes) — usada pela limpeza automática pra saber quando expurgar por
 --     falta de espaço.
 --  4) Índices pra Galeria e pra limpeza.
+--  5) Habilita pg_net + pg_cron (o Cron Job da limpeza precisa deles).
 --
 -- A limpeza automática em si é uma Edge Function ("limpar-lances") + um Cron
 -- Job — ver supabase-migracoes/limpar-lances/ e o passo-a-passo no fim deste
 -- arquivo.
 -- ============================================================================
+
+-- 0) Extensões da limpeza automática ----------------------------------------
+create extension if not exists pg_net;
+create extension if not exists pg_cron;
 
 -- 1) Realtime -------------------------------------------------------------
 do $$
