@@ -49,20 +49,104 @@ export function cameraDisponivel() {
   );
 }
 
-/* Pede VERTICAL (retrato) — os celulares-câmera ficam em pé e a ideia é que o
- * clipe já saia pronto pra postar em stories/reels. iPhone segurado em pé já dá
- * retrato; as constraints abaixo ajudam o Android a não vir deitado. */
+/* Abre a câmera "crua". NÃO adianta pedir retrato aqui: o Safari do iPhone
+ * ignora width/height/aspectRatio e sempre entrega a câmera DEITADA (ex.:
+ * 1280×720), na orientação nativa do sensor. A prévia parece em pé só porque
+ * o <video> gira junto com o celular — mas o MediaRecorder grava os pixels
+ * crus (deitados). Quem resolve a orientação é criarStreamVertical(). */
 export async function abrirCamera() {
   return navigator.mediaDevices.getUserMedia({
     video: {
       facingMode: { ideal: "environment" },
-      width: { ideal: 720 },
-      height: { ideal: 1280 },
-      aspectRatio: { ideal: 9 / 16 },
+      width: { ideal: 1920 },
+      height: { ideal: 1080 },
       frameRate: { ideal: 30 },
     },
     audio: true,
   });
+}
+
+/* SAÍDA SEMPRE 720×1280 (vertical), custe o que custar.
+ *
+ * Desenha cada frame da câmera num <canvas> 720×1280 e devolve um stream do
+ * CANVAS (captureStream) + a trilha de áudio da câmera. É esse stream que vai
+ * pro MediaRecorder — então o arquivo sai vertical de verdade, pronto pra
+ * postar, mesmo com o iPhone entregando a câmera deitada.
+ *
+ * - câmera deitada + celular em pé  -> gira 90° (encaixa sem cortar nada)
+ * - câmera/celular já em pé         -> só "cover" (preenche, corta sobra)
+ * - celular deitado                 -> "cover" deitado->vertical (corta muito;
+ *                                       a TelaCamera avisa pra virar em pé)
+ */
+const SAIDA_L = 720;
+const SAIDA_A = 1280;
+
+export function criarStreamVertical(streamRaw) {
+  const canvasTeste = document.createElement("canvas");
+  if (typeof canvasTeste.captureStream !== "function") {
+    throw new Error("canvas.captureStream não suportado");
+  }
+
+  const video = document.createElement("video");
+  video.srcObject = streamRaw;
+  video.muted = true;
+  video.playsInline = true;
+  video.play?.().catch(() => {});
+
+  const canvas = document.createElement("canvas");
+  canvas.width = SAIDA_L;
+  canvas.height = SAIDA_A;
+  const ctx = canvas.getContext("2d", { alpha: false });
+
+  const telaRetrato = () =>
+    window.matchMedia?.("(orientation: portrait)")?.matches ??
+    window.innerHeight >= window.innerWidth;
+
+  let vivo = true;
+  let ultimo = 0;
+  let req = 0;
+
+  function desenhar(ts) {
+    if (!vivo) return;
+    req = requestAnimationFrame(desenhar);
+    if (ts - ultimo < 32) return; // ~30fps, poupa bateria
+    ultimo = ts;
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (!vw || !vh || !ctx) return;
+    const girar = vw > vh && telaRetrato();
+    ctx.save();
+    ctx.translate(SAIDA_L / 2, SAIDA_A / 2);
+    if (girar) {
+      ctx.rotate(Math.PI / 2); // 90° horário — orientação de foto do iPhone
+      const escala = Math.max(SAIDA_L / vh, SAIDA_A / vw);
+      const dw = vw * escala, dh = vh * escala;
+      ctx.drawImage(video, -dw / 2, -dh / 2, dw, dh);
+    } else {
+      const escala = Math.max(SAIDA_L / vw, SAIDA_A / vh);
+      const dw = vw * escala, dh = vh * escala;
+      ctx.drawImage(video, -dw / 2, -dh / 2, dw, dh);
+    }
+    ctx.restore();
+  }
+  req = requestAnimationFrame(desenhar);
+
+  const stream = canvas.captureStream(30);
+  streamRaw.getAudioTracks().forEach((t) => stream.addTrack(t));
+
+  return {
+    stream,
+    /* status da fonte pra TelaCamera mostrar aviso */
+    fonte() {
+      const vw = video.videoWidth || 0, vh = video.videoHeight || 0;
+      return { largura: vw, altura: vh, deitada: vw > vh, corrigindo: vw > vh && telaRetrato() };
+    },
+    encerrar() {
+      vivo = false;
+      cancelAnimationFrame(req);
+      try { stream.getVideoTracks().forEach((t) => t.stop()); } catch { /* nada */ }
+      video.srcObject = null;
+    },
+  };
 }
 
 /* Cria o gravador em cima de um stream já aberto. `aoMudarEstado` recebe

@@ -33,8 +33,12 @@ antes e 5s depois do momento em que o gol ou o lance é marcado) e fica pronto
 sozinho, sem precisar editar vídeo depois. **(mudou)** — a duração não é exata
 por causa de como o buffer funciona (ver seção 2.2).
 
-Os clipes são gravados na **vertical** (retrato), prontos para postar em
-stories/reels. **(mudou)**
+Os clipes são gravados na **vertical** (720×1280), prontos para postar em
+stories/reels. **(mudou)** — o iPhone entrega a câmera "deitada" mesmo com o
+celular em pé; o app desenha cada quadro num canvas 720×1280 e grava esse
+canvas, então o arquivo sai vertical de verdade (gira a imagem sozinho
+quando precisa). Só é preciso apoiar o celular **em pé** com a trava de
+rotação ligada — se ficar deitado, a imagem sai muito cortada e a tela avisa.
 
 ### 1.1. Por que existe
 
@@ -289,10 +293,10 @@ baixar o vídeo da galeria antes do prazo vencer.
   um toca direto no sistema, sem conversão (não há servidor para padronizar).
 - **Tempo de espera.** O clipe fica pronto cerca de 5 segundos depois do clique
   (o tempo real da parte "depois").
-- **Orientação.** O celular grava no formato em que estiver segurado. Para o
-  clipe sair **vertical** (bom para stories), apoiar o celular **em pé** com a
-  trava de rotação ligada. A tela de câmera mostra a resolução e avisa se a
-  imagem veio "deitada".
+- **Orientação.** O clipe **sempre sai vertical** (720×1280) — o app gira/enquadra
+  a imagem sozinho, mesmo com o iPhone entregando a câmera "deitada". Basta
+  apoiar o celular **em pé** com a trava de rotação ligada. Se o celular ficar
+  deitado, a imagem sai muito cortada e a tela de câmera avisa.
 - **Processamento.** Cada celular roda dois gravadores em paralelo — celular dos
   últimos anos aguenta; num aparelho muito antigo pode engasgar.
 
