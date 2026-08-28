@@ -66,6 +66,66 @@ export async function abrirCamera() {
   });
 }
 
+/* Quando a câmera entrega RETRATO (celular deitado mas com a rotação travada —
+ * comum no iPhone), o arquivo sairia em pé. Isto joga cada quadro girado 90°
+ * num canvas 16:9 e devolve um stream novo (vídeo do canvas + áudio original)
+ * que já sai deitado. `sentido` = 1 ou -1 (qual lado; troque se ficar de cabeça
+ * pra baixo). Se a câmera já vier deitada, devolve o stream original intacto. */
+export function criarStreamPaisagem(streamOrig, sentido = 1) {
+  const st = streamOrig.getVideoTracks()[0]?.getSettings?.() || {};
+  const ehRetrato = st.width && st.height && st.height > st.width;
+  if (!ehRetrato) return { stream: streamOrig, ehCanvas: false, largura: st.width || 0, altura: st.height || 0, parar() {} };
+
+  const largura = st.height;
+  const altura = st.width;
+
+  const video = document.createElement("video");
+  video.srcObject = streamOrig;
+  video.muted = true;
+  video.playsInline = true;
+  const pp = video.play();
+  if (pp?.catch) pp.catch(() => {});
+
+  const canvas = document.createElement("canvas");
+  canvas.width = largura;
+  canvas.height = altura;
+  const ctx = canvas.getContext("2d");
+
+  let raf = 0;
+  const passo = () => {
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (vw && vh) {
+      ctx.save();
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate((sentido * Math.PI) / 2);
+      ctx.drawImage(video, -vw / 2, -vh / 2, vw, vh);
+      ctx.restore();
+    }
+    raf = requestAnimationFrame(passo);
+  };
+  passo();
+
+  const saida = canvas.captureStream(30);
+  // clona o áudio: assim dá pra parar este wrapper (ex.: ao trocar o sentido do
+  // giro) sem matar a faixa de áudio original, que serve pro próximo wrapper.
+  const audio = streamOrig.getAudioTracks()[0];
+  const audioClone = audio ? audio.clone() : null;
+  if (audioClone) saida.addTrack(audioClone);
+
+  return {
+    stream: saida,
+    ehCanvas: true,
+    largura,
+    altura,
+    parar() {
+      cancelAnimationFrame(raf);
+      try { audioClone?.stop(); } catch { /* nada */ }
+      try { video.pause(); } catch { /* nada */ }
+      video.srcObject = null;
+    },
+  };
+}
+
 /* Cria o gravador em cima de um stream já aberto. `aoMudarEstado` recebe
  * { rodando, bufferSegundos, capturando, formato, ext } a cada mudança. */
 export function criarGravador(stream, { aoMudarEstado } = {}) {

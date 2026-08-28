@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../supabase";
 import { T } from "../theme";
 import { id as gerarId, enviarLance, listarLances, urlAssinadaLance, excluirLance } from "../core/repositorio";
-import { cameraDisponivel, abrirCamera, criarGravador } from "../core/lances";
+import { cameraDisponivel, abrirCamera, criarGravador, criarStreamPaisagem } from "../core/lances";
 import { Botao, Painel, CabecalhoPagina, Secao, Chip } from "../components/ui";
 import { IconeCamera } from "../components/icones";
 
@@ -70,10 +70,14 @@ function TelaLances({ perfil, avisar }) {
   const [lances, setLances] = useState([]);
   const [verUrl, setVerUrl] = useState(null);
   const [avisoModo, setAvisoModo] = useState(null); // toast curto dentro do modo gravação
+  const [girado, setGirado] = useState(false); // true = stream passa pelo canvas p/ virar paisagem
+  const [sentidoGiro, setSentidoGiro] = useState(1); // 1 ou -1 — qual lado girar
 
   const videoRef = useRef(null);
   const telaRef = useRef(null);
-  const streamRef = useRef(null);
+  const streamRef = useRef(null); // o stream que alimenta preview + gravador (já corrigido)
+  const streamOrigRef = useRef(null); // stream cru da câmera
+  const wrapperRef = useRef(null); // { stream, ehCanvas, parar }
   const gravadorRef = useRef(null);
   const canalRef = useRef(null);
   const capturasRef = useRef(new Map()); // id -> { tipo, clipe: Promise<Blob>|Blob }
@@ -228,18 +232,35 @@ function TelaLances({ perfil, avisar }) {
     });
   }
 
+  /* (re)monta wrapper de paisagem + gravador em cima do stream cru já aberto. */
+  function montarPipeline(sentido) {
+    try { gravadorRef.current?.parar(); } catch {}
+    try { wrapperRef.current?.parar(); } catch {}
+    const w = criarStreamPaisagem(streamOrigRef.current, sentido);
+    wrapperRef.current = w;
+    setGirado(w.ehCanvas);
+    streamRef.current = w.stream;
+    if (videoRef.current) {
+      videoRef.current.srcObject = w.stream;
+      videoRef.current.play?.().catch(() => {});
+    }
+    const g = criarGravador(w.stream, { aoMudarEstado: setEstGrav });
+    gravadorRef.current = g;
+    g.iniciar();
+  }
+
+  function girarVideo() {
+    const novo = sentidoGiro === 1 ? -1 : 1;
+    setSentidoGiro(novo);
+    if (streamOrigRef.current) montarPipeline(novo);
+  }
+
   async function ligarCamera() {
     setErro(null);
     try {
-      const stream = await abrirCamera();
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play?.().catch(() => {});
-      }
-      const g = criarGravador(stream, { aoMudarEstado: setEstGrav });
-      gravadorRef.current = g;
-      g.iniciar();
+      const orig = await abrirCamera();
+      streamOrigRef.current = orig;
+      montarPipeline(sentidoGiro);
       await conectarCanal();
       setLigada(true);
     } catch (e) {
@@ -260,12 +281,17 @@ function TelaLances({ perfil, avisar }) {
     soltarWakeLock();
     try { gravadorRef.current?.parar(); } catch {}
     gravadorRef.current = null;
+    try { wrapperRef.current?.parar(); } catch {}
+    wrapperRef.current = null;
+    try { streamOrigRef.current?.getTracks().forEach((t) => t.stop()); } catch {}
+    streamOrigRef.current = null;
     if (canalRef.current) { supabase.removeChannel(canalRef.current); canalRef.current = null; }
     if (videoRef.current) videoRef.current.srcObject = null;
     streamRef.current = null;
     capturasRef.current.clear();
     setLigada(false);
     setConectado(false);
+    setGirado(false);
     setPendentes([]);
   }
 
@@ -359,12 +385,15 @@ function TelaLances({ perfil, avisar }) {
         </Painel>
       )}
 
-      {ligada && estGrav.retrato && (
-        <Painel className="p-3" style={{ borderColor: T.laranja, background: "rgba(255,165,61,.1)" }}>
-          <p style={{ fontSize: 12, color: T.laranja }}>
-            A câmera veio “em pé” ({estGrav.largura}×{estGrav.altura}) — o clipe vai sair vertical.
-            Deite o celular na horizontal, desligue a trava de rotação do aparelho e ligue a câmera de novo.
+      {ligada && girado && (
+        <Painel className="p-3" style={{ borderColor: T.gk, background: "rgba(59,147,238,.1)" }}>
+          <p style={{ fontSize: 12, color: T.gk }}>
+            A câmera do aparelho veio “em pé”, então o vídeo está sendo <b>girado pra paisagem</b> automaticamente.
+            Se a prévia estiver de cabeça pra baixo ou de lado, toque em <b>Girar vídeo</b>.
           </p>
+          <Botao variante="secundario" className="mt-2" onClick={girarVideo} style={{ minHeight: 40, fontSize: 11 }}>
+            Girar vídeo
+          </Botao>
         </Painel>
       )}
 
