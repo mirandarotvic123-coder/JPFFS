@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { T } from "../theme";
 import { corDe, AMARELO, AZUL } from "../theme";
 import {
@@ -1020,6 +1020,8 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
   const [pendenteVaga, setPendenteVaga] = useState({});
   const [cartoesAbertos, setCartoesAbertos] = useState({});
   const [aberta, setAberta] = useState(!jogo.encerrado); // partidas já encerradas começam recolhidas
+  const [camerasAtivas, setCamerasAtivas] = useState(false); // gravação de lances desta partida
+  const gatilhoLancesRef = useRef(null);
   const tA = timePorId(rodada, jogo.timeA), tB = timePorId(rodada, jogo.timeB);
   const p = placarDe(jogo, rodada);
   const soCartoes = new Set([...(jogo.completaTime || []), ...(jogo.soCartoes || [])]);
@@ -1131,7 +1133,11 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
                     <button onClick={() => !soCartao && setEvento(jid, campo, -1)} style={{ padding: "4px 6px", color: T.fraco, fontSize: 15 }}>−</button>
                     <span style={{ fontSize: 9, color: T.fraco }}>{rot}</span>
                     <span style={{ width: 12, textAlign: "center", fontSize: 12.5, fontWeight: 800, color: T.texto }}>{bruto[campo]}</span>
-                    <button onClick={() => !soCartao && setEvento(jid, campo, 1)} style={{ padding: "4px 6px", color: T.ouro, fontSize: 15 }}>+</button>
+                    <button onClick={() => {
+                      if (soCartao) return;
+                      setEvento(jid, campo, 1);
+                      if (campo === "gols" && camerasAtivas) gatilhoLancesRef.current?.golMarcado(jid, jog[jid]?.nome);
+                    }} style={{ padding: "4px 6px", color: T.ouro, fontSize: 15 }}>+</button>
                   </div>
                 ))}
               </div>
@@ -1282,10 +1288,12 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
             <div className="px-3 py-2" style={{ borderTop: `1px solid ${T.borda}` }}>
               <LimiteErro>
                 <GatilhoLancesCampeonato
+                  ref={gatilhoLancesRef}
                   partidaId={`camp-${rodada.id}-${jogo.id}`}
                   partidaRotulo={`Rodada ${rodada.numero} · Partida ${jogo.numero}`}
                   jogadores={[...idsDoTime(tA), ...idsDoTime(tB)].map((jid) => ({ id: jid, nome: jog[jid]?.nome }))}
-                  onRegistrarGol={(jid) => setEvento(jid, "gols", 1)}
+                  ativo={camerasAtivas}
+                  setAtivo={setCamerasAtivas}
                   souOrganizador
                   avisar={avisar}
                 />

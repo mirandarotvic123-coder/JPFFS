@@ -1,35 +1,41 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef } from "react";
 import { supabase } from "../../supabase";
 import { T } from "../../theme";
 import { id as gerarId } from "../../core/repositorio";
 import { Botao, Painel } from "../../components/ui";
 
 /* ================== GATILHO DE LANCES — CAMPEONATO =====================
- * Segue a doc, seção 3:
- *   - "Gol": o organizador indica quem marcou → isso registra o gol de
- *     verdade (mesma via da súmula, via onRegistrarGol) → câmeras gravam →
- *     pergunta "Quer gravar esse gol? Sim/Não". Não = gol continua valendo,
- *     só o vídeo é descartado.
- *   - "Lance": dribles/defesas/falhas — só vídeo, NÃO mexe em estatística.
- *     Escolhe jogador (ou "sem jogador") e confirma.
+ * Segue a doc, seção 3.
  *
- * ISOLAMENTO: o canal Realtime e os broadcasts são try/catch e o único
- * efeito no jogo é `onRegistrarGol(jid)` — que é exatamente o mesmo
- * `setEvento(jid,"gols",+1)` que o botão +/- da súmula já usa. Envolver em
- * <LimiteErro>. O canal só abre quando o organizador ativa as câmeras.
+ * GOL: registrar o gol é o botão "+" do jogador na própria súmula (uma via
+ * só, sem confusão). Quando as câmeras estão ativas, esse "+" chama
+ * `golMarcado(jid, nome)` aqui — que dispara a captura e mostra a pergunta
+ * "Quer guardar o vídeo? Sim/Não". Não = o gol continua valendo, só o
+ * vídeo é descartado.
+ *
+ * LANCE: dribles/defesas/falhas — só vídeo, jogador opcional, NÃO mexe em
+ * estatística. Botão próprio aqui no painel.
+ *
+ * ISOLAMENTO: canal e broadcasts são try/catch; este componente não toca em
+ * NADA do jogo (quem registra o gol é a súmula). Envolver em <LimiteErro>.
+ * O canal só abre quando o organizador ativa as câmeras da partida.
  * ===================================================================== */
 
 const CAMPO = { width: "100%", background: T.tier2, border: `1px solid ${T.tier4}`, borderRadius: 8, padding: "10px", color: T.texto, fontSize: 14 };
 
-function GatilhoLancesCampeonato({ partidaId, partidaRotulo, jogadores = [], onRegistrarGol, souOrganizador, avisar }) {
+const GatilhoLancesCampeonato = forwardRef(function GatilhoLancesCampeonato(
+  { partidaId, partidaRotulo, jogadores = [], ativo, setAtivo, souOrganizador, avisar },
+  ref
+) {
   const canalRef = useRef(null);
-  const [ativo, setAtivo] = useState(false);
   const [conectado, setConectado] = useState(false);
-  const [fluxo, setFluxo] = useState(null); // null | "gol-quem" | "gol-gravar" | "lance-classificar"
+  const [fluxo, setFluxo] = useState(null); // null | "gol-gravar" | "lance-classificar"
   const [capturaId, setCapturaId] = useState(null);
+  const [golDe, setGolDe] = useState(null); // nome do jogador do gol
   const [jogadorId, setJogadorId] = useState("");
-  const [golDe, setGolDe] = useState(null); // { jid, nome }
   const [copiado, setCopiado] = useState(false);
+  const fluxoRef = useRef(null);
+  useEffect(() => { fluxoRef.current = fluxo; }, [fluxo]);
 
   useEffect(() => {
     if (!ativo || !partidaId) return;
@@ -54,9 +60,21 @@ function GatilhoLancesCampeonato({ partidaId, partidaRotulo, jogadores = [], onR
     catch (e) { console.warn("Lances: falha ao enviar sinal (sem efeito no jogo):", e); }
   }
 
+  /* chamado pela súmula quando alguém marca um gol (botão "+"). */
+  useImperativeHandle(ref, () => ({
+    golMarcado(jid, nome) {
+      if (!canalRef.current || fluxoRef.current) return; // sem canal ou já tem captura em curso
+      const cid = gerarId();
+      setCapturaId(cid);
+      setGolDe(nome || null);
+      setFluxo("gol-gravar");
+      enviar("disparo", { id: cid, modalidade: "campeonato", partidaRotulo });
+      avisar?.(`Gravando o gol${nome ? " de " + nome : ""}…`);
+    },
+  }));
+
   const jogadoresOrd = [...jogadores].sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR"));
 
-  function abrirGol() { setJogadorId(""); setGolDe(null); setFluxo("gol-quem"); }
   function abrirLance() {
     const cid = gerarId();
     setCapturaId(cid);
@@ -66,26 +84,13 @@ function GatilhoLancesCampeonato({ partidaId, partidaRotulo, jogadores = [], onR
     avisar?.("Gravando lance…");
   }
 
-  function confirmarGolQuem() {
-    if (!jogadorId) return;
-    const nome = jogadoresOrd.find((j) => j.id === jogadorId)?.nome || null;
-    // registra o gol de verdade (mesma via da súmula) — vale pra pontuação/artilharia
-    try { onRegistrarGol?.(jogadorId); } catch (e) { console.error("Lances: onRegistrarGol falhou:", e); }
-    const cid = gerarId();
-    setCapturaId(cid);
-    setGolDe({ jid: jogadorId, nome });
-    setFluxo("gol-gravar");
-    enviar("disparo", { id: cid, modalidade: "campeonato", partidaRotulo });
-    avisar?.(`Gol de ${nome || "?"} registrado — gravando…`);
-  }
-
   function decidirGravarGol(sim) {
     if (capturaId) {
       enviar("decisao", sim
-        ? { id: capturaId, acao: "salvar", tipo: "gol", jogadorNome: golDe?.nome || null }
+        ? { id: capturaId, acao: "salvar", tipo: "gol", jogadorNome: golDe || null }
         : { id: capturaId, acao: "descartar" });
     }
-    if (!sim) avisar?.("Vídeo descartado — o gol continua valendo");
+    avisar?.(sim ? "Vídeo do gol guardado" : "Vídeo descartado — o gol continua valendo");
     fechar();
   }
 
@@ -101,7 +106,6 @@ function GatilhoLancesCampeonato({ partidaId, partidaRotulo, jogadores = [], onR
     if (capturaId) enviar("decisao", { id: capturaId, acao: "descartar" });
     fechar();
   }
-
   function fechar() { setFluxo(null); setCapturaId(null); setGolDe(null); setJogadorId(""); }
 
   function copiarLink() {
@@ -131,39 +135,24 @@ function GatilhoLancesCampeonato({ partidaId, partidaRotulo, jogadores = [], onR
 
       {fluxo === null && (
         <>
-          <div className="grid grid-cols-2 gap-2">
-            <Botao onClick={abrirGol} disabled={!conectado} style={{ minHeight: 50 }}>Gol</Botao>
-            <Botao variante="secundario" onClick={abrirLance} disabled={!conectado} style={{ minHeight: 50 }}>Lance</Botao>
-          </div>
+          <Botao variante="secundario" className="w-full" onClick={abrirLance} disabled={!conectado} style={{ minHeight: 46 }}>
+            Gravar lance (drible, defesa…)
+          </Botao>
           {souOrganizador && (
             <Botao variante="secundario" className="w-full" onClick={copiarLink} style={{ minHeight: 36, fontSize: 10.5 }}>
               {copiado ? "Link copiado ✓" : "Copiar link de câmera desta partida"}
             </Botao>
           )}
           <p style={{ fontSize: 10, color: T.fraco, lineHeight: 1.4 }}>
-            <b>Gol</b> registra o gol na súmula + grava o vídeo. <b>Lance</b> é só vídeo, não mexe em nada da pontuação.
+            Câmeras ligadas: ao marcar um gol no <b>+</b> do jogador, as câmeras gravam e aparece aqui a pergunta de guardar o vídeo.
           </p>
         </>
-      )}
-
-      {fluxo === "gol-quem" && (
-        <div className="space-y-2">
-          <p style={{ fontSize: 11.5, color: T.secundario }}>Quem marcou?</p>
-          <select value={jogadorId} onChange={(e) => setJogadorId(e.target.value)} style={CAMPO}>
-            <option value="">— escolher jogador —</option>
-            {jogadoresOrd.map((j) => <option key={j.id} value={j.id}>{j.nome || "?"}</option>)}
-          </select>
-          <div className="grid grid-cols-2 gap-2">
-            <Botao onClick={confirmarGolQuem} disabled={!jogadorId} style={{ minHeight: 44 }}>Registrar gol</Botao>
-            <Botao variante="secundario" onClick={fechar} style={{ minHeight: 44 }}>Cancelar</Botao>
-          </div>
-        </div>
       )}
 
       {fluxo === "gol-gravar" && (
         <div className="space-y-2">
           <p style={{ fontSize: 11.5, color: T.verde }}>
-            Gol de <b>{golDe?.nome || "?"}</b> registrado. Câmeras capturando os ~20s.
+            Gol{golDe ? <> de <b>{golDe}</b></> : ""} registrado. Câmeras capturando os ~20s.
           </p>
           <p style={{ fontSize: 11.5, color: T.secundario }}>Quer guardar o vídeo desse gol?</p>
           <div className="grid grid-cols-2 gap-2">
@@ -188,6 +177,6 @@ function GatilhoLancesCampeonato({ partidaId, partidaRotulo, jogadores = [], onR
       )}
     </Painel>
   );
-}
+});
 
 export { GatilhoLancesCampeonato };
