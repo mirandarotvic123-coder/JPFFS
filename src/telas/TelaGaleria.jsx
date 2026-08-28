@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import { supabase } from "../supabase";
 import { T } from "../theme";
 import { listarLances, excluirLance } from "../core/repositorio";
-import { Botao, Painel, CabecalhoPagina, Segmento } from "../components/ui";
+import { Painel, CabecalhoPagina, Segmento } from "../components/ui";
 import { ListaClipes } from "./lances/ListaClipes";
 
 /* =============================== TELA: GALERIA ===========================
@@ -38,7 +38,6 @@ function TelaGaleria({ perfil, avisar }) {
   const [lances, setLances] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(null);
-  const [copiado, setCopiado] = useState(false);
   const timerRef = useRef(null);
   const modalidadeRef = useRef(modalidade);
   useEffect(() => { modalidadeRef.current = modalidade; }, [modalidade]);
@@ -120,14 +119,6 @@ function TelaGaleria({ perfil, avisar }) {
     }
   }
 
-  function copiarLinkCamera() {
-    const url = `${window.location.origin}${window.location.pathname}?camera=1`;
-    navigator.clipboard?.writeText(url).then(
-      () => { setCopiado(true); setTimeout(() => setCopiado(false), 2500); },
-      () => setErro("Não consegui copiar. O link é: " + url)
-    );
-  }
-
   const temFiltro = tipoF !== "todos" || jogadorF;
 
   return (
@@ -149,18 +140,6 @@ function TelaGaleria({ perfil, avisar }) {
           {jogadoresComClipe.map((n) => <option key={n} value={n}>{n}</option>)}
         </select>
       </div>
-
-      {souOrganizador && (
-        <Painel className="p-3">
-          <p style={{ fontSize: 11.5, color: T.secundario, lineHeight: 1.4 }}>
-            Pra usar um celular como câmera de teste, mande este link pra quem vai disponibilizar o aparelho
-            (precisa ter login aprovado). No Rachão/Campeonato, o link certo da partida sai na própria tela dela.
-          </p>
-          <Botao variante="secundario" className="mt-2 w-full" onClick={copiarLinkCamera} style={{ minHeight: 42, fontSize: 11 }}>
-            {copiado ? "Link copiado ✓" : "Copiar link de câmera (teste)"}
-          </Botao>
-        </Painel>
-      )}
 
       {carregando ? (
         <p style={{ padding: 12, textAlign: "center", fontSize: 12, color: T.fraco }}>Carregando…</p>
