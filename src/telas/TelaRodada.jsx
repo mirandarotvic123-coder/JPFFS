@@ -14,6 +14,8 @@ import {
 } from "../components/ui";
 import { IconeSetaDireita, IconeTrofeu } from "../components/icones";
 import { Historico } from "./TelaConfig";
+import { LimiteErro } from "../components/LimiteErro";
+import { GatilhoLances } from "./lances/GatilhoLances";
 
 /* =========================== TELA: RODADA ================================*/
 
@@ -1275,6 +1277,21 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
           <div className="grid grid-cols-2 gap-2 px-2 py-2" style={{ borderTop: `1px solid ${T.borda}` }}>
             <Coluna time={tA} lado="A" /><Coluna time={tB} lado="B" />
           </div>
+
+          {!jogo.encerrado && (
+            <div className="px-3 py-2" style={{ borderTop: `1px solid ${T.borda}` }}>
+              <LimiteErro>
+                <GatilhoLances
+                  partidaId={`camp-${rodada.id}-${jogo.id}`}
+                  partidaRotulo={`Rodada ${rodada.numero} · Partida ${jogo.numero}`}
+                  modalidade="campeonato"
+                  jogadores={[...idsDoTime(tA), ...idsDoTime(tB)].map((jid) => ({ id: jid, nome: jog[jid]?.nome }))}
+                  souOrganizador
+                  avisar={avisar}
+                />
+              </LimiteErro>
+            </div>
+          )}
 
           <div className="p-3" style={{ borderTop: `1px solid ${T.borda}` }}>
             <Botao variante={jogo.encerrado ? "secundario" : "primario"} className="w-full"

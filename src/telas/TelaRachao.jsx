@@ -12,7 +12,7 @@ import {
   Contador, FaixaPartida, SecaoRecolhivel,
 } from "../components/ui";
 import { LimiteErro } from "../components/LimiteErro";
-import { GatilhoLancesRachao } from "./lances/GatilhoLancesRachao";
+import { GatilhoLances } from "./lances/GatilhoLances";
 
 /* =========================== TELA: RACHÃO =================================
  * Fila por ordem de chegada, times Amarelo × Azul, vencedor fica em quadra
@@ -26,6 +26,14 @@ import { GatilhoLancesRachao } from "./lances/GatilhoLancesRachao";
  * verdade quando alguém aperta "Encerrar jogos do Rachão".               */
 
 const CHAVE_RACHAO = "jpffs:rachao";
+
+function rotuloRachao(data) {
+  try {
+    return "Rachão · " + new Date(data + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
+  } catch {
+    return "Rachão";
+  }
+}
 
 function carregarRachaoLocal() {
   try {
@@ -82,7 +90,14 @@ function TelaRachao({ base, avisar }) {
 
         <QuadraAoVivo {...{ sessao, atualizar: setSessao, avisar, nomes }} />
         <LimiteErro>
-          <GatilhoLancesRachao {...{ sessao, nomes, souOrganizador: true, avisar }} />
+          <GatilhoLances
+            partidaId={`rachao-${sessao.id}`}
+            partidaRotulo={rotuloRachao(sessao.data)}
+            modalidade="rachao"
+            jogadores={[...new Set([...sessao.linha, ...sessao.goleiros])].map((jid) => ({ id: jid, nome: nomes[jid] }))}
+            souOrganizador
+            avisar={avisar}
+          />
         </LimiteErro>
         <ProximosTimesPainel {...{ sessao, nomes }} />
         <FilaEConvidados {...{ sessao, atualizar: setSessao, avisar, base, convidados, setConvidados, nomes, ordemIdx, setOrdemIdx, proximoIdx }} />

@@ -4,30 +4,22 @@ import { T } from "../../theme";
 import { id as gerarId } from "../../core/repositorio";
 import { Botao, Painel, Segmento } from "../../components/ui";
 
-/* ===================== GATILHO DE LANCES — RACHÃO =======================
- * Botão "Gravar lance" na tela do Rachão. Dispara a gravação nas câmeras
- * (canal Realtime da partida do dia) e classifica o lance.
+/* ===================== GATILHO DE LANCES (genérico) =====================
+ * Botão que dispara a gravação nas câmeras de uma partida e classifica o
+ * lance. Serve pro Rachão e pro Campeonato — só muda partidaId / rótulo /
+ * modalidade / lista de jogadores.
  *
- * ISOLAMENTO: tudo aqui é try/catch e não toca em NADA do jogo. Se o
- * Realtime cair, o botão simplesmente não faz efeito — a fila, o placar e o
- * resultado do Rachão seguem 100% normais. Este componente pode ser
- * removido inteiro sem afetar o resto da tela.
+ * ISOLAMENTO: tudo é try/catch e NÃO toca em nada do jogo (fila, placar,
+ * súmula, resultado). Se o Realtime cair, o botão só fica sem efeito. Pode
+ * ser removido inteiro sem afetar o resto da tela. Envolver em <LimiteErro>.
+ *
+ * O canal Realtime só é aberto quando o organizador "ativa" as câmeras
+ * desta partida — assim uma rodada com 4 súmulas não abre 4 canais à toa.
  * ====================================================================== */
 
-function rotuloDoDia(data) {
-  try {
-    return "Rachão · " + new Date(data + "T12:00:00").toLocaleDateString("pt-BR", {
-      weekday: "long", day: "2-digit", month: "long",
-    });
-  } catch {
-    return "Rachão";
-  }
-}
-
-function GatilhoLancesRachao({ sessao, nomes, souOrganizador, avisar }) {
-  const partidaId = `rachao-${sessao?.id || "sem-id"}`;
-  const rotulo = rotuloDoDia(sessao?.data);
+function GatilhoLances({ partidaId, partidaRotulo, modalidade, jogadores = [], souOrganizador, avisar }) {
   const canalRef = useRef(null);
+  const [ativo, setAtivo] = useState(false); // canal aberto?
   const [conectado, setConectado] = useState(false);
   const [aberto, setAberto] = useState(false); // painel de classificação
   const [capturaId, setCapturaId] = useState(null);
@@ -36,21 +28,22 @@ function GatilhoLancesRachao({ sessao, nomes, souOrganizador, avisar }) {
   const [copiado, setCopiado] = useState(false);
 
   useEffect(() => {
-    if (!sessao?.id) return;
+    if (!ativo || !partidaId) return;
     let vivo = true;
     try {
       const canal = supabase.channel(`lances:${partidaId}`, { config: { broadcast: { self: false } } });
       canal.subscribe((status) => { if (vivo && status === "SUBSCRIBED") setConectado(true); });
       canalRef.current = canal;
     } catch (e) {
-      console.warn("Lances: canal do Rachão não abriu (sem efeito no jogo):", e);
+      console.warn("Lances: canal não abriu (sem efeito no jogo):", e);
     }
     return () => {
       vivo = false;
+      setConectado(false);
       try { if (canalRef.current) supabase.removeChannel(canalRef.current); } catch {}
       canalRef.current = null;
     };
-  }, [sessao?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ativo, partidaId]);
 
   function enviar(evento, payload) {
     try { canalRef.current?.send({ type: "broadcast", event: evento, payload }); }
@@ -63,19 +56,16 @@ function GatilhoLancesRachao({ sessao, nomes, souOrganizador, avisar }) {
     setTipo("gol");
     setJogadorId("");
     setAberto(true);
-    enviar("disparo", { id: cid, modalidade: "rachao", partidaRotulo: rotulo });
+    enviar("disparo", { id: cid, modalidade, partidaRotulo });
     avisar?.("Gravando lance…");
   }
 
   function confirmar() {
-    if (!capturaId) return;
-    enviar("decisao", {
-      id: capturaId,
-      acao: "salvar",
-      tipo,
-      jogadorNome: jogadorId ? nomes?.[jogadorId] || null : null,
-    });
-    avisar?.("Lance salvo — as câmeras estão enviando");
+    if (capturaId) {
+      const nome = jogadorId ? (jogadores.find((j) => j.id === jogadorId)?.nome || null) : null;
+      enviar("decisao", { id: capturaId, acao: "salvar", tipo, jogadorNome: nome });
+      avisar?.("Lance salvo — as câmeras estão enviando");
+    }
     fechar();
   }
 
@@ -84,22 +74,25 @@ function GatilhoLancesRachao({ sessao, nomes, souOrganizador, avisar }) {
     fechar();
   }
 
-  function fechar() {
-    setAberto(false);
-    setCapturaId(null);
-  }
+  function fechar() { setAberto(false); setCapturaId(null); }
 
   function copiarLink() {
-    const url = `${window.location.origin}${window.location.pathname}?camera=1&p=${encodeURIComponent(partidaId)}&r=${encodeURIComponent(rotulo)}`;
+    const url = `${window.location.origin}${window.location.pathname}?camera=1&p=${encodeURIComponent(partidaId)}&r=${encodeURIComponent(partidaRotulo || "")}`;
     navigator.clipboard?.writeText(url).then(
       () => { setCopiado(true); setTimeout(() => setCopiado(false), 2500); },
       () => avisar?.("Não copiou. Link: " + url)
     );
   }
 
-  const presentes = [...(sessao?.linha || []), ...(sessao?.goleiros || [])]
-    .filter((v, i, a) => a.indexOf(v) === i)
-    .sort((a, b) => (nomes?.[a] || "").localeCompare(nomes?.[b] || "", "pt-BR"));
+  if (!ativo) {
+    return (
+      <Botao variante="secundario" className="w-full" onClick={() => setAtivo(true)} style={{ minHeight: 40, fontSize: 10.5 }}>
+        Ativar câmeras desta partida
+      </Botao>
+    );
+  }
+
+  const jogadoresOrd = [...jogadores].sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR"));
 
   return (
     <Painel className="space-y-2 p-3" style={{ borderColor: T.tier4 }}>
@@ -107,18 +100,18 @@ function GatilhoLancesRachao({ sessao, nomes, souOrganizador, avisar }) {
         <span className="font-destaque" style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: T.ouro }}>
           Câmeras
         </span>
-        <span style={{ fontSize: 10, color: conectado ? T.verde : T.fraco }}>
-          {conectado ? "conectado" : "conectando…"}
-        </span>
+        <button onClick={() => setAtivo(false)} style={{ fontSize: 10, color: conectado ? T.verde : T.fraco }}>
+          {conectado ? "conectado ✕" : "conectando…"}
+        </button>
       </div>
 
       {!aberto ? (
         <>
-          <Botao className="w-full" onClick={gravarLance} disabled={!conectado} style={{ minHeight: 52 }}>
+          <Botao className="w-full" onClick={gravarLance} disabled={!conectado} style={{ minHeight: 50 }}>
             Gravar lance
           </Botao>
           {souOrganizador && (
-            <Botao variante="secundario" className="w-full" onClick={copiarLink} style={{ minHeight: 38, fontSize: 10.5 }}>
+            <Botao variante="secundario" className="w-full" onClick={copiarLink} style={{ minHeight: 36, fontSize: 10.5 }}>
               {copiado ? "Link copiado ✓" : "Copiar link de câmera desta partida"}
             </Botao>
           )}
@@ -133,7 +126,7 @@ function GatilhoLancesRachao({ sessao, nomes, souOrganizador, avisar }) {
           <select value={jogadorId} onChange={(e) => setJogadorId(e.target.value)}
             style={{ width: "100%", background: T.tier2, border: `1px solid ${T.tier4}`, borderRadius: 8, padding: "10px", color: T.texto, fontSize: 14 }}>
             <option value="">— sem jogador —</option>
-            {presentes.map((jid) => <option key={jid} value={jid}>{nomes?.[jid] || "?"}</option>)}
+            {jogadoresOrd.map((j) => <option key={j.id} value={j.id}>{j.nome || "?"}</option>)}
           </select>
           <div className="grid grid-cols-2 gap-2">
             <Botao onClick={confirmar} style={{ minHeight: 44 }}>Salvar</Botao>
@@ -145,4 +138,4 @@ function GatilhoLancesRachao({ sessao, nomes, souOrganizador, avisar }) {
   );
 }
 
-export { GatilhoLancesRachao };
+export { GatilhoLances };
