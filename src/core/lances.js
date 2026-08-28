@@ -49,12 +49,16 @@ export function cameraDisponivel() {
   );
 }
 
+/* Pede VERTICAL (retrato) — os celulares-câmera ficam em pé e a ideia é que o
+ * clipe já saia pronto pra postar em stories/reels. iPhone segurado em pé já dá
+ * retrato; as constraints abaixo ajudam o Android a não vir deitado. */
 export async function abrirCamera() {
   return navigator.mediaDevices.getUserMedia({
     video: {
       facingMode: { ideal: "environment" },
-      width: { ideal: 1280 },
-      height: { ideal: 720 },
+      width: { ideal: 720 },
+      height: { ideal: 1280 },
+      aspectRatio: { ideal: 9 / 16 },
       frameRate: { ideal: 30 },
     },
     audio: true,
@@ -83,12 +87,16 @@ export function criarGravador(stream, { aoMudarEstado } = {}) {
   function estado() {
     const ativos = canais.filter(gravando);
     const maisVelho = ativos.length ? Math.max(...ativos.map(idade)) : 0;
+    const s = stream.getVideoTracks()[0]?.getSettings?.() || {};
     return {
       rodando,
       bufferSegundos: Math.min(Math.round(JANELA_MS / 1000), Math.round(maisVelho / 1000)),
       capturando: idCaptura != null,
       formato: mime,
       ext,
+      largura: s.width || 0,
+      altura: s.height || 0,
+      retrato: !!(s.width && s.height && s.height > s.width), // câmera "em pé"
     };
   }
 

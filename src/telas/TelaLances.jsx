@@ -62,7 +62,7 @@ function TelaLances({ perfil, avisar }) {
   const [ligada, setLigada] = useState(false);
   const [modoGravacao, setModoGravacao] = useState(false);
   const [erro, setErro] = useState(null);
-  const [estGrav, setEstGrav] = useState({ rodando: false, bufferSegundos: 0, capturando: false, formato: "" });
+  const [estGrav, setEstGrav] = useState({ rodando: false, bufferSegundos: 0, capturando: false, formato: "", largura: 0, altura: 0, retrato: false });
   const [conectado, setConectado] = useState(false);
   const [angulo, setAngulo] = useState(1);
   const [numCameras, setNumCameras] = useState(1);
@@ -297,41 +297,63 @@ function TelaLances({ perfil, avisar }) {
     );
   }
 
-  /* ---------- Modo gravação (tela cheia) -------------------------------- */
+  /* ---------- Modo gravação (tela cheia) --------------------------------
+   * Otimizado pro celular EM PÉ (vídeo vertical): o <video> cobre a tela toda
+   * e todo o HUD fica dentro das margens seguras (notch/barra), pra nada ser
+   * cortado. */
   if (modoGravacao && ligada) {
+    const resTxt = estGrav.largura > 0
+      ? `${estGrav.largura}×${estGrav.altura} · ${estGrav.retrato ? "vertical" : "deitado"}`
+      : null;
     return (
-      <div ref={telaRef} style={{ position: "fixed", inset: 0, zIndex: 60, background: "#000" }}>
+      <div ref={telaRef} style={{ position: "fixed", inset: 0, zIndex: 60, background: "#000", overflow: "hidden" }}>
         <video ref={videoRef} muted playsInline autoPlay
           style={{ width: "100%", height: "100%", objectFit: "cover" }} />
 
-        <div style={{ position: "absolute", top: "calc(env(safe-area-inset-top, 0px) + 10px)", left: 12, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-          <span style={pilula}>
-            <span style={{ width: 8, height: 8, borderRadius: 999, background: estGrav.capturando ? T.laranja : T.vermelho }} />
-            {estGrav.capturando ? "CAPTURANDO" : "REC"}
-          </span>
-          <span style={pilula}>ÂNGULO {angulo}/{numCameras}</span>
-          <span style={{ ...pilula, color: conectado ? "#fff" : T.laranja }}>
-            {conectado ? `buffer ${estGrav.bufferSegundos}s` : "reconectando…"}
-          </span>
+        {/* barra superior: infos à esquerda, Sair à direita — respeita as margens seguras */}
+        <div style={{
+          position: "absolute", top: 0, left: 0, right: 0,
+          paddingTop: "calc(env(safe-area-inset-top, 0px) + 10px)",
+          paddingLeft: "calc(env(safe-area-inset-left, 0px) + 12px)",
+          paddingRight: "calc(env(safe-area-inset-right, 0px) + 12px)",
+          display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8,
+        }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", minWidth: 0 }}>
+            <span style={pilula}>
+              <span style={{ width: 8, height: 8, borderRadius: 999, background: estGrav.capturando ? T.laranja : T.vermelho }} />
+              {estGrav.capturando ? "CAPTURANDO" : "REC"}
+            </span>
+            <span style={pilula}>ÂNGULO {angulo}/{numCameras}</span>
+            <span style={{ ...pilula, color: conectado ? "#fff" : T.laranja }}>
+              {conectado ? `buffer ${estGrav.bufferSegundos}s` : "reconectando…"}
+            </span>
+            {resTxt && <span style={{ ...pilula, color: estGrav.retrato ? T.verde : T.laranja }}>{resTxt}</span>}
+          </div>
+          <button onClick={() => setModoGravacao(false)}
+            style={{ ...pilula, background: "rgba(0,0,0,.7)", padding: "8px 14px", fontSize: 12, flexShrink: 0 }}>
+            ✕ Sair
+          </button>
         </div>
 
-        <button
-          onClick={() => setModoGravacao(false)}
-          style={{ position: "absolute", top: "calc(env(safe-area-inset-top, 0px) + 10px)", right: 12, ...pilula, background: "rgba(0,0,0,.65)", padding: "8px 14px", fontSize: 12 }}>
-          ✕ Sair
-        </button>
-
         {estGrav.capturando && (
-          <div style={{ position: "absolute", top: 0, left: 0, right: 0, display: "flex", justifyContent: "center", pointerEvents: "none" }}>
-            <span style={{ marginTop: "calc(env(safe-area-inset-top, 0px) + 52px)", background: "rgba(255,165,61,.95)", color: T.sobreOuro, padding: "6px 18px", borderRadius: 999, fontWeight: 900, fontSize: 13, letterSpacing: ".02em" }}>
+          <div style={{
+            position: "absolute", left: 0, right: 0,
+            top: "calc(env(safe-area-inset-top, 0px) + 58px)",
+            display: "flex", justifyContent: "center", pointerEvents: "none",
+          }}>
+            <span style={{ background: "rgba(255,165,61,.95)", color: T.sobreOuro, padding: "6px 18px", borderRadius: 999, fontWeight: 900, fontSize: 13, letterSpacing: ".02em" }}>
               ● GRAVANDO LANCE
             </span>
           </div>
         )}
 
         {avisoModo && (
-          <div style={{ position: "absolute", left: 0, right: 0, bottom: "calc(env(safe-area-inset-bottom, 0px) + 24px)", display: "flex", justifyContent: "center", pointerEvents: "none" }}>
-            <span style={{ background: "rgba(0,0,0,.75)", color: "#fff", padding: "8px 18px", borderRadius: 999, fontWeight: 800, fontSize: 13 }}>{avisoModo}</span>
+          <div style={{
+            position: "absolute", left: 0, right: 0,
+            bottom: "calc(env(safe-area-inset-bottom, 0px) + 26px)",
+            display: "flex", justifyContent: "center", pointerEvents: "none",
+          }}>
+            <span style={{ background: "rgba(0,0,0,.78)", color: "#fff", padding: "8px 18px", borderRadius: 999, fontWeight: 800, fontSize: 13 }}>{avisoModo}</span>
           </div>
         )}
       </div>
@@ -343,7 +365,7 @@ function TelaLances({ perfil, avisar }) {
     <div className="space-y-4">
       <CabecalhoPagina
         titulo="Lances"
-        descricao="Modo de teste — clipes de ~20s vão para a partida “teste-camera” no bucket privado. Ligue a câmera, deixe o celular apoiado filmando o campo e use Gol/Lance para simular o sinal."
+        descricao="Modo de teste — clipes de ~20s vão para a partida “teste-camera” no bucket privado. Deixe o celular apoiado EM PÉ (vídeo vertical, pronto pra postar), ligue a câmera e use Gol/Lance para simular o sinal."
       />
 
       {erro && (
@@ -352,8 +374,17 @@ function TelaLances({ perfil, avisar }) {
         </Painel>
       )}
 
+      {ligada && estGrav.largura > 0 && !estGrav.retrato && (
+        <Painel className="p-3" style={{ borderColor: T.laranja, background: "rgba(255,165,61,.1)" }}>
+          <p style={{ fontSize: 12, color: T.laranja }}>
+            A câmera veio <b>deitada</b> ({estGrav.largura}×{estGrav.altura}) — o clipe não vai ficar pronto pra postar em stories.
+            Segure/apoie o celular <b>em pé</b>, com a trava de rotação ligada, e toque em Ligar câmera de novo.
+          </p>
+        </Painel>
+      )}
+
       <Painel className="overflow-hidden">
-        <div style={{ position: "relative", background: "#000", aspectRatio: "16 / 9" }}>
+        <div style={{ position: "relative", background: "#000", aspectRatio: "3 / 4", maxWidth: 300, margin: "0 auto" }}>
           <video
             ref={videoRef}
             muted
@@ -383,6 +414,14 @@ function TelaLances({ perfil, avisar }) {
             {ligada ? (
               <>
                 buffer {estGrav.bufferSegundos}s · {conectado ? "canal ok" : "conectando…"}
+                {estGrav.largura > 0 && (
+                  <>
+                    {" · "}
+                    <span style={{ color: estGrav.retrato ? T.verde : T.laranja, fontWeight: 700 }}>
+                      {estGrav.largura}×{estGrav.altura} {estGrav.retrato ? "(vertical)" : "(deitado)"}
+                    </span>
+                  </>
+                )}
                 {estGrav.formato ? ` · ${estGrav.formato.replace("video/", "")}` : ""}
               </>
             ) : (
@@ -403,7 +442,7 @@ function TelaLances({ perfil, avisar }) {
             Modo gravação (tela cheia)
           </Botao>
           <p style={{ marginTop: -6, fontSize: 10.5, color: T.fraco, lineHeight: 1.4 }}>
-            Deixa só o vídeo na tela e trava a tela acesa — é assim que os celulares-câmera ficam no jogo.
+            Só o vídeo na tela (em pé) e a tela travada acesa — é assim que os celulares-câmera ficam no jogo.
           </p>
 
           <Painel className="p-3">
