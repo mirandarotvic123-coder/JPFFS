@@ -8,6 +8,7 @@ import {
 } from "../core/regras";
 import { imagemEscalacoes, textoWhatsApp } from "../core/exportacao";
 import { id } from "../core/repositorio";
+import { lerCamerasAtivas, salvarCamerasAtivas } from "../core/lances";
 import {
   Botao, Painel, inputStyle, Campo, CabecalhoPagina, Secao, Segmento, SeloAtraso,
   CampoBusca, Estrelas, IconeGoleiro, Contador, FaixaPartida, Marcadores,
@@ -1020,7 +1021,9 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
   const [pendenteVaga, setPendenteVaga] = useState({});
   const [cartoesAbertos, setCartoesAbertos] = useState({});
   const [aberta, setAberta] = useState(!jogo.encerrado); // partidas já encerradas começam recolhidas
-  const [camerasAtivas, setCamerasAtivas] = useState(false); // gravação de lances desta partida
+  const partidaLancesId = `camp-${rodada.id}-${jogo.id}`;
+  const [camerasAtivas, setCamerasAtivas] = useState(() => lerCamerasAtivas(partidaLancesId)); // lembrado neste aparelho
+  useEffect(() => { salvarCamerasAtivas(partidaLancesId, camerasAtivas); }, [camerasAtivas, partidaLancesId]);
   const gatilhoLancesRef = useRef(null);
   const tA = timePorId(rodada, jogo.timeA), tB = timePorId(rodada, jogo.timeB);
   const p = placarDe(jogo, rodada);

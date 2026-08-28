@@ -40,6 +40,19 @@ export function formatosSuportados() {
   return cand.filter((t) => MR.isTypeSupported(t));
 }
 
+/* Câmeras "ativadas" pra uma partida ficam lembradas neste aparelho — assim o
+ * organizador não precisa reativar toda vez que sai e volta da tela. */
+export function lerCamerasAtivas(partidaId) {
+  try { return localStorage.getItem(`jpffs:cam:${partidaId}`) === "1"; }
+  catch { return false; }
+}
+export function salvarCamerasAtivas(partidaId, ativo) {
+  try {
+    if (ativo) localStorage.setItem(`jpffs:cam:${partidaId}`, "1");
+    else localStorage.removeItem(`jpffs:cam:${partidaId}`);
+  } catch { /* sem localStorage */ }
+}
+
 export function cameraDisponivel() {
   return (
     typeof navigator !== "undefined" &&

@@ -156,7 +156,9 @@ gratuito do Supabase dá só 1 GB de armazenamento, então os clipes são salvos
 
 Antes de tudo, na súmula da partida (aba **Rodada → Partidas**), toca-se em
 **"Ativar câmeras desta partida"**. Isso abre o canal Realtime só daquela
-partida. **(mudou)**
+partida. **(mudou)** — o aparelho **lembra** que aquela partida está com
+câmeras ativas: ao sair e voltar da tela não pede pra ativar de novo. Só volta
+a pedir se tocar em "conectado ✕" (desliga de propósito).
 
 ### 3.1. Gol — **(mudou)**
 
@@ -215,9 +217,12 @@ alterar esse processo.
 
 Aba **"Lances"** do sistema, disponível para qualquer usuário com login aprovado.
 
-### 5.1. Filtro por modalidade — **(mudou)**
+### 5.1. Filtros — **(mudou)**
 
-Um seletor no topo: **Rachão · Campeonato · Testes**.
+- **Modalidade** (seletor no topo): **Rachão · Campeonato**. (Não há mais aba
+  "Testes" — clipes de teste aparecem no Rachão, agrupados como "Teste".)
+- **Tipo**: Tudo · Gols · Lances.
+- **Jogador**: lista só com os jogadores que têm algum clipe atribuído.
 
 ### 5.2. Vídeos separados por ângulo
 
@@ -248,14 +253,18 @@ Tipo (Gol ou Lance) — Jogador (ou "sem jogador") — HH:mm — Ângulo (nº)
 
 ### 5.5. Acesso
 
-A galeria fica aberta para visualização a **qualquer usuário com login
-aprovado** — não há filtro adicional por papel.
+A galeria fica aberta a **qualquer usuário com login aprovado**. Todos podem
+**Ver** e **Baixar**; **só o organizador** vê o botão **"Apagar"** — e a regra
+do banco (RLS) barra exclusão de quem não for organizador mesmo que tente por
+fora. **(mudou)**
 
-O vídeo em si fica num **bucket privado**: o botão "Ver" gera um link temporário
-assinado. A câmera fica só no link `?camera=1` (não aparece no menu) para não
-virar bagunça. **(mudou)**
+- **Ver**: player em tela cheia (link temporário assinado — o bucket é privado).
+- **Baixar** — **(mudou)**: no celular usa o menu "compartilhar" do sistema
+  (tem "Salvar vídeo"); no computador baixa o arquivo direto, com nome tipo
+  `gol-joao-16-42-angulo-1.mp4`.
 
-O organizador tem um botão **"Apagar"** em cada clipe.
+A câmera fica só no link `?camera=1` (não aparece no menu) para não virar
+bagunça. **(mudou)**
 
 ---
 

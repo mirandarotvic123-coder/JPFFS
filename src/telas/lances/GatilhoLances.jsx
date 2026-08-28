@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { supabase } from "../../supabase";
 import { T } from "../../theme";
 import { id as gerarId } from "../../core/repositorio";
+import { lerCamerasAtivas, salvarCamerasAtivas } from "../../core/lances";
 import { Botao, Painel, Segmento } from "../../components/ui";
 
 /* ===================== GATILHO DE LANCES (genérico) =====================
@@ -19,8 +20,10 @@ import { Botao, Painel, Segmento } from "../../components/ui";
 
 function GatilhoLances({ partidaId, partidaRotulo, modalidade, jogadores = [], souOrganizador, avisar }) {
   const canalRef = useRef(null);
-  const [ativo, setAtivo] = useState(false); // canal aberto?
+  const [ativo, setAtivo] = useState(() => lerCamerasAtivas(partidaId)); // canal aberto? (lembrado neste aparelho)
   const [conectado, setConectado] = useState(false);
+
+  useEffect(() => { salvarCamerasAtivas(partidaId, ativo); }, [ativo, partidaId]);
   const [aberto, setAberto] = useState(false); // painel de classificação
   const [capturaId, setCapturaId] = useState(null);
   const [tipo, setTipo] = useState("gol");

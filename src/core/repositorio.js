@@ -170,6 +170,19 @@ async function urlAssinadaLance(caminhoStorage, segundos = 3600) {
   return data.signedUrl;
 }
 
+/* Nome de arquivo amigável pra baixar: "gol-douglas-22-43-angulo-1.mp4" */
+function nomeArquivoLance(l) {
+  const ext =
+    (l?.caminho_storage || "").split(".").pop()?.toLowerCase() ||
+    ((l?.formato || "").includes("mp4") ? "mp4" : "webm");
+  const slug = tituloLance(l)
+    .toLowerCase()
+    .normalize("NFD").replace(/\p{Diacritic}/gu, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+  return `${slug || "lance"}.${ext}`;
+}
+
 async function excluirLance(lance) {
   const { error: erroStorage } = await supabase.storage.from("lances").remove([lance.caminho_storage]);
   if (erroStorage) throw erroStorage;
@@ -212,5 +225,5 @@ function migrarBase(base) {
 export {
   carregarBase, salvarBase, enviarFotoJogador, id, migrarBase, buscarPerfil,
   listarPerfis, decidirPerfil,
-  enviarLance, listarLances, urlAssinadaLance, excluirLance, tituloLance,
+  enviarLance, listarLances, urlAssinadaLance, excluirLance, tituloLance, nomeArquivoLance,
 };
