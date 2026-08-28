@@ -8,6 +8,10 @@
 //      meio de uma rodada ao bater o teto).
 //
 // Roda a cada 30 min via Cron Job (ver 006-lances-prod.sql).
+// Responde na hora (200) e faz a limpeza em segundo plano com
+// EdgeRuntime.waitUntil — assim o timeout curto do Cron (máx. 5s) não é
+// problema.
+//
 // Apaga o ARQUIVO pelo Storage API e só depois a linha da tabela — se o
 // storage falhar, a linha fica e a próxima execução tenta de novo.
 //
@@ -23,15 +27,14 @@ const LOTE = 100;
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
-Deno.serve(async () => {
+async function limpar() {
   const url = Deno.env.get("SUPABASE_URL");
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!url || !key) return json({ erro: "faltam SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY" }, 500);
+  if (!url || !key) { console.error("faltam SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY"); return; }
 
   const sb = createClient(url, key, { auth: { persistSession: false } });
   let removidos = 0;
 
-  // apaga arquivo(s) do storage e, se der certo, as linhas
   async function expurgar(linhas: { id: string; caminho_storage: string }[]) {
     if (!linhas.length) return;
     const caminhos = linhas.map((l) => l.caminho_storage);
@@ -51,7 +54,7 @@ Deno.serve(async () => {
         .select("id, caminho_storage")
         .lt("criado_em", corte)
         .limit(LOTE);
-      if (error) return json({ erro: error.message }, 500);
+      if (error) { console.error(error.message); break; }
       if (!data || data.length === 0) break;
       await expurgar(data);
       if (data.length < LOTE) break;
@@ -77,9 +80,15 @@ Deno.serve(async () => {
       if (bytes <= ALVO_BYTES) break;
     }
 
-    return json({ ok: true, removidos, bytes_bucket: bytes });
+    console.log(`limpar-lances: removidos=${removidos} bytes_bucket=${bytes}`);
   } catch (e) {
-    console.error(e);
-    return json({ erro: String((e as Error)?.message || e) }, 500);
+    console.error("limpar-lances:", (e as Error)?.message || e);
   }
+}
+
+Deno.serve(() => {
+  // roda em segundo plano; responde na hora pro Cron não estourar o timeout
+  // @ts-ignore EdgeRuntime é fornecido pelo Supabase
+  EdgeRuntime.waitUntil(limpar());
+  return json({ ok: true, iniciado: true });
 });
