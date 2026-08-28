@@ -3,7 +3,7 @@ import { supabase } from "../supabase";
 import { T } from "../theme";
 import { CONFIG_PADRAO, placarDe } from "../core/regras";
 import { csvSumula, baixarArquivo } from "../core/exportacao";
-import { id, migrarBase, listarPerfis, decidirPerfil, excluirPerfil } from "../core/repositorio";
+import { id, migrarBase, listarPerfis, decidirPerfil } from "../core/repositorio";
 import { baseOficial } from "../data/baseOficial";
 import { Botao, Painel, inputStyle, Campo, CabecalhoPagina, SecaoRecolhivel } from "../components/ui";
 import {
@@ -133,7 +133,12 @@ const COR_STATUS = { pendente: T.laranja, aprovado: T.verde, recusado: T.vermelh
  * se cadastra sozinho ("Criar usuário" na tela de login) entra como
  * jogador/pendente e só aparece pra todo mundo depois que um organizador
  * aprova aqui. A decisão pode ser revista a qualquer momento (aprovar
- * alguém recusado por engano, ou revogar um acesso aprovado). */
+ * alguém recusado por engano, ou revogar um acesso aprovado).
+ *
+ * Não tem "excluir de vez" aqui de propósito: apagar só a linha de "perfis"
+ * deixava o login órfão e a pessoa num limbo ("cadastro em análise" pra
+ * sempre), fora desta lista. Recusar/Bloquear resolve o acesso; apagar o
+ * login mesmo é pelo painel do Supabase (Authentication → Users). */
 function SecaoAprovacoes({ avisar, meuId }) {
   const [aberta, setAberta] = useState(false);
   const [perfis, setPerfis] = useState(null); // null = ainda não carregou
@@ -147,21 +152,14 @@ function SecaoAprovacoes({ avisar, meuId }) {
   const decididos = jogadores.filter((p) => p.status !== "pendente");
 
   const decidir = async (p, status) => {
+    if (status === "recusado" && !confirm(
+      `Bloquear o acesso de ${p.nome || p.email}? A pessoa deixa de ver o app e passa a ver "cadastro não aprovado". Dá pra liberar de novo aqui a qualquer momento. Pra apagar o login (e-mail/senha) de vez, é pelo painel do Supabase.`
+    )) return;
     setProcessandoId(p.id);
     const ok = await decidirPerfil(p.id, status, meuId);
     setProcessandoId(null);
     if (!ok) { avisar("Falha ao salvar a decisão"); return; }
     avisar(`${p.email} — ${ROTULO_STATUS[status].toLowerCase()}`);
-    carregar();
-  };
-
-  const excluir = async (p) => {
-    if (!confirm(`Excluir o cadastro de ${p.nome || p.email}? Ele perde o acesso e some dessa lista — pra apagar o login (e-mail/senha) por completo, é pelo painel do Supabase.`)) return;
-    setProcessandoId(p.id);
-    const ok = await excluirPerfil(p.id);
-    setProcessandoId(null);
-    if (!ok) { avisar("Falha ao excluir"); return; }
-    avisar(`${p.email} excluído`);
     carregar();
   };
 
@@ -183,14 +181,10 @@ function SecaoAprovacoes({ avisar, meuId }) {
         )}
         {p.status !== "recusado" && (
           <button disabled={processandoId === p.id} onClick={() => decidir(p, "recusado")}
-            style={{ borderRadius: 6, padding: "7px 10px", fontSize: 10, fontWeight: 800, textTransform: "uppercase", background: "rgba(255,107,107,.15)", color: T.vermelho, opacity: processandoId === p.id ? .5 : 1 }}>
-            Recusar
+            style={{ borderRadius: 6, padding: "7px 10px", fontSize: 10, fontWeight: 800, textTransform: "uppercase", background: "rgba(255,107,107,.15)", color: T.vermelho, opacity: processandoId === p.id ? .5 : 1, marginLeft: "auto" }}>
+            {p.status === "aprovado" ? "Bloquear" : "Recusar"}
           </button>
         )}
-        <button disabled={processandoId === p.id} onClick={() => excluir(p)}
-          style={{ borderRadius: 6, padding: "7px 10px", fontSize: 10, fontWeight: 800, textTransform: "uppercase", background: "rgba(255,255,255,.06)", color: T.fraco, opacity: processandoId === p.id ? .5 : 1, marginLeft: "auto" }}>
-          Excluir
-        </button>
       </div>
     </div>
   );
