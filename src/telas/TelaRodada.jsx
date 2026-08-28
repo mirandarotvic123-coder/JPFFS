@@ -15,7 +15,7 @@ import {
 import { IconeSetaDireita, IconeTrofeu } from "../components/icones";
 import { Historico } from "./TelaConfig";
 import { LimiteErro } from "../components/LimiteErro";
-import { GatilhoLances } from "./lances/GatilhoLances";
+import { GatilhoLancesCampeonato } from "./lances/GatilhoLancesCampeonato";
 
 /* =========================== TELA: RODADA ================================*/
 
@@ -1281,11 +1281,11 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
           {!jogo.encerrado && (
             <div className="px-3 py-2" style={{ borderTop: `1px solid ${T.borda}` }}>
               <LimiteErro>
-                <GatilhoLances
+                <GatilhoLancesCampeonato
                   partidaId={`camp-${rodada.id}-${jogo.id}`}
                   partidaRotulo={`Rodada ${rodada.numero} · Partida ${jogo.numero}`}
-                  modalidade="campeonato"
                   jogadores={[...idsDoTime(tA), ...idsDoTime(tB)].map((jid) => ({ id: jid, nome: jog[jid]?.nome }))}
+                  onRegistrarGol={(jid) => setEvento(jid, "gols", 1)}
                   souOrganizador
                   avisar={avisar}
                 />
