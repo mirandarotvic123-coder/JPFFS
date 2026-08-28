@@ -49,12 +49,17 @@ export function cameraDisponivel() {
   );
 }
 
+/* Pede sempre em PAISAGEM (width > height + aspectRatio 16:9). O celular vai
+ * ficar deitado no campo e não vamos girar a orientação depois da tela cheia,
+ * então o arquivo tem que sair na horizontal. iOS/Safari já entrega paisagem
+ * por padrão; no Android as constraints abaixo forçam. */
 export async function abrirCamera() {
   return navigator.mediaDevices.getUserMedia({
     video: {
       facingMode: { ideal: "environment" },
       width: { ideal: 1280 },
       height: { ideal: 720 },
+      aspectRatio: { ideal: 16 / 9 },
       frameRate: { ideal: 30 },
     },
     audio: true,
@@ -83,12 +88,16 @@ export function criarGravador(stream, { aoMudarEstado } = {}) {
   function estado() {
     const ativos = canais.filter(gravando);
     const maisVelho = ativos.length ? Math.max(...ativos.map(idade)) : 0;
+    const s = stream.getVideoTracks()[0]?.getSettings?.() || {};
     return {
       rodando,
       bufferSegundos: Math.min(Math.round(JANELA_MS / 1000), Math.round(maisVelho / 1000)),
       capturando: idCaptura != null,
       formato: mime,
       ext,
+      largura: s.width || 0,
+      altura: s.height || 0,
+      retrato: !!(s.width && s.height && s.height > s.width), // câmera veio "em pé"
     };
   }
 

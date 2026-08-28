@@ -62,7 +62,7 @@ function TelaLances({ perfil, avisar }) {
   const [ligada, setLigada] = useState(false);
   const [modoGravacao, setModoGravacao] = useState(false);
   const [erro, setErro] = useState(null);
-  const [estGrav, setEstGrav] = useState({ rodando: false, bufferSegundos: 0, capturando: false, formato: "" });
+  const [estGrav, setEstGrav] = useState({ rodando: false, bufferSegundos: 0, capturando: false, formato: "", largura: 0, altura: 0, retrato: false });
   const [conectado, setConectado] = useState(false);
   const [angulo, setAngulo] = useState(1);
   const [numCameras, setNumCameras] = useState(1);
@@ -139,7 +139,9 @@ function TelaLances({ perfil, avisar }) {
       return;
     }
     pedirWakeLock();
-    telaRef.current?.requestFullscreen?.({ navigationUI: "hide" }).catch(() => {}); // iOS ignora em <div>, o overlay fixo cobre mesmo assim
+    telaRef.current?.requestFullscreen?.({ navigationUI: "hide" })
+      .then(() => { try { screen.orientation?.lock?.("landscape"); } catch {} })
+      .catch(() => {}); // iOS ignora em <div>; o overlay fixo cobre a tela mesmo assim
     const aoVoltar = () => { if (document.visibilityState === "visible") pedirWakeLock(); };
     document.addEventListener("visibilitychange", aoVoltar);
     return () => document.removeEventListener("visibilitychange", aoVoltar);
@@ -302,7 +304,7 @@ function TelaLances({ perfil, avisar }) {
     return (
       <div ref={telaRef} style={{ position: "fixed", inset: 0, zIndex: 60, background: "#000" }}>
         <video ref={videoRef} muted playsInline autoPlay
-          style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          style={{ width: "100%", height: "100%", objectFit: "contain" }} />
 
         <div style={{ position: "absolute", top: "calc(env(safe-area-inset-top, 0px) + 10px)", left: 12, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           <span style={pilula}>
@@ -313,6 +315,11 @@ function TelaLances({ perfil, avisar }) {
           <span style={{ ...pilula, color: conectado ? "#fff" : T.laranja }}>
             {conectado ? `buffer ${estGrav.bufferSegundos}s` : "reconectando…"}
           </span>
+          {estGrav.largura > 0 && (
+            <span style={{ ...pilula, color: estGrav.retrato ? T.laranja : "#fff" }}>
+              {estGrav.largura}×{estGrav.altura}{estGrav.retrato ? " · EM PÉ!" : ""}
+            </span>
+          )}
         </div>
 
         <button
@@ -352,6 +359,15 @@ function TelaLances({ perfil, avisar }) {
         </Painel>
       )}
 
+      {ligada && estGrav.retrato && (
+        <Painel className="p-3" style={{ borderColor: T.laranja, background: "rgba(255,165,61,.1)" }}>
+          <p style={{ fontSize: 12, color: T.laranja }}>
+            A câmera veio “em pé” ({estGrav.largura}×{estGrav.altura}) — o clipe vai sair vertical.
+            Deite o celular na horizontal, desligue a trava de rotação do aparelho e ligue a câmera de novo.
+          </p>
+        </Painel>
+      )}
+
       <Painel className="overflow-hidden">
         <div style={{ position: "relative", background: "#000", aspectRatio: "16 / 9" }}>
           <video
@@ -383,6 +399,7 @@ function TelaLances({ perfil, avisar }) {
             {ligada ? (
               <>
                 buffer {estGrav.bufferSegundos}s · {conectado ? "canal ok" : "conectando…"}
+                {estGrav.largura > 0 ? ` · ${estGrav.largura}×${estGrav.altura}` : ""}
                 {estGrav.formato ? ` · ${estGrav.formato.replace("video/", "")}` : ""}
               </>
             ) : (
