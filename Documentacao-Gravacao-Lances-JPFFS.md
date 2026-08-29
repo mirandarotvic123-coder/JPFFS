@@ -69,10 +69,12 @@ cortada e a tela de câmera avisa.
 Cada celular que for gravar abre um **link específico do sistema** (não é uma aba
 do menu).
 
-- O organizador copia esse link na própria tela do Rachão ou da partida do
-  Campeonato — botão **"Copiar link de câmera desta partida"**.
-- O link tem o formato `.../?camera=1&p=<partida>` e já leva o celular para o
-  canal certo daquela partida.
+- O organizador copia esse link na própria tela do Rachão ou da rodada do
+  Campeonato — botão **"Copiar link de câmera"**.
+- O link tem o formato `.../?camera=1&p=<id>` e já leva o celular para o canal
+  certo. No Campeonato o `<id>` é o da **rodada** (não de uma partida), então o
+  mesmo link vale a rodada inteira — não precisa trocar quando uma partida
+  termina e a próxima começa. No Rachão é o do **dia** (uma quadra só).
 - É preciso ter **login aprovado** no aplicativo (qualquer jogador aprovado
   serve, não só organizador).
 - Ao abrir, concede-se a permissão de câmera **para o site** (não é a câmera
@@ -82,8 +84,10 @@ do menu).
 
 Detalhes:
 
-- **Quantidade de câmeras livre.** Cada celular que entra no canal da partida
-  recebe um número de ângulo (1, 2, 3…), na ordem em que se conectou.
+- **Quantidade de câmeras livre.** Cada celular que entra no canal recebe um
+  número de ângulo (1, 2, 3…), na ordem em que se conectou. No Campeonato os
+  ângulos valem a rodada toda — os mesmos celulares seguem como ângulo 1, 2…
+  de uma partida para a outra, sem reconectar.
 - **Tela sempre ligada e em primeiro plano.** O Modo gravação ajuda, mas se a
   pessoa trocar de app ou de aba, a gravação daquele celular pausa (limitação do
   navegador — ver seção 7).
@@ -107,18 +111,21 @@ finaliza os metadados quando a gravação é encerrada.)
 ### 2.3. Sinal em tempo real
 
 Os celulares-câmera e o aparelho que lança as estatísticas (a tela do Rachão ou
-da partida do Campeonato) ficam conectados a um canal em tempo real (Supabase
-Realtime), identificado pela partida. A sincronização acontece por internet —
-Wi-Fi ou dados móveis — não é necessário estarem na mesma rede.
+da rodada do Campeonato) ficam conectados a um canal em tempo real (Supabase
+Realtime) — um por rodada no Campeonato, um por dia no Rachão. A sincronização
+acontece por internet — Wi-Fi ou dados móveis — não é necessário estarem na
+mesma rede.
 
-- No **Campeonato**, cada partida tem o seu próprio canal, então várias partidas
-  podem gravar ao mesmo tempo sem misturar.
+- No **Campeonato**, o canal é o da **rodada** (`camp-<rodada>`). As partidas da
+  rodada acontecem uma de cada vez, na mesma quadra, então um canal só cobre a
+  rodada inteira. Cada clipe é etiquetado com a partida em que foi gravado (a
+  súmula sabe qual é), então na Galeria continuam separados por partida.
 - No **Rachão**, o canal é o do dia (uma quadra só).
 
 ### 2.4. O que acontece no clique
 
 No instante em que o gol ou o lance é marcado, o sinal chega a todos os celulares
-ativos naquela partida, imediatamente. Cada um trava o buffer que já tinha (o
+ativos no canal, imediatamente. Cada um trava o buffer que já tinha (o
 "antes") e continua gravando por mais 5 segundos (o "depois") — independente de
 qualquer pergunta que apareça na tela em seguida.
 
@@ -151,14 +158,20 @@ salvos comprimidos para caber (ver seção 6).
 
 ## 3. Fluxo no Campeonato
 
-Antes de tudo, na súmula da partida (aba **Rodada → Partidas**), toca-se em
-**"Ativar câmeras desta partida"**. Isso abre o canal Realtime só daquela
-partida.
+Antes de tudo, na aba **Rodada → Partidas**, toca-se em **"Ativar câmeras da
+rodada"** (no painel acima das súmulas). Isso abre o canal Realtime da rodada —
+um só, que serve todas as partidas dela. **O link de câmera vale a rodada
+inteira**: quando uma partida termina e a próxima começa, não é preciso trocar
+nem reenviar o link.
 
-O aparelho **lembra** que aquela partida está com câmeras ativas: ao sair e
-voltar da tela não pede para ativar de novo. Só volta a pedir se alguém tocar em
+O aparelho **lembra** que a rodada está com câmeras ativas: ao sair e voltar da
+tela não pede para ativar de novo. Só volta a pedir se alguém tocar em
 **"conectado ✕"** (desligar de propósito). Isso vale por aparelho — o link
 mandado para os celulares-câmera continua funcionando normalmente.
+
+Cada clipe é gravado com a etiqueta da partida em que aconteceu (o "+" do gol e
+o botão "Gravar lance" sabem qual partida é), então na Galeria os vídeos
+continuam agrupados por partida ("Rodada 5 · Partida 2").
 
 ### 3.1. Gol
 
@@ -182,12 +195,15 @@ nada a mais.
 
 ### 3.2. Lance
 
-No painel "Câmeras" da súmula existe o botão **"Gravar lance"**. Usado para
+No painel "Câmeras da rodada" existe o botão **"Gravar lance"**. Usado para
 dribles, defesas, falhas ou qualquer momento que não seja gol.
 
-1. Ao tocar, a captura começa imediatamente em todas as câmeras ativas.
-2. Escolhe-se atribuir o lance a um jogador da partida, ou deixar "sem jogador".
-3. Salvar ou Descartar.
+1. Se houver mais de uma partida da rodada em aberto, escolhe-se antes a
+   **partida em jogo** (um seletor no painel). Com só uma aberta, ela já vem
+   selecionada.
+2. Ao tocar, a captura começa imediatamente em todas as câmeras ativas.
+3. Escolhe-se atribuir o lance a um jogador da partida, ou deixar "sem jogador".
+4. Salvar ou Descartar.
 
 **Importante:** o "Lance" é apenas um registro de vídeo — não afeta estatística,
 pontuação ou disciplina de nenhum jogador.
@@ -196,9 +212,11 @@ pontuação ou disciplina de nenhum jogador.
 
 ## 4. Fluxo no Rachão
 
-Na tela do Rachão, toca-se em **"Ativar câmeras desta partida"** (também lembrado
-por aparelho) e depois em **"Gravar lance"** (botão único). No Rachão nem gol nem
-lance têm peso na pontuação, então o mesmo clique cobre os dois casos.
+Na tela do Rachão, toca-se em **"Ativar câmeras"** (também lembrado por aparelho)
+e depois em **"Gravar lance"** (botão único). O canal e o link de câmera são do
+**dia inteiro** — uma quadra só, todas as partidas do rachão no mesmo link. No
+Rachão nem gol nem lance têm peso na pontuação, então o mesmo clique cobre os
+dois casos.
 
 1. Toca em **"Gravar lance"** → a captura começa na hora em todas as câmeras
    ativas.
@@ -324,8 +342,8 @@ baixar o vídeo da galeria antes do prazo vencer.
 | Botão de "Lance" (não-gol) | Sim, no painel de câmeras | é o mesmo botão único, tipo escolhido depois |
 | Atribuição de jogador | o "+" já é do jogador · opcional no Lance | opcional |
 | Afeta estatística do jogador | Gol sim / Lance não | Não |
-| Canal Realtime | um por partida (`camp-<rodada>-<jogo>`) | um por dia (`rachao-<sessão>`) |
-| Câmeras ativas lembradas | sim, por aparelho | sim, por aparelho |
+| Canal Realtime | um por rodada (`camp-<rodada>`) — partidas uma de cada vez | um por dia (`rachao-<sessão>`) |
+| Câmeras ativas lembradas | sim, por aparelho (por rodada) | sim, por aparelho (por dia) |
 | Quantidade de câmeras | livre | livre |
 | Arquivo por lance | 1 vídeo por câmera (ângulo) | 1 vídeo por câmera (ângulo) |
 | Retenção do vídeo | 5 dias corridos | 5 dias corridos |

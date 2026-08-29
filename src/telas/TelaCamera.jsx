@@ -24,6 +24,12 @@ const PARAMS = new URLSearchParams(window.location.search);
 const PARTIDA_ID = PARAMS.get("p") || "teste-camera";
 const PARTIDA_ROTULO = PARAMS.get("r") || "Teste";
 const MODALIDADE = PARTIDA_ID.startsWith("camp-") ? "campeonato" : "rachao";
+/* No Campeonato o link de câmera é da RODADA inteira (`camp-<rodada>`), não de
+ * uma partida — as partidas rolam uma de cada vez. O `p`/`r` de cada clipe vem
+ * no sinal `disparo` (a súmula sabe qual partida é). Um link por partida antigo
+ * (`camp-<rodada>-<jogo>`) continua funcionando. */
+const LINK_RODADA = PARTIDA_ID.startsWith("camp-") && PARTIDA_ID.split("-").length === 2;
+const FILTRO_LISTA = LINK_RODADA ? { partidaPrefixo: `${PARTIDA_ID}-` } : PARTIDA_ID;
 const CHAVE_DEVICE = "jpffs:camera-device";
 
 function idDispositivo() {
@@ -88,9 +94,9 @@ function TelaCamera({ perfil, avisar }) {
 
   const recarregarLances = () => {
     clearTimeout(recarregarTimerRef.current);
-    recarregarTimerRef.current = setTimeout(() => { listarLances(PARTIDA_ID).then(setLances); }, 350);
+    recarregarTimerRef.current = setTimeout(() => { listarLances(FILTRO_LISTA).then(setLances); }, 350);
   };
-  useEffect(() => { listarLances(PARTIDA_ID).then(setLances); }, []);
+  useEffect(() => { listarLances(FILTRO_LISTA).then(setLances); }, []);
   useEffect(() => () => { desligar(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* mantém o <video> preso ao stream quando ele troca de lugar (card <-> tela cheia) */
@@ -183,7 +189,7 @@ function TelaCamera({ perfil, avisar }) {
     setTimeout(() => setPendentes((ps) => ps.filter((x) => x.id !== pid)), ms);
   }
 
-  function aoDisparo({ id: cid, tipo, modalidade, partidaRotulo }) {
+  function aoDisparo({ id: cid, tipo, modalidade, partidaId, partidaRotulo }) {
     const g = gravadorRef.current;
     if (!g) return;
     const clipe = g.capturar(cid);
@@ -191,6 +197,7 @@ function TelaCamera({ perfil, avisar }) {
     capturasRef.current.set(cid, {
       tipo: tipo || "lance",
       modalidade: modalidade || MODALIDADE,
+      partidaId: partidaId || PARTIDA_ID,       // link da rodada: a partida vem no sinal
       partidaRotulo: partidaRotulo || PARTIDA_ROTULO,
       clipe,
     });
@@ -219,7 +226,7 @@ function TelaCamera({ perfil, avisar }) {
       if (!blob || !blob.size) throw new Error("clipe vazio");
       await enviarLance({
         modalidade: reg.modalidade || MODALIDADE,
-        partidaId: PARTIDA_ID,
+        partidaId: reg.partidaId || PARTIDA_ID,
         partidaRotulo: reg.partidaRotulo || PARTIDA_ROTULO,
         tipo: tipoFinal,
         jogadorNome: jogadorNome || null,
@@ -421,7 +428,7 @@ function TelaCamera({ perfil, avisar }) {
     <div className="space-y-4">
       <CabecalhoPagina
         titulo="Câmera de lances"
-        descricao={`Partida: ${PARTIDA_ROTULO}. Apoie o celular EM PÉ (vídeo vertical, pronto pra postar), ligue a câmera e entre em Modo gravação.`}
+        descricao={`${LINK_RODADA ? "Rodada" : "Partida"}: ${PARTIDA_ROTULO}. Apoie o celular EM PÉ (vídeo vertical, pronto pra postar), ligue a câmera e entre em Modo gravação.`}
       />
 
       {erro && (
@@ -568,7 +575,7 @@ function TelaCamera({ perfil, avisar }) {
 
       <ListaClipes
         lances={lances}
-        titulo="Clipes desta partida"
+        titulo={LINK_RODADA ? "Clipes desta rodada" : "Clipes desta partida"}
         vazio="Nada salvo ainda."
         souOrganizador={souOrganizador}
         onApagar={apagarLance}
