@@ -1,10 +1,10 @@
 # JPFFS — Sistema de Gravação de Lances
 
 **Replay automático de gols e lances — Campeonato e Rachão**
-Documentação técnica e funcional · atualizada em 28/08/2026 (versão que foi para produção)
+Documentação técnica e funcional · versão em produção · atualizada em 29/08/2026
 
-> Esta versão substitui o PDF original. Os pontos que mudaram em relação a ele
-> estão marcados com **(mudou)**.
+> Esta documentação substitui o PDF original e descreve o sistema **como ele
+> está no ar hoje**.
 
 ---
 
@@ -30,15 +30,15 @@ sistema.
 
 Cada clipe tem cerca de **15 a 25 segundos** (a meta é ~20s: por volta de 15s
 antes e 5s depois do momento em que o gol ou o lance é marcado) e fica pronto
-sozinho, sem precisar editar vídeo depois. **(mudou)** — a duração não é exata
-por causa de como o buffer funciona (ver seção 2.2).
+sozinho, sem precisar editar vídeo depois. A duração não é exata por causa de
+como o buffer funciona (ver seção 2.2).
 
-Os clipes são gravados na **vertical** (720×1280), prontos para postar em
-stories/reels. **(mudou)** — o iPhone entrega a câmera "deitada" mesmo com o
-celular em pé; o app desenha cada quadro num canvas 720×1280 e grava esse
-canvas, então o arquivo sai vertical de verdade (gira a imagem sozinho
-quando precisa). Só é preciso apoiar o celular **em pé** com a trava de
-rotação ligada — se ficar deitado, a imagem sai muito cortada e a tela avisa.
+Os clipes saem sempre na **vertical (720×1280)**, prontos para postar em
+stories/reels. O iPhone entrega a câmera "deitada" mesmo com o celular em pé —
+para resolver isso, o app desenha cada quadro num canvas 720×1280 e grava esse
+canvas, girando/enquadrando a imagem sozinho. Basta apoiar o celular **em pé**,
+com a trava de rotação ligada; se o celular ficar deitado, a imagem sai muito
+cortada e a tela de câmera avisa.
 
 ### 1.1. Por que existe
 
@@ -67,10 +67,10 @@ rotação ligada — se ficar deitado, a imagem sai muito cortada e a tela avisa
 ### 2.1. Preparação antes da partida
 
 Cada celular que for gravar abre um **link específico do sistema** (não é uma aba
-do menu). **(mudou)** — o organizador copia esse link na própria tela do Rachão
-ou da partida do Campeonato (botão "Copiar link de câmera desta partida"), ou na
-Galeria de Lances para testes.
+do menu).
 
+- O organizador copia esse link na própria tela do Rachão ou da partida do
+  Campeonato — botão **"Copiar link de câmera desta partida"**.
 - O link tem o formato `.../?camera=1&p=<partida>` e já leva o celular para o
   canal certo daquela partida.
 - É preciso ter **login aprovado** no aplicativo (qualquer jogador aprovado
@@ -78,18 +78,19 @@ Galeria de Lances para testes.
 - Ao abrir, concede-se a permissão de câmera **para o site** (não é a câmera
   nativa do aparelho).
 - Depois de posicionar, toca-se em **"Modo gravação (tela cheia)"** — a tela fica
-  só com o vídeo, e o sistema **trava a tela acesa** (Wake Lock). **(mudou)**
+  só com o vídeo e o sistema **trava a tela acesa** (Wake Lock).
+
+Detalhes:
 
 - **Quantidade de câmeras livre.** Cada celular que entra no canal da partida
-  recebe um número de ângulo (1, 2, 3…), na ordem em que se conectou (via
-  Presence do Realtime).
+  recebe um número de ângulo (1, 2, 3…), na ordem em que se conectou.
 - **Tela sempre ligada e em primeiro plano.** O Modo gravação ajuda, mas se a
   pessoa trocar de app ou de aba, a gravação daquele celular pausa (limitação do
   navegador — ver seção 7).
 - **Sem uso paralelo.** Ninguém deve mexer nesse celular para outra coisa
   enquanto ele estiver gravando.
 
-### 2.2. Buffer contínuo (os últimos ~15 segundos) — **(mudou)**
+### 2.2. Buffer contínuo (os últimos ~15 segundos)
 
 Em vez de um único gravador contínuo, cada celular roda **dois gravadores em
 paralelo**, defasados meio ciclo. Cada gravador grava no máximo ~20 segundos e
@@ -97,13 +98,11 @@ então reinicia. Assim, a qualquer momento existe um gravador com pelo menos
 ~10–20 segundos de história pronta.
 
 No sinal de gol/lance, o sistema pega o gravador que já tem mais história, deixa
-ele rodar mais 5 segundos e chama `stop()`. Isso faz o navegador **fechar o
-arquivo de verdade** — com duração correta, sem trechos "mortos", tocando do
-começo ao fim em qualquer player.
-
-Foi essa a mudança em relação ao PDF original: concatenar pedaços de uma gravação
-que ainda está em andamento gera um arquivo com duração errada e um vão de tempo
-morto (o navegador só finaliza os metadados no `stop()`).
+ele rodar mais 5 segundos e o encerra. Isso faz o navegador **fechar o arquivo
+de verdade** — com duração correta, sem trechos "mortos", tocando do começo ao
+fim em qualquer player. (Concatenar pedaços de uma gravação ainda em andamento
+gera um arquivo com duração errada e um vão de tempo morto — o navegador só
+finaliza os metadados quando a gravação é encerrada.)
 
 ### 2.3. Sinal em tempo real
 
@@ -132,23 +131,21 @@ segundos de "depois", esse novo clique é **ignorado**, para não sobrepor duas
 capturas na mesma câmera. É preciso aguardar (cerca de 5 segundos) para registrar
 o próximo.
 
-### 2.5. Montagem final — **(mudou)**
+### 2.5. Arquivo final
 
-**Não existe servidor.** O próprio navegador do celular fecha o arquivo no
-`stop()` (ver 2.2) — ele já sai pronto e independente por câmera. Nunca um único
-vídeo com múltiplos ângulos misturados.
+**Não existe servidor.** O próprio navegador do celular fecha o arquivo (ver
+2.2) — ele já sai pronto e independente por câmera. Nunca um único vídeo com
+múltiplos ângulos misturados.
 
 Se 3 celulares estavam ativos naquele lance, o resultado são 3 vídeos separados
 na galeria (um por ângulo); se só 1 estava ativo, é 1 vídeo só.
 
-iPhone e Android gravam em formatos ligeiramente diferentes (MP4 / WebM). Cada um
-toca direto no player do sistema, **sem conversão** — não há um servidor para
-"padronizar". **(mudou)**
+iPhone e Android gravam em formatos diferentes (MP4 / WebM). Cada um toca direto
+no player do sistema, **sem conversão** — não há um servidor para "padronizar".
 
-**Qualidade: 720p comprimido** (~1,8 Mbps, cerca de 5 MB por clipe de 20s).
-**(mudou)** — o PDF original falava em "sem compressão agressiva", mas o plano
-gratuito do Supabase dá só 1 GB de armazenamento, então os clipes são salvos em
-720p comprimido para caber. Ver seção 6.
+**Qualidade: 720p comprimido** (~1,8 Mbps, cerca de 5 MB por clipe de 20s). O
+plano gratuito do Supabase dá só 1 GB de armazenamento, então os clipes são
+salvos comprimidos para caber (ver seção 6).
 
 ---
 
@@ -156,11 +153,14 @@ gratuito do Supabase dá só 1 GB de armazenamento, então os clipes são salvos
 
 Antes de tudo, na súmula da partida (aba **Rodada → Partidas**), toca-se em
 **"Ativar câmeras desta partida"**. Isso abre o canal Realtime só daquela
-partida. **(mudou)** — o aparelho **lembra** que aquela partida está com
-câmeras ativas: ao sair e voltar da tela não pede pra ativar de novo. Só volta
-a pedir se tocar em "conectado ✕" (desliga de propósito).
+partida.
 
-### 3.1. Gol — **(mudou)**
+O aparelho **lembra** que aquela partida está com câmeras ativas: ao sair e
+voltar da tela não pede para ativar de novo. Só volta a pedir se alguém tocar em
+**"conectado ✕"** (desligar de propósito). Isso vale por aparelho — o link
+mandado para os celulares-câmera continua funcionando normalmente.
+
+### 3.1. Gol
 
 Não existe um botão "Gol" separado. **Marcar o gol continua sendo o botão "+" do
 jogador na própria súmula** — uma via só, para não confundir.
@@ -196,9 +196,9 @@ pontuação ou disciplina de nenhum jogador.
 
 ## 4. Fluxo no Rachão
 
-Na tela do Rachão, toca-se em **"Ativar câmeras desta partida"** e depois em
-**"Gravar lance"** (botão único). **(mudou)** — no Rachão nem gol nem lance têm
-peso na pontuação, então o mesmo clique cobre os dois casos.
+Na tela do Rachão, toca-se em **"Ativar câmeras desta partida"** (também lembrado
+por aparelho) e depois em **"Gravar lance"** (botão único). No Rachão nem gol nem
+lance têm peso na pontuação, então o mesmo clique cobre os dois casos.
 
 1. Toca em **"Gravar lance"** → a captura começa na hora em todas as câmeras
    ativas.
@@ -216,10 +216,11 @@ alterar esse processo.
 ## 5. Galeria de lances
 
 Aba **"Lances"** do sistema, disponível para qualquer usuário com login aprovado.
+Atualiza sozinha quando entra ou sai um clipe (não precisa recarregar a página).
 
-### 5.1. Filtros — **(mudou)**
+### 5.1. Filtros
 
-- **Modalidade** (seletor no topo): **Rachão · Campeonato**. (Não há mais aba
+- **Modalidade** (seletor no topo): **Rachão · Campeonato**. (Não há aba
   "Testes" — clipes de teste aparecem no Rachão, agrupados como "Teste".)
 - **Tipo**: Tudo · Gols · Lances.
 - **Jogador**: lista só com os jogadores que têm algum clipe atribuído.
@@ -251,24 +252,26 @@ Tipo (Gol ou Lance) — Jogador (ou "sem jogador") — HH:mm — Ângulo (nº)
 - Dentro de cada partida, os arquivos do mesmo lance ficam próximos, com o mesmo
   horário no título e o número do ângulo diferente.
 
-### 5.5. Acesso
+### 5.5. Acesso e ações
 
-A galeria fica aberta a **qualquer usuário com login aprovado**. Todos podem
-**Ver** e **Baixar**; **só o organizador** vê o botão **"Apagar"** — e a regra
-do banco (RLS) barra exclusão de quem não for organizador mesmo que tente por
-fora. **(mudou)**
+A galeria fica aberta a **qualquer usuário com login aprovado**, sem filtro por
+papel.
 
-- **Ver**: player em tela cheia (link temporário assinado — o bucket é privado).
-- **Baixar** — **(mudou)**: no celular usa o menu "compartilhar" do sistema
-  (tem "Salvar vídeo"); no computador baixa o arquivo direto, com nome tipo
-  `gol-joao-16-42-angulo-1.mp4`.
+| Ação | Quem pode |
+| --- | --- |
+| **Ver** — player em tela cheia (link temporário assinado; o bucket é privado) | todos |
+| **Baixar** — no celular abre o menu "compartilhar" do sistema (opção "Salvar vídeo"); no computador baixa o arquivo direto, com nome tipo `gol-joao-16-42-angulo-1.mp4` | todos |
+| **Apagar** (vídeo + registro, sem volta) | **só o organizador** |
+
+O botão "Apagar" nem aparece para quem não é organizador, e a regra do banco
+(RLS) barra a exclusão no servidor mesmo que alguém tente por fora.
 
 A câmera fica só no link `?camera=1` (não aparece no menu) para não virar
-bagunça. **(mudou)**
+bagunça.
 
 ---
 
-## 6. Retenção e limpeza automática — **(mudou: 4 → 5 dias)**
+## 6. Retenção e limpeza automática
 
 Todo lance salvo fica disponível na galeria por **5 dias corridos**, contando a
 partir da data da gravação.
@@ -299,15 +302,16 @@ baixar o vídeo da galeria antes do prazo vencer.
   clique, aquele ângulo específico não grava aquele lance — os demais seguem
   normalmente.
 - **Aparelhos diferentes.** iPhone e Android gravam em formatos diferentes; cada
-  um toca direto no sistema, sem conversão (não há servidor para padronizar).
+  um toca direto no sistema, sem conversão.
 - **Tempo de espera.** O clipe fica pronto cerca de 5 segundos depois do clique
   (o tempo real da parte "depois").
-- **Orientação.** O clipe **sempre sai vertical** (720×1280) — o app gira/enquadra
-  a imagem sozinho, mesmo com o iPhone entregando a câmera "deitada". Basta
-  apoiar o celular **em pé** com a trava de rotação ligada. Se o celular ficar
-  deitado, a imagem sai muito cortada e a tela de câmera avisa.
-- **Processamento.** Cada celular roda dois gravadores em paralelo — celular dos
-  últimos anos aguenta; num aparelho muito antigo pode engasgar.
+- **Orientação.** O clipe sempre sai vertical (720×1280) — o app gira/enquadra a
+  imagem sozinho, mesmo com o iPhone entregando a câmera "deitada". Basta apoiar
+  o celular **em pé** com a trava de rotação ligada; se ficar deitado, a imagem
+  sai muito cortada e a tela avisa.
+- **Processamento.** Cada celular roda dois gravadores em paralelo mais o
+  desenho no canvas — celular dos últimos anos aguenta; num aparelho muito
+  antigo pode engasgar.
 
 ---
 
@@ -321,6 +325,7 @@ baixar o vídeo da galeria antes do prazo vencer.
 | Atribuição de jogador | o "+" já é do jogador · opcional no Lance | opcional |
 | Afeta estatística do jogador | Gol sim / Lance não | Não |
 | Canal Realtime | um por partida (`camp-<rodada>-<jogo>`) | um por dia (`rachao-<sessão>`) |
+| Câmeras ativas lembradas | sim, por aparelho | sim, por aparelho |
 | Quantidade de câmeras | livre | livre |
 | Arquivo por lance | 1 vídeo por câmera (ângulo) | 1 vídeo por câmera (ângulo) |
 | Retenção do vídeo | 5 dias corridos | 5 dias corridos |
@@ -328,8 +333,11 @@ baixar o vídeo da galeria antes do prazo vencer.
 ### 8.1. Decisões técnicas gerais
 
 - **Sem backend próprio.** O clipe é fechado pelo próprio navegador do celular
-  (`stop()` de um dos dois gravadores em paralelo). Não há servidor juntando ou
-  padronizando vídeo.
+  (um dos dois gravadores em paralelo). Não há servidor juntando ou padronizando
+  vídeo.
+- **Vídeo vertical via canvas.** Cada quadro da câmera é desenhado num canvas
+  720×1280 e é esse canvas que é gravado — garante clipe vertical mesmo com o
+  iPhone entregando a câmera deitada.
 - **Canal em tempo real.** Supabase Realtime — `broadcast` para os sinais
   (`disparo` / `decisao`) e `presence` para numerar os ângulos.
 - **Lances sobrepostos.** Um novo clique durante os 5s de "depois" de um lance em
@@ -338,8 +346,9 @@ baixar o vídeo da galeria antes do prazo vencer.
   GB de armazenamento do plano gratuito do Supabase.
 - **Acesso à câmera.** Por link `?camera=1` (não é aba do menu); exige login
   aprovado.
-- **Acesso à galeria.** Aberta para visualização a qualquer login aprovado;
-  vídeo servido por link assinado (bucket privado).
+- **Acesso à galeria.** Aberta a qualquer login aprovado; todos veem e baixam,
+  só o organizador apaga (barrado também pela RLS). Vídeo servido por link
+  assinado (bucket privado).
 - **Limpeza.** Edge Function `limpar-lances` + Cron Job a cada 30 minutos (5 dias
   de retenção + trava de espaço em ~850 MB).
 - **Isolamento.** Todo o código de gravação está isolado do resto do app (barreira
