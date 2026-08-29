@@ -90,7 +90,7 @@ function GatilhoLances({ partidaId, partidaRotulo, modalidade, jogadores = [], s
   if (!ativo) {
     return (
       <Botao variante="secundario" className="w-full" onClick={() => setAtivo(true)} style={{ minHeight: 40, fontSize: 10.5 }}>
-        Ativar câmeras desta partida
+        Ativar câmeras
       </Botao>
     );
   }
@@ -115,7 +115,7 @@ function GatilhoLances({ partidaId, partidaRotulo, modalidade, jogadores = [], s
           </Botao>
           {souOrganizador && (
             <Botao variante="secundario" className="w-full" onClick={copiarLink} style={{ minHeight: 36, fontSize: 10.5 }}>
-              {copiado ? "Link copiado ✓" : "Copiar link de câmera desta partida"}
+              {copiado ? "Link copiado ✓" : "Copiar link de câmera do rachão"}
             </Botao>
           )}
           <p style={{ fontSize: 10, color: T.fraco, lineHeight: 1.4 }}>

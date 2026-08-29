@@ -870,6 +870,25 @@ function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId 
   const niveis = dados.disciplina.porRodada[rodada.id] || {};
   const [jogoAlvo, setJogoAlvo] = useState("");
 
+  /* Câmeras de lances: um canal por RODADA (as partidas rolam uma de cada vez,
+   * mesmo campo), lembrado neste aparelho. O gatilho fica aqui, fora da súmula —
+   * o link de câmera vale a rodada inteira e não troca a cada partida. */
+  const rodadaLancesId = `camp-${rodada.id}`;
+  const [camerasAtivas, setCamerasAtivas] = useState(() => lerCamerasAtivas(rodadaLancesId));
+  useEffect(() => { salvarCamerasAtivas(rodadaLancesId, camerasAtivas); }, [camerasAtivas, rodadaLancesId]);
+  const gatilhoLancesRef = useRef(null);
+  const partidasCamera = useMemo(() => [...(rodada.jogos || [])]
+    .filter((j) => !j.encerrado)
+    .sort((a, b) => a.numero - b.numero)
+    .map((j) => {
+      const tA = timePorId(rodada, j.timeA), tB = timePorId(rodada, j.timeB);
+      return {
+        id: `camp-${rodada.id}-${j.id}`,
+        rotulo: `Rodada ${rodada.numero} · Partida ${j.numero}`,
+        jogadores: [...idsDoTime(tA), ...idsDoTime(tB)].map((jid) => ({ id: jid, nome: nomes[jid] })),
+      };
+    }), [rodada, nomes]);
+
   const P = poolsDoDia(base, rodada, porId, dados, cfg);
   // Só sai do "aguardando encaixe" quem já tem uma colocação que vale (pontua) em algum jogo —
   // quem só entrou pra completar (§10º) continua aparecendo, porque ainda não teve seu encaixe de verdade.
@@ -979,10 +998,23 @@ function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId 
         </Painel>
       )}
 
+      <LimiteErro>
+        <GatilhoLancesCampeonato
+          ref={gatilhoLancesRef}
+          rodadaId={rodadaLancesId}
+          rodadaRotulo={`Rodada ${rodada.numero}`}
+          partidas={partidasCamera}
+          ativo={camerasAtivas}
+          setAtivo={setCamerasAtivas}
+          souOrganizador
+          avisar={avisar}
+        />
+      </LimiteErro>
+
       {[...rodada.jogos].sort((a, b) => a.numero - b.numero).map((jogo) => (
         <div key={jogo.id}>
           <FaixaPartida n={jogo.numero} extra={!!jogo.extra} />
-          <Sumula {...{ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, porId }} />
+          <Sumula {...{ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, porId, camerasAtivas, gatilhoLancesRef }} />
         </div>
       ))}
 
@@ -1016,15 +1048,11 @@ function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId 
 
 /* --------------------------- Súmula da partida ---------------------------*/
 
-function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, porId }) {
+function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, porId, camerasAtivas, gatilhoLancesRef }) {
   const jog = Object.fromEntries(base.jogadores.map((j) => [j.id, j]));
   const [pendenteVaga, setPendenteVaga] = useState({});
   const [cartoesAbertos, setCartoesAbertos] = useState({});
   const [aberta, setAberta] = useState(!jogo.encerrado); // partidas já encerradas começam recolhidas
-  const partidaLancesId = `camp-${rodada.id}-${jogo.id}`;
-  const [camerasAtivas, setCamerasAtivas] = useState(() => lerCamerasAtivas(partidaLancesId)); // lembrado neste aparelho
-  useEffect(() => { salvarCamerasAtivas(partidaLancesId, camerasAtivas); }, [camerasAtivas, partidaLancesId]);
-  const gatilhoLancesRef = useRef(null);
   const tA = timePorId(rodada, jogo.timeA), tB = timePorId(rodada, jogo.timeB);
   const p = placarDe(jogo, rodada);
   const soCartoes = new Set([...(jogo.completaTime || []), ...(jogo.soCartoes || [])]);
@@ -1139,7 +1167,13 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
                     <button onClick={() => {
                       if (soCartao) return;
                       setEvento(jid, campo, 1);
-                      if (campo === "gols" && camerasAtivas) gatilhoLancesRef.current?.golMarcado(jid, jog[jid]?.nome);
+                      if (campo === "gols" && camerasAtivas) {
+                        gatilhoLancesRef?.current?.golMarcado(
+                          jid, jog[jid]?.nome,
+                          `camp-${rodada.id}-${jogo.id}`,
+                          `Rodada ${rodada.numero} · Partida ${jogo.numero}`,
+                        );
+                      }
                     }} style={{ padding: "4px 6px", color: T.ouro, fontSize: 15 }}>+</button>
                   </div>
                 ))}
@@ -1286,23 +1320,6 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
           <div className="grid grid-cols-2 gap-2 px-2 py-2" style={{ borderTop: `1px solid ${T.borda}` }}>
             <Coluna time={tA} lado="A" /><Coluna time={tB} lado="B" />
           </div>
-
-          {!jogo.encerrado && (
-            <div className="px-3 py-2" style={{ borderTop: `1px solid ${T.borda}` }}>
-              <LimiteErro>
-                <GatilhoLancesCampeonato
-                  ref={gatilhoLancesRef}
-                  partidaId={`camp-${rodada.id}-${jogo.id}`}
-                  partidaRotulo={`Rodada ${rodada.numero} · Partida ${jogo.numero}`}
-                  jogadores={[...idsDoTime(tA), ...idsDoTime(tB)].map((jid) => ({ id: jid, nome: jog[jid]?.nome }))}
-                  ativo={camerasAtivas}
-                  setAtivo={setCamerasAtivas}
-                  souOrganizador
-                  avisar={avisar}
-                />
-              </LimiteErro>
-            </div>
-          )}
 
           <div className="p-3" style={{ borderTop: `1px solid ${T.borda}` }}>
             <Botao variante={jogo.encerrado ? "secundario" : "primario"} className="w-full"
