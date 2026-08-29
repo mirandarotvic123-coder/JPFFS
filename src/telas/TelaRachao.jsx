@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { T, AMARELO, AZUL, corDe } from "../theme";
 import { id } from "../core/repositorio";
 import {
@@ -419,6 +419,96 @@ function ProximosTimesPainel({ sessao, nomes }) {
 
 /* ------------------------------- Fila / convidado --------------------------*/
 
+const IconeArrastar = ({ cor }) => (
+  <svg width="12" height="16" viewBox="0 0 12 16" fill={cor} aria-hidden="true">
+    {[2, 8].map((cx) => [3, 8, 13].map((cy) => <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="1.4" />))}
+  </svg>
+);
+
+/* Fila de linha com reordenação por arrastar (pointer events — funciona no
+ * toque e no mouse). Substitui as setinhas ▲▼: pegar pelo "⠿" e soltar na
+ * posição. Enquanto arrasta, a lista reordena ao vivo; ao soltar, commita
+ * um único `inserirNaFila` (move só o jogador arrastado, na frente do vizinho
+ * de baixo — os outros mantêm a ordem relativa). */
+function FilaLinhaArrastavel({ filaLinha, nomes, sessao, atualizar, avisar, ordemIdx }) {
+  const [dragId, setDragId] = useState(null);
+  const [ordemLocal, setOrdemLocal] = useState(null);
+  const ordemLocalRef = useRef(null);
+  const linhasRef = useRef(new Map()); // jid -> elemento da linha
+  useEffect(() => { ordemLocalRef.current = ordemLocal; }, [ordemLocal]);
+
+  const ordem = ordemLocal || filaLinha;
+
+  function aoDescer(e, jid) {
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+    setDragId(jid);
+    setOrdemLocal(filaLinha);
+  }
+  function aoMover(e) {
+    if (!dragId) return;
+    const ords = ordemLocalRef.current || filaLinha;
+    const y = e.clientY;
+    let alvo = ords.length - 1;
+    for (let k = 0; k < ords.length; k++) {
+      const r = linhasRef.current.get(ords[k])?.getBoundingClientRect();
+      if (r && y < r.top + r.height / 2) { alvo = k; break; }
+    }
+    const atual = ords.indexOf(dragId);
+    if (atual === -1 || alvo === atual) return;
+    const novo = [...ords];
+    novo.splice(atual, 1);
+    novo.splice(alvo, 0, dragId);
+    setOrdemLocal(novo);
+  }
+  function aoSoltar() {
+    const jid = dragId;
+    const ords = ordemLocalRef.current;
+    setDragId(null);
+    setOrdemLocal(null);
+    if (!jid || !ords || !filaLinha.includes(jid)) return;
+    if (ords.join() === filaLinha.join()) return; // nada mudou
+    const pos = ords.indexOf(jid);
+    const antesDeId = pos < ords.length - 1 ? ords[pos + 1] : null;
+    atualizar(inserirNaFila(sessao, jid, antesDeId, false));
+    avisar(`${nomes[jid] || "Jogador"} agora é ${pos + 1}º na fila`);
+  }
+
+  return (
+    <Painel className="space-y-1 p-2" style={{ userSelect: dragId ? "none" : "auto" }}>
+      {ordem.length === 0 && <p style={{ padding: 8, textAlign: "center", fontSize: 12, color: T.fraco }}>Ninguém aguardando.</p>}
+      {ordem.map((jid, i) => (
+        <div key={jid} ref={(el) => { if (el) linhasRef.current.set(jid, el); else linhasRef.current.delete(jid); }}
+          className="flex items-center justify-between rounded px-2 py-1.5"
+          style={{
+            background: dragId === jid ? T.tier3 : "rgba(0,0,0,.18)",
+            boxShadow: dragId === jid ? "0 6px 18px rgba(0,0,0,.45)" : "none",
+            opacity: dragId && dragId !== jid ? 0.65 : 1,
+            transition: dragId ? "none" : "background .12s, opacity .12s",
+          }}>
+          <span className="flex items-center" style={{ minWidth: 0, gap: 6, fontSize: 12.5 }}>
+            <button onPointerDown={(e) => aoDescer(e, jid)} onPointerMove={aoMover} onPointerUp={aoSoltar} onPointerCancel={aoSoltar}
+              title="Arraste para reordenar"
+              style={{ touchAction: "none", cursor: dragId === jid ? "grabbing" : "grab", padding: "6px 5px", display: "flex", flexShrink: 0 }}>
+              <IconeArrastar cor={dragId === jid ? T.secundario : T.fraco} />
+            </button>
+            <b style={{ color: T.fraco, flexShrink: 0 }}>{i + 1}º</b>
+            <span className="truncate">{nomes[jid] || "?"}</span>
+          </span>
+          <div className="flex items-center" style={{ gap: 2, flexShrink: 0 }}>
+            <button onClick={() => { atualizar(reclassificarJogador(sessao, jid, true, ordemIdx)); avisar(`${nomes[jid]} virou goleiro pro resto do dia`); }}
+              title="Reclassificar como goleiro pro resto do dia" style={{ padding: "4px 6px", fontSize: 9, fontWeight: 800, color: T.gk }}>GOL</button>
+            <button onClick={() => { atualizar(removerJogador(sessao, jid)); avisar(`${nomes[jid]} saiu da fila`); }}
+              style={{ padding: "4px 7px", fontSize: 13, color: T.laranja }}>✕</button>
+          </div>
+        </div>
+      ))}
+      {ordem.length > 1 && (
+        <p style={{ padding: "2px 6px 0", fontSize: 9.5, color: T.fraco }}>Arraste pela alça à esquerda para mudar a ordem da fila.</p>
+      )}
+    </Painel>
+  );
+}
+
 function FilaEConvidados({ sessao, atualizar, avisar, base, convidados, setConvidados, nomes, ordemIdx, setOrdemIdx, proximoIdx }) {
   const filaLinha = aguardandoLinha(sessao);
   const [filaAberta, setFilaAberta] = useState(false);
@@ -427,24 +517,7 @@ function FilaEConvidados({ sessao, atualizar, avisar, base, convidados, setConvi
   return (
     <div className="space-y-3">
       <SecaoRecolhivel titulo="Fila (linha)" detalhe={`${filaLinha.length} aguardando`} aberto={filaAberta} onToggle={() => setFilaAberta((v) => !v)}>
-        <Painel className="space-y-1 p-2">
-          {filaLinha.length === 0 && <p style={{ padding: 8, textAlign: "center", fontSize: 12, color: T.fraco }}>Ninguém aguardando.</p>}
-          {filaLinha.map((jid, i) => (
-            <div key={jid} className="flex items-center justify-between rounded px-2 py-1.5" style={{ background: "rgba(0,0,0,.18)" }}>
-              <span style={{ fontSize: 12.5 }}><b style={{ marginRight: 6, color: T.fraco }}>{i + 1}º</b>{nomes[jid] || "?"}</span>
-              <div className="flex items-center" style={{ gap: 2 }}>
-                <button disabled={i === 0} onClick={() => atualizar(inserirNaFila(sessao, jid, filaLinha[i - 1], false))}
-                  style={{ padding: "4px 7px", fontSize: 12, color: i === 0 ? "rgba(255,255,255,.15)" : T.secundario }}>▲</button>
-                <button disabled={i === filaLinha.length - 1} onClick={() => atualizar(inserirNaFila(sessao, jid, filaLinha[i + 2], false))}
-                  style={{ padding: "4px 7px", fontSize: 12, color: i === filaLinha.length - 1 ? "rgba(255,255,255,.15)" : T.secundario }}>▼</button>
-                <button onClick={() => { atualizar(reclassificarJogador(sessao, jid, true, ordemIdx)); avisar(`${nomes[jid]} virou goleiro pro resto do dia`); }}
-                  title="Reclassificar como goleiro pro resto do dia" style={{ padding: "4px 6px", fontSize: 9, fontWeight: 800, color: T.gk }}>GOL</button>
-                <button onClick={() => { atualizar(removerJogador(sessao, jid)); avisar(`${nomes[jid]} saiu da fila`); }}
-                  style={{ padding: "4px 7px", fontSize: 13, color: T.laranja }}>✕</button>
-              </div>
-            </div>
-          ))}
-        </Painel>
+        <FilaLinhaArrastavel {...{ filaLinha, nomes, sessao, atualizar, avisar, ordemIdx }} />
       </SecaoRecolhivel>
 
       <SecaoRecolhivel titulo="Goleiros presentes" detalhe={`${goleirosLivres(sessao).length} aguardando · ${sessao.goleiros.length} no dia`}
