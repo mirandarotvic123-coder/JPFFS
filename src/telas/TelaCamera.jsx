@@ -31,6 +31,12 @@ const MODALIDADE = PARTIDA_ID.startsWith("camp-") ? "campeonato" : "rachao";
 const LINK_RODADA = PARTIDA_ID.startsWith("camp-") && PARTIDA_ID.split("-").length === 2;
 const FILTRO_LISTA = LINK_RODADA ? { partidaPrefixo: `${PARTIDA_ID}-` } : PARTIDA_ID;
 const CHAVE_DEVICE = "jpffs:camera-device";
+const CHAVE_ORIENTACAO = "jpffs:camera-orientacao"; // 'h' (padrão) | 'v'
+
+function lerOrientacao() {
+  try { return localStorage.getItem(CHAVE_ORIENTACAO) === "v" ? "v" : "h"; }
+  catch { return "h"; }
+}
 
 function idDispositivo() {
   try {
@@ -63,6 +69,8 @@ function TelaCamera({ perfil, avisar }) {
   const souOrganizador = perfil?.papel === "organizador" && perfil?.status === "aprovado";
 
   const [suportado] = useState(() => cameraDisponivel());
+  const [orientacao, setOrientacao] = useState(lerOrientacao); // 'h' | 'v'
+  const [travado, setTravado] = useState(false); // recorder sem chunks há >3s (tela preta)
   const [ligada, setLigada] = useState(false);
   const [modoGravacao, setModoGravacao] = useState(false);
   const [erro, setErro] = useState(null);
@@ -91,6 +99,34 @@ function TelaCamera({ perfil, avisar }) {
 
   useEffect(() => { anguloRef.current = angulo; }, [angulo]);
   useEffect(() => { nomeRef.current = perfil?.nome || perfil?.email || "câmera"; }, [perfil]);
+  useEffect(() => { try { localStorage.setItem(CHAVE_ORIENTACAO, orientacao); } catch { /* sem storage */ } }, [orientacao]);
+
+  /* Detector de tela preta: se os chunks pararem de chegar (recorder travou com
+   * a tela apagada / app em segundo plano), avisa e oferece "retomar". */
+  useEffect(() => {
+    if (!ligada) { setTravado(false); return; }
+    const iv = setInterval(() => {
+      const st = gravadorRef.current?.estado?.();
+      const preso = !!st && st.rodando && st.segSemDados >= 3;
+      setTravado(preso);
+      if (preso) pedirWakeLock();
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [ligada]);
+
+  async function retomar() {
+    setTravado(false);
+    await pedirWakeLock();
+    try { await videoRef.current?.play?.(); } catch { /* nada */ }
+    const track = streamRawRef.current?.getVideoTracks?.()[0];
+    if (!track || track.readyState === "ended") {
+      // a câmera morreu de vez — reabre tudo
+      desligar();
+      await ligarCamera();
+      return;
+    }
+    gravadorRef.current?.reiniciarGravadores?.();
+  }
 
   const recarregarLances = () => {
     clearTimeout(recarregarTimerRef.current);
@@ -279,16 +315,18 @@ function TelaCamera({ perfil, avisar }) {
       const raw = await abrirCamera();
       streamRawRef.current = raw;
 
-      /* transforma em 720×1280 vertical (o iPhone entrega deitado). Se o canvas
-       * não rolar nesse aparelho, grava o cru mesmo — melhor deitado do que
-       * nada. */
+      /* HORIZONTAL: grava o stream cru (a câmera já nasce deitada). VERTICAL:
+       * transforma em 720×1280 (o iPhone entrega deitado); se o canvas não rolar
+       * nesse aparelho, grava o cru mesmo — melhor deitado do que nada. */
       let usar = raw;
-      try {
-        const vs = criarStreamVertical(raw);
-        streamVertRef.current = vs;
-        usar = vs.stream;
-      } catch (e) {
-        console.warn("stream vertical indisponível, usando câmera crua:", e);
+      if (orientacao === "v") {
+        try {
+          const vs = criarStreamVertical(raw);
+          streamVertRef.current = vs;
+          usar = vs.stream;
+        } catch (e) {
+          console.warn("stream vertical indisponível, usando câmera crua:", e);
+        }
       }
 
       streamRef.current = usar;
@@ -364,14 +402,17 @@ function TelaCamera({ perfil, avisar }) {
 
   /* ---------- Modo gravação (tela cheia) ---------------------------------- */
   if (modoGravacao && ligada) {
-    const resTxt = !dimVid ? null
+    const resTxt = orientacao === "h"
+      ? "horizontal ✓"
+      : !dimVid ? null
       : dimVid.fonteDeitada ? "deitado — vire em pé"
       : dimVid.retrato ? (dimVid.corrigindo ? "vertical ✓" : `${dimVid.w}×${dimVid.h} vertical`)
       : "deitado";
-    const resOk = dimVid && dimVid.retrato && !dimVid.fonteDeitada;
+    const resOk = orientacao === "h" || (dimVid && dimVid.retrato && !dimVid.fonteDeitada);
     return (
       <div ref={telaRef} style={{ position: "fixed", inset: 0, zIndex: 60, background: "#000", overflow: "hidden" }}>
         <video ref={videoRef} muted playsInline autoPlay
+          onPause={(e) => e.currentTarget.play?.().catch(() => {})}
           style={{ width: "100%", height: "100%", objectFit: "cover" }} />
 
         <div style={{
@@ -419,6 +460,17 @@ function TelaCamera({ perfil, avisar }) {
             <span style={{ background: "rgba(0,0,0,.78)", color: "#fff", padding: "8px 18px", borderRadius: 999, fontWeight: 800, fontSize: 13 }}>{avisoModo}</span>
           </div>
         )}
+
+        {travado && (
+          <button onClick={retomar} style={{
+            position: "absolute", inset: 0, zIndex: 5, border: "none",
+            background: "rgba(176,0,0,.85)", color: "#fff",
+            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12,
+          }}>
+            <span style={{ fontSize: 24, fontWeight: 900, letterSpacing: ".02em" }}>TELA TRAVOU</span>
+            <span style={{ fontSize: 14, fontWeight: 700 }}>toque para retomar a gravação</span>
+          </button>
+        )}
       </div>
     );
   }
@@ -428,7 +480,7 @@ function TelaCamera({ perfil, avisar }) {
     <div className="space-y-4">
       <CabecalhoPagina
         titulo="Câmera de lances"
-        descricao={`${LINK_RODADA ? "Rodada" : "Partida"}: ${PARTIDA_ROTULO}. Apoie o celular EM PÉ (vídeo vertical, pronto pra postar), ligue a câmera e entre em Modo gravação.`}
+        descricao={`${LINK_RODADA ? "Rodada" : "Partida"}: ${PARTIDA_ROTULO}. Apoie o celular ${orientacao === "h" ? "DEITADO (vídeo horizontal, pega mais campo)" : "EM PÉ (vídeo vertical, pronto pra postar)"}, ligue a câmera e entre em Modo gravação.`}
       />
 
       {erro && (
@@ -437,7 +489,46 @@ function TelaCamera({ perfil, avisar }) {
         </Painel>
       )}
 
-      {ligada && dimVid && (dimVid.fonteDeitada || !dimVid.retrato) && (
+      <Painel className="p-3 space-y-2">
+        <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: T.ouro }}>
+          Orientação do vídeo
+        </span>
+        <div className="grid grid-cols-2 gap-2">
+          {["h", "v"].map((o) => (
+            <Botao key={o} variante={orientacao === o ? "primario" : "secundario"}
+              onClick={() => { if (orientacao !== o) { setOrientacao(o); if (ligada) desligar(); } }}
+              style={{ minHeight: 40, fontSize: 11 }}>
+              {o === "h" ? "Horizontal" : "Vertical (stories)"}
+            </Botao>
+          ))}
+        </div>
+        <p style={{ fontSize: 10, color: T.fraco, lineHeight: 1.4 }}>
+          {orientacao === "h"
+            ? "Grava o vídeo deitado — pega mais do campo. Trocar aqui desliga a câmera; ligue de novo."
+            : "Grava em pé (720×1280), pronto pra postar. No iPhone o app gira a imagem sozinho."}
+        </p>
+      </Painel>
+
+      <Painel className="p-3" style={{ borderColor: T.tier4 }}>
+        <p style={{ fontSize: 11, color: T.secundario, lineHeight: 1.45 }}>
+          Antes de começar: nas <b>configurações do aparelho</b>, deixe o <b>bloqueio automático de tela</b> em
+          "Nunca" enquanto durar o jogo. O app trava a tela acesa sozinho, mas alguns celulares ignoram —
+          e a tela apagando <b>corta a gravação</b>.
+        </p>
+      </Painel>
+
+      {ligada && travado && (
+        <Painel className="p-3" style={{ borderColor: T.vermelho, background: "rgba(255,107,107,.12)" }}>
+          <p style={{ fontSize: 12, color: T.vermelho }}>
+            A gravação <b>travou</b> (a tela apagou ou o app foi pro fundo).{" "}
+            <button onClick={retomar} style={{ color: T.vermelho, fontWeight: 800, textDecoration: "underline" }}>
+              Tocar para retomar
+            </button>.
+          </p>
+        </Painel>
+      )}
+
+      {orientacao === "v" && ligada && dimVid && (dimVid.fonteDeitada || !dimVid.retrato) && (
         <Painel className="p-3" style={{ borderColor: T.laranja, background: "rgba(255,165,61,.1)" }}>
           <p style={{ fontSize: 12, color: T.laranja }}>
             O celular está <b>deitado</b> — o clipe sai muito cortado. Apoie o celular <b>em pé</b>,
@@ -445,7 +536,7 @@ function TelaCamera({ perfil, avisar }) {
           </p>
         </Painel>
       )}
-      {ligada && dimVid?.corrigindo && (
+      {orientacao === "v" && ligada && dimVid?.corrigindo && (
         <Painel className="p-3" style={{ borderColor: T.verde, background: "rgba(61,214,140,.08)" }}>
           <p style={{ fontSize: 11.5, color: T.verde }}>
             Vídeo <b>vertical</b> (720×1280). A câmera do iPhone vem deitada — o app gira a imagem sozinho.
@@ -454,8 +545,9 @@ function TelaCamera({ perfil, avisar }) {
       )}
 
       <Painel className="overflow-hidden">
-        <div style={{ position: "relative", background: "#000", aspectRatio: "3 / 4", maxWidth: 300, margin: "0 auto" }}>
+        <div style={{ position: "relative", background: "#000", aspectRatio: orientacao === "h" ? "16 / 9" : "3 / 4", maxWidth: orientacao === "h" ? 360 : 300, margin: "0 auto" }}>
           <video ref={videoRef} muted playsInline autoPlay
+            onPause={(e) => e.currentTarget.play?.().catch(() => {})}
             style={{ width: "100%", height: "100%", objectFit: "cover", display: ligada ? "block" : "none" }} />
           {!ligada && (
             <div className="flex h-full w-full flex-col items-center justify-center" style={{ gap: 10, color: T.fraco }}>
@@ -479,7 +571,9 @@ function TelaCamera({ perfil, avisar }) {
             {ligada ? (
               <>
                 buffer {estGrav.bufferSegundos}s · {conectado ? "canal ok" : "conectando…"}
-                {dimVid && (
+                {orientacao === "h" ? (
+                  <> · <span style={{ color: T.verde, fontWeight: 700 }}>horizontal</span></>
+                ) : dimVid && (
                   <>
                     {" · "}
                     <span style={{ color: dimVid.retrato && !dimVid.fonteDeitada ? T.verde : T.laranja, fontWeight: 700 }}>
