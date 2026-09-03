@@ -64,9 +64,12 @@ export function cameraDisponivel() {
 
 /* Abre a câmera "crua". NÃO adianta pedir retrato aqui: o Safari do iPhone
  * ignora width/height/aspectRatio e sempre entrega a câmera DEITADA (ex.:
- * 1280×720), na orientação nativa do sensor. A prévia parece em pé só porque
- * o <video> gira junto com o celular — mas o MediaRecorder grava os pixels
- * crus (deitados). Quem resolve a orientação é criarStreamVertical(). */
+ * 1280×720), na orientação nativa do sensor.
+ *
+ * No modo HORIZONTAL a gente grava esse stream cru direto (a câmera já nasce
+ * deitada — é o que se quer). No modo VERTICAL a prévia parece em pé só porque
+ * o <video> gira junto com o celular, mas o MediaRecorder gravaria os pixels
+ * crus (deitados) — por isso o vertical passa por criarStreamVertical(). */
 export async function abrirCamera() {
   return navigator.mediaDevices.getUserMedia({
     video: {
@@ -104,7 +107,19 @@ export function criarStreamVertical(streamRaw) {
   video.srcObject = streamRaw;
   video.muted = true;
   video.playsInline = true;
-  video.play?.().catch(() => {});
+  video.setAttribute("playsinline", "");
+  /* iOS suspende um <video> solto (fora do DOM) que alimenta canvas assim que a
+   * tela escurece ou o app perde foco — e o canvas passa a desenhar preto. Deixar
+   * o elemento no DOM (1×1, invisível) e reforçar o play() em cada retorno de
+   * foco segura a imagem. */
+  video.style.cssText =
+    "position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;left:0;bottom:0;";
+  try { document.body.appendChild(video); } catch { /* SSR */ }
+  const retomarVideo = () => { video.play?.().catch(() => {}); };
+  retomarVideo();
+  document.addEventListener("visibilitychange", retomarVideo);
+  window.addEventListener("focus", retomarVideo);
+  window.addEventListener("resize", retomarVideo);
 
   const canvas = document.createElement("canvas");
   canvas.width = SAIDA_L;
@@ -124,6 +139,7 @@ export function criarStreamVertical(streamRaw) {
     req = requestAnimationFrame(desenhar);
     if (ts - ultimo < 32) return; // ~30fps, poupa bateria
     ultimo = ts;
+    if (video.paused || video.ended) retomarVideo(); // segurou depois de um lock de tela
     const vw = video.videoWidth, vh = video.videoHeight;
     if (!vw || !vh || !ctx) return;
     const girar = vw > vh && telaRetrato();
@@ -156,8 +172,12 @@ export function criarStreamVertical(streamRaw) {
     encerrar() {
       vivo = false;
       cancelAnimationFrame(req);
+      document.removeEventListener("visibilitychange", retomarVideo);
+      window.removeEventListener("focus", retomarVideo);
+      window.removeEventListener("resize", retomarVideo);
       try { stream.getVideoTracks().forEach((t) => t.stop()); } catch { /* nada */ }
       video.srcObject = null;
+      try { video.remove(); } catch { /* nada */ }
     },
   };
 }
@@ -172,6 +192,7 @@ export function criarGravador(stream, { aoMudarEstado } = {}) {
   let rodando = false;
   let inicioGeral = 0;
   let idCaptura = null; // id da captura em andamento (trava local durante os +5s)
+  let ultimoDadoEm = performance.now(); // último chunk recebido — detecta recorder travado (tela preta)
   const canais = []; // { rec, chunks, inicio, fase, timer, alvo, resolver }
 
   const idade = (c) => performance.now() - c.inicio;
@@ -190,6 +211,8 @@ export function criarGravador(stream, { aoMudarEstado } = {}) {
       capturando: idCaptura != null,
       formato: mime,
       ext,
+      // segundos sem chunk novo: >~3 = recorder travado (tela apagou/app foi pro fundo)
+      segSemDados: rodando ? Math.round((performance.now() - ultimoDadoEm) / 1000) : 0,
     };
   }
 
@@ -213,12 +236,15 @@ export function criarGravador(stream, { aoMudarEstado } = {}) {
     canal.alvo = null;
     canal.resolver = null;
     canal.inicio = performance.now();
+    ultimoDadoEm = performance.now();
     const rec = new MediaRecorder(stream, opts);
     canal.rec = rec;
     rec.ondataavailable = (ev) => {
-      if (ev.data && ev.data.size) canal.chunks.push(ev.data);
+      if (ev.data && ev.data.size) { canal.chunks.push(ev.data); ultimoDadoEm = performance.now(); }
       notificar();
     };
+    // alguns navegadores pausam o MediaRecorder quando a tela bloqueia — retoma sozinho
+    rec.onpause = () => { try { rec.resume(); } catch { /* já parado */ } };
     rec.onstop = () => {
       const eraCaptura = canal.alvo === "captura";
       if (eraCaptura && canal.resolver) {
@@ -277,6 +303,26 @@ export function criarGravador(stream, { aoMudarEstado } = {}) {
 
     descartarCaptura(id) {
       if (idCaptura === id) idCaptura = null;
+      notificar();
+    },
+
+    /* Recicla os dois gravadores sem mexer no stream nem no canal — usado quando
+     * a tela travou e os chunks pararam de chegar (tela preta). Descarta qualquer
+     * captura em andamento (o buffer não é confiável depois de um congelamento). */
+    reiniciarGravadores() {
+      if (!rodando) return;
+      idCaptura = null;
+      inicioGeral = performance.now();
+      for (const c of canais) {
+        clearTimeout(c.timer);
+        c.alvo = null;
+        // não deixa uma captura em curso pendurada — resolve com o que houver
+        if (c.resolver) { try { c.resolver(new Blob((c.chunks || []).slice(), { type: mime || "video/webm" })); } catch { /* nada */ } c.resolver = null; }
+        try { if (c.rec) { c.rec.onstop = null; c.rec.stop(); } } catch { /* já parado */ }
+        iniciarCanal(c);
+        agendarReciclagem(c);
+      }
+      ultimoDadoEm = performance.now();
       notificar();
     },
 
