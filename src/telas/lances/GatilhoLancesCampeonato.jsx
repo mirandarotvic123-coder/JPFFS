@@ -7,10 +7,10 @@ import { Botao, Painel } from "../../components/ui";
 /* ================== GATILHO DE LANCES — CAMPEONATO =====================
  * Segue a doc, seção 3.
  *
- * ESCOPO: um por RODADA, não por partida. As partidas da rodada rolam uma
- * de cada vez (mesmo campo), então um canal só (`camp-<rodada>`) cobre a
- * rodada inteira e o link de câmera não precisa ser trocado a cada partida.
- * Qual partida é o clipe vem no sinal `disparo` (a súmula sabe).
+ * ESCOPO: o canal é DO DIA (`dia-<AAAA-MM-DD>`) — o mesmo link de câmera cobre
+ * a rodada inteira do Campeonato E o Rachão do dia (as partidas rolam uma de
+ * cada vez, mesmo campo). Qual partida/modalidade é o clipe vem no sinal
+ * `disparo` (a súmula sabe), então a Galeria separa tudo sozinha.
  *
  * GOL: registrar o gol é o botão "+" do jogador na própria súmula (uma via
  * só, sem confusão). Quando as câmeras estão ativas, esse "+" chama
@@ -30,7 +30,7 @@ import { Botao, Painel } from "../../components/ui";
 const CAMPO = { width: "100%", background: T.tier2, border: `1px solid ${T.tier4}`, borderRadius: 8, padding: "10px", color: T.texto, fontSize: 14 };
 
 const GatilhoLancesCampeonato = forwardRef(function GatilhoLancesCampeonato(
-  { rodadaId, rodadaRotulo, partidas = [], ativo, setAtivo, souOrganizador, avisar },
+  { canalId, rodadaRotulo, partidas = [], ativo, setAtivo, souOrganizador, avisar },
   ref
 ) {
   const canalRef = useRef(null);
@@ -50,10 +50,10 @@ const GatilhoLancesCampeonato = forwardRef(function GatilhoLancesCampeonato(
   }, [partidas, partidaSelId]);
 
   useEffect(() => {
-    if (!ativo || !rodadaId) return;
+    if (!ativo || !canalId) return;
     let vivo = true;
     try {
-      const canal = supabase.channel(`lances:${rodadaId}`, { config: { broadcast: { self: false } } });
+      const canal = supabase.channel(`lances:${canalId}`, { config: { broadcast: { self: false } } });
       canal.subscribe((s) => { if (vivo && s === "SUBSCRIBED") setConectado(true); });
       canalRef.current = canal;
     } catch (e) {
@@ -65,7 +65,7 @@ const GatilhoLancesCampeonato = forwardRef(function GatilhoLancesCampeonato(
       try { if (canalRef.current) supabase.removeChannel(canalRef.current); } catch {}
       canalRef.current = null;
     };
-  }, [ativo, rodadaId]);
+  }, [ativo, canalId]);
 
   function enviar(evento, payload) {
     try { canalRef.current?.send({ type: "broadcast", event: evento, payload }); }
@@ -124,7 +124,7 @@ const GatilhoLancesCampeonato = forwardRef(function GatilhoLancesCampeonato(
   function fechar() { setFluxo(null); setCapturaId(null); setGolDe(null); setJogadorId(""); }
 
   function copiarLink() {
-    const url = `${window.location.origin}${window.location.pathname}?camera=1&p=${encodeURIComponent(rodadaId)}&r=${encodeURIComponent(rodadaRotulo || "")}`;
+    const url = `${window.location.origin}${window.location.pathname}?camera=1&p=${encodeURIComponent(canalId)}&r=${encodeURIComponent(rodadaRotulo || "")}`;
     navigator.clipboard?.writeText(url).then(
       () => { setCopiado(true); setTimeout(() => setCopiado(false), 2500); },
       () => avisar?.("Não copiou. Link: " + url)
@@ -163,11 +163,11 @@ const GatilhoLancesCampeonato = forwardRef(function GatilhoLancesCampeonato(
           </Botao>
           {souOrganizador && (
             <Botao variante="secundario" className="w-full" onClick={copiarLink} style={{ minHeight: 36, fontSize: 10.5 }}>
-              {copiado ? "Link copiado ✓" : "Copiar link de câmera da rodada"}
+              {copiado ? "Link copiado ✓" : "Copiar link de câmera do dia"}
             </Botao>
           )}
           <p style={{ fontSize: 10, color: T.fraco, lineHeight: 1.4 }}>
-            O link vale a rodada inteira — não troca a cada partida. Ao marcar um gol no <b>+</b> do jogador, as câmeras gravam e aparece aqui a pergunta de guardar o vídeo.
+            O link vale o dia inteiro — serve pro Campeonato e pro Rachão, não troca a cada partida nem a cada rodada. Ao marcar um gol no <b>+</b> do jogador, as câmeras gravam e aparece aqui a pergunta de guardar o vídeo.
           </p>
         </>
       )}

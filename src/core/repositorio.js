@@ -139,15 +139,16 @@ async function enviarLance({ modalidade, partidaId, partidaRotulo, tipo, jogador
 }
 
 /* Lista clipes. `filtro` pode ser { partidaId }, { partidaPrefixo } (todas as
- * partidas de uma rodada — o link de câmera do Campeonato é por rodada) ou
- * { modalidade }; sem filtro traz tudo. Nunca lança — devolve [] em erro (a
- * Galeria não pode quebrar). */
+ * partidas de uma rodada), { desde, ate } (janela de tempo — o link de câmera
+ * "do dia" cobre Campeonato + Rachão) ou { modalidade }; sem filtro traz tudo.
+ * Nunca lança — devolve [] em erro (a Galeria não pode quebrar). */
 async function listarLances(filtro) {
   try {
     let q = supabase.from("lances").select("*").order("criado_em", { ascending: false }).limit(400);
     if (typeof filtro === "string") q = q.eq("partida_id", filtro); // compat: string = partidaId
     else if (filtro?.partidaId) q = q.eq("partida_id", filtro.partidaId);
     else if (filtro?.partidaPrefixo) q = q.like("partida_id", `${filtro.partidaPrefixo}%`);
+    else if (filtro?.desde) { q = q.gte("criado_em", filtro.desde); if (filtro.ate) q = q.lt("criado_em", filtro.ate); }
     else if (filtro?.modalidade) q = q.eq("modalidade", filtro.modalidade);
     const { data, error } = await q;
     if (error) throw error;

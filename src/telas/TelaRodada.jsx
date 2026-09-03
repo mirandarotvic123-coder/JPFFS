@@ -870,10 +870,12 @@ function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId 
   const niveis = dados.disciplina.porRodada[rodada.id] || {};
   const [jogoAlvo, setJogoAlvo] = useState("");
 
-  /* Câmeras de lances: um canal por RODADA (as partidas rolam uma de cada vez,
-   * mesmo campo), lembrado neste aparelho. O gatilho fica aqui, fora da súmula —
-   * o link de câmera vale a rodada inteira e não troca a cada partida. */
+  /* Câmeras de lances: canal DO DIA (`dia-<data>`) — o mesmo link cobre a rodada
+   * do Campeonato e o Rachão do dia (as partidas rolam uma de cada vez, mesmo
+   * campo). O gatilho fica aqui, fora da súmula. A memória "câmeras ativas"
+   * deste aparelho continua por rodada. */
   const rodadaLancesId = `camp-${rodada.id}`;
+  const canalLancesDia = `dia-${rodada.data}`;
   const [camerasAtivas, setCamerasAtivas] = useState(() => lerCamerasAtivas(rodadaLancesId));
   useEffect(() => { salvarCamerasAtivas(rodadaLancesId, camerasAtivas); }, [camerasAtivas, rodadaLancesId]);
   const gatilhoLancesRef = useRef(null);
@@ -1001,7 +1003,7 @@ function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId 
       <LimiteErro>
         <GatilhoLancesCampeonato
           ref={gatilhoLancesRef}
-          rodadaId={rodadaLancesId}
+          canalId={canalLancesDia}
           rodadaRotulo={`Rodada ${rodada.numero}`}
           partidas={partidasCamera}
           ativo={camerasAtivas}
