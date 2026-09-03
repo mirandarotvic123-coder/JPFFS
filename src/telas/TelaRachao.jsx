@@ -92,6 +92,7 @@ function TelaRachao({ base, avisar }) {
         <LimiteErro>
           <GatilhoLances
             partidaId={`rachao-${sessao.id}`}
+            canalId={`dia-${sessao.data}`}
             partidaRotulo={rotuloRachao(sessao.data)}
             modalidade="rachao"
             jogadores={[...new Set([...sessao.linha, ...sessao.goleiros])].map((jid) => ({ id: jid, nome: nomes[jid] }))}

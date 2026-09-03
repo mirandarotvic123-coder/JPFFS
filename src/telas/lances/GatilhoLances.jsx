@@ -18,7 +18,11 @@ import { Botao, Painel, Segmento } from "../../components/ui";
  * desta partida — assim uma rodada com 4 súmulas não abre 4 canais à toa.
  * ====================================================================== */
 
-function GatilhoLances({ partidaId, partidaRotulo, modalidade, jogadores = [], souOrganizador, avisar }) {
+/* `canalId` é o canal Realtime (ex.: `dia-<AAAA-MM-DD>` — um link de câmera pro
+ * dia todo, cobrindo Rachão e Campeonato). `partidaId` continua identificando o
+ * clipe/rachão e serve de chave da memória "câmeras ativas" deste aparelho. */
+function GatilhoLances({ partidaId, canalId, partidaRotulo, modalidade, jogadores = [], souOrganizador, avisar }) {
+  const canalNome = canalId || partidaId;
   const canalRef = useRef(null);
   const [ativo, setAtivo] = useState(() => lerCamerasAtivas(partidaId)); // canal aberto? (lembrado neste aparelho)
   const [conectado, setConectado] = useState(false);
@@ -31,10 +35,10 @@ function GatilhoLances({ partidaId, partidaRotulo, modalidade, jogadores = [], s
   const [copiado, setCopiado] = useState(false);
 
   useEffect(() => {
-    if (!ativo || !partidaId) return;
+    if (!ativo || !canalNome) return;
     let vivo = true;
     try {
-      const canal = supabase.channel(`lances:${partidaId}`, { config: { broadcast: { self: false } } });
+      const canal = supabase.channel(`lances:${canalNome}`, { config: { broadcast: { self: false } } });
       canal.subscribe((status) => { if (vivo && status === "SUBSCRIBED") setConectado(true); });
       canalRef.current = canal;
     } catch (e) {
@@ -46,7 +50,7 @@ function GatilhoLances({ partidaId, partidaRotulo, modalidade, jogadores = [], s
       try { if (canalRef.current) supabase.removeChannel(canalRef.current); } catch {}
       canalRef.current = null;
     };
-  }, [ativo, partidaId]);
+  }, [ativo, canalNome]);
 
   function enviar(evento, payload) {
     try { canalRef.current?.send({ type: "broadcast", event: evento, payload }); }
@@ -59,7 +63,7 @@ function GatilhoLances({ partidaId, partidaRotulo, modalidade, jogadores = [], s
     setTipo("gol");
     setJogadorId("");
     setAberto(true);
-    enviar("disparo", { id: cid, modalidade, partidaRotulo });
+    enviar("disparo", { id: cid, modalidade, partidaId, partidaRotulo });
     avisar?.("Gravando lance…");
   }
 
@@ -80,7 +84,7 @@ function GatilhoLances({ partidaId, partidaRotulo, modalidade, jogadores = [], s
   function fechar() { setAberto(false); setCapturaId(null); }
 
   function copiarLink() {
-    const url = `${window.location.origin}${window.location.pathname}?camera=1&p=${encodeURIComponent(partidaId)}&r=${encodeURIComponent(partidaRotulo || "")}`;
+    const url = `${window.location.origin}${window.location.pathname}?camera=1&p=${encodeURIComponent(canalNome)}&r=${encodeURIComponent(partidaRotulo || "")}`;
     navigator.clipboard?.writeText(url).then(
       () => { setCopiado(true); setTimeout(() => setCopiado(false), 2500); },
       () => avisar?.("Não copiou. Link: " + url)
@@ -115,11 +119,12 @@ function GatilhoLances({ partidaId, partidaRotulo, modalidade, jogadores = [], s
           </Botao>
           {souOrganizador && (
             <Botao variante="secundario" className="w-full" onClick={copiarLink} style={{ minHeight: 36, fontSize: 10.5 }}>
-              {copiado ? "Link copiado ✓" : "Copiar link de câmera do rachão"}
+              {copiado ? "Link copiado ✓" : "Copiar link de câmera do dia"}
             </Botao>
           )}
           <p style={{ fontSize: 10, color: T.fraco, lineHeight: 1.4 }}>
             Ao tocar, as câmeras já gravam os ~20s do lance. Depois você classifica — o vídeo espera a decisão.
+            {souOrganizador ? " O link vale o dia inteiro e serve também pro Campeonato — não precisa trocar." : ""}
           </p>
         </>
       ) : (

@@ -19,17 +19,33 @@ import { ListaClipes } from "./lances/ListaClipes";
  * ======================================================================= */
 
 /* A partida vem na URL do link de câmera (?camera=1&p=...&r=...). Sem isso,
- * cai no modo de teste. `m` (modalidade) é derivada do prefixo do id. */
+ * cai no modo de teste. */
 const PARAMS = new URLSearchParams(window.location.search);
 const PARTIDA_ID = PARAMS.get("p") || "teste-camera";
 const PARTIDA_ROTULO = PARAMS.get("r") || "Teste";
-const MODALIDADE = PARTIDA_ID.startsWith("camp-") ? "campeonato" : "rachao";
-/* No Campeonato o link de câmera é da RODADA inteira (`camp-<rodada>`), não de
- * uma partida — as partidas rolam uma de cada vez. O `p`/`r` de cada clipe vem
- * no sinal `disparo` (a súmula sabe qual partida é). Um link por partida antigo
- * (`camp-<rodada>-<jogo>`) continua funcionando. */
+
+/* Formato do `p`:
+ *  - dia-<AAAA-MM-DD>     -> link DO DIA: uma câmera cobre Campeonato E Rachão
+ *      da data. A partida/modalidade de cada clipe vem no sinal `disparo`.
+ *  - camp-<rodada>        -> link da rodada do Campeonato (compat).
+ *  - camp-<rodada>-<jogo> -> link antigo por partida (compat).
+ *  - rachao-<sessao>      -> link do rachão (compat).
+ *  - teste-camera         -> modo de teste.
+ * O canal Realtime é sempre `lances:<PARTIDA_ID>` — os gatilhos do Rachão e do
+ * Campeonato emitem no mesmo canal quando é `dia-<data>`. */
+const LINK_DIA = /^dia-\d{4}-\d{2}-\d{2}$/.test(PARTIDA_ID);
 const LINK_RODADA = PARTIDA_ID.startsWith("camp-") && PARTIDA_ID.split("-").length === 2;
-const FILTRO_LISTA = LINK_RODADA ? { partidaPrefixo: `${PARTIDA_ID}-` } : PARTIDA_ID;
+const MODALIDADE = PARTIDA_ID.startsWith("camp-") ? "campeonato" : "rachao"; // fallback — no dia/rodada vem no sinal
+
+function filtroListaClipes() {
+  if (LINK_DIA) {
+    const inicio = new Date(`${PARTIDA_ID.slice(4)}T00:00:00`);
+    return { desde: inicio.toISOString(), ate: new Date(inicio.getTime() + 864e5).toISOString() };
+  }
+  if (LINK_RODADA) return { partidaPrefixo: `${PARTIDA_ID}-` };
+  return PARTIDA_ID;
+}
+const FILTRO_LISTA = filtroListaClipes();
 const CHAVE_DEVICE = "jpffs:camera-device";
 const CHAVE_ORIENTACAO = "jpffs:camera-orientacao"; // 'h' (padrão) | 'v'
 
@@ -480,7 +496,7 @@ function TelaCamera({ perfil, avisar }) {
     <div className="space-y-4">
       <CabecalhoPagina
         titulo="Câmera de lances"
-        descricao={`${LINK_RODADA ? "Rodada" : "Partida"}: ${PARTIDA_ROTULO}. Apoie o celular ${orientacao === "h" ? "DEITADO (vídeo horizontal, pega mais campo)" : "EM PÉ (vídeo vertical, pronto pra postar)"}, ligue a câmera e entre em Modo gravação.`}
+        descricao={`${LINK_DIA ? "Dia" : LINK_RODADA ? "Rodada" : "Partida"}: ${PARTIDA_ROTULO}. Apoie o celular ${orientacao === "h" ? "DEITADO (vídeo horizontal, pega mais campo)" : "EM PÉ (vídeo vertical, pronto pra postar)"}, ligue a câmera e entre em Modo gravação.`}
       />
 
       {erro && (
@@ -669,7 +685,7 @@ function TelaCamera({ perfil, avisar }) {
 
       <ListaClipes
         lances={lances}
-        titulo={LINK_RODADA ? "Clipes desta rodada" : "Clipes desta partida"}
+        titulo={LINK_DIA ? "Clipes do dia" : LINK_RODADA ? "Clipes desta rodada" : "Clipes desta partida"}
         vazio="Nada salvo ainda."
         souOrganizador={souOrganizador}
         onApagar={apagarLance}
