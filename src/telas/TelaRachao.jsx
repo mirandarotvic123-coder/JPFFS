@@ -9,7 +9,7 @@ import {
 } from "../core/rachao";
 import {
   Botao, Painel, inputStyle, Campo, CabecalhoPagina, Secao, Segmento, IconeGoleiro,
-  Contador, FaixaPartida, SecaoRecolhivel,
+  Contador, FaixaPartida, SecaoRecolhivel, CampoBusca,
 } from "../components/ui";
 import { LimiteErro } from "../components/LimiteErro";
 import { GatilhoLances } from "./lances/GatilhoLances";
@@ -26,6 +26,10 @@ import { GatilhoLances } from "./lances/GatilhoLances";
  * verdade quando alguém aperta "Encerrar jogos do Rachão".               */
 
 const CHAVE_RACHAO = "jpffs:rachao";
+// rascunho da chamada manual do Rachão (dias SEM rodada do Campeonato): a lista que o
+// organizador monta na tela de abertura antes de apertar "Abrir Rachão". Vive só neste
+// aparelho, some quando o Rachão abre ou quando o rascunho é de um dia já passado.
+const CHAVE_RACHAO_RASCUNHO = "jpffs:rachao:rascunho";
 
 function rotuloRachao(data) {
   try {
@@ -48,6 +52,30 @@ function salvarRachaoLocal(estado) {
     if (!estado.sessao) { localStorage.removeItem(CHAVE_RACHAO); return; }
     localStorage.setItem(CHAVE_RACHAO, JSON.stringify(estado));
   } catch { /* localStorage indisponível (modo privado, cota etc.) — segue só na memória */ }
+}
+
+function carregarRascunhoAbertura(hoje) {
+  try {
+    const bruto = localStorage.getItem(CHAVE_RACHAO_RASCUNHO);
+    if (!bruto) return null;
+    const r = JSON.parse(bruto);
+    if (!r || typeof r.data !== "string" || r.data < hoje) return null; // rascunho de um dia já passado — ignora
+    return r;
+  } catch {
+    return null;
+  }
+}
+function salvarRascunhoAbertura(rascunho) {
+  try {
+    if (!rascunho || (!rascunho.chegada?.length && !rascunho.convidados?.length)) {
+      localStorage.removeItem(CHAVE_RACHAO_RASCUNHO);
+      return;
+    }
+    localStorage.setItem(CHAVE_RACHAO_RASCUNHO, JSON.stringify(rascunho));
+  } catch { /* localStorage indisponível — segue só na memória */ }
+}
+function limparRascunhoAbertura() {
+  try { localStorage.removeItem(CHAVE_RACHAO_RASCUNHO); } catch { /* nada a fazer */ }
 }
 
 function TelaRachao({ base, avisar }) {
@@ -148,11 +176,72 @@ function ListaChegada({ sessao, convidados, nomes, ordemIdx }) {
 
 function AberturaRachao({ base, avisar, setSessao, setConvidados, setOrdemIdx }) {
   const hoje = new Date().toISOString().slice(0, 10);
-  const [data, setData] = useState(hoje);
-  const [linhaPorTime, setLinhaPorTime] = useState(4);
-  const [limitePartidas, setLimitePartidas] = useState(3);
+  const [rasc] = useState(() => carregarRascunhoAbertura(hoje));
+  const [data, setData] = useState(rasc?.data ?? hoje);
+  const [linhaPorTime, setLinhaPorTime] = useState(rasc?.linhaPorTime === 5 ? 5 : 4);
+  const [limitePartidas, setLimitePartidas] = useState(rasc?.limitePartidas === 2 ? 2 : 3);
+  // chamada manual (só usada quando NÃO há rodada na data): `chegada` são os ids na ordem em
+  // que o pessoal foi chegando — elenco e convidados do dia misturados, igual `ordemChegada`
+  // da rodada. `convManual` guarda o {id,nome,posicao} de cada convidado desta lista.
+  const [chegada, setChegada] = useState(() => rasc?.chegada ?? []);
+  const [convManual, setConvManual] = useState(() => rasc?.convidados ?? []);
+  const [busca, setBusca] = useState("");
+  const [nomeConv, setNomeConv] = useState("");
+  const [posConv, setPosConv] = useState("LINHA");
+
   const porId = Object.fromEntries(base.jogadores.map((j) => [j.id, j]));
   const rodadaDoDia = base.rodadas.find((r) => r.data === data);
+
+  // porId completo pra chamada manual: elenco + convidados do dia (criarSessao classifica
+  // linha/goleiro por `posicao`, então o convidado precisa aparecer aqui).
+  const porIdManual = { ...porId, ...Object.fromEntries(convManual.map((c) => [c.id, c])) };
+  const nomeDe = (jid) => porIdManual[jid]?.nome ?? "?";
+  const ehGoleiro = (jid) => porIdManual[jid]?.posicao === "GOLEIRO";
+
+  useEffect(() => {
+    if (rodadaDoDia) return; // com rodada não existe rascunho pra guardar
+    salvarRascunhoAbertura({ data, linhaPorTime, limitePartidas, chegada, convidados: convManual });
+  }, [rodadaDoDia, data, linhaPorTime, limitePartidas, chegada, convManual]);
+
+  const alternarChamada = (jid) =>
+    setChegada((c) => (c.includes(jid) ? c.filter((x) => x !== jid) : [...c, jid]));
+  const removerDaChegada = (jid) => {
+    setChegada((c) => c.filter((x) => x !== jid));
+    setConvManual((cs) => cs.filter((c) => c.id !== jid)); // se for convidado, some de vez
+  };
+  const adicionarConvidado = () => {
+    const nome = nomeConv.trim();
+    if (!nome) return;
+    const cid = id();
+    setConvManual((cs) => [...cs, { id: cid, nome, posicao: posConv }]);
+    setChegada((c) => [...c, cid]);
+    setNomeConv("");
+    setPosConv("LINHA");
+  };
+
+  const elencoFiltrado = base.jogadores
+    .filter((j) => j.ativo !== false)
+    .filter((j) => j.nome.toLowerCase().includes(busca.trim().toLowerCase()))
+    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+
+  const nGoleiros = chegada.filter(ehGoleiro).length;
+  const nLinha = chegada.length - nGoleiros;
+
+  function abrir() {
+    const listaChegada = rodadaDoDia ? (rodadaDoDia.ordemChegada || []) : chegada;
+    const porIdAbertura = rodadaDoDia ? porId : porIdManual;
+    const nova = criarSessao({
+      id: id(), data, rodadaOrigemId: rodadaDoDia?.id || null,
+      ordemChegada: listaChegada, porId: porIdAbertura, linhaPorTime, limitePartidas,
+    });
+    const idsNaSessao = new Set([...nova.linha, ...nova.goleiros]);
+    setConvidados(rodadaDoDia ? [] : convManual.filter((c) => idsNaSessao.has(c.id)));
+    setOrdemIdx(Object.fromEntries([...nova.linha, ...nova.goleiros]
+      .map((jid) => [jid, listaChegada.indexOf(jid)])));
+    setSessao(nova);
+    limparRascunhoAbertura();
+    avisar(`Rachão de ${new Date(data + "T12:00:00").toLocaleDateString("pt-BR")} aberto`);
+  }
 
   return (
     <div className="space-y-4">
@@ -167,12 +256,11 @@ function AberturaRachao({ base, avisar, setSessao, setConvidados, setOrdemIdx })
             Lista de presença vindo da ordem de chegada do Campeonato. Total de: {(rodadaDoDia.ordemChegada || []).length} jogadores.
           </p>
         ) : (
-          <p style={{ fontSize: 12, color: T.fraco }}>Nenhuma rodada do Campeonato encontrada nesta data — a fila abre vazia, dá pra adicionar todo mundo na mão.</p>
+          <p style={{ fontSize: 12, color: T.fraco }}>
+            Nenhuma rodada do Campeonato nesta data — monte a lista do dia aqui embaixo, na ordem em que o pessoal for chegando. Fica só neste Rachão.
+          </p>
         )}
-        <p style={{ fontSize: 11, color: T.fraco, fontStyle: "italic" }}>
-          Alguém que só vai jogar hoje? Não cadastre pela chamada do Campeonato — isso entra pro elenco pra sempre.
-          Depois de abrir, adicione em "Adicionar à fila → Convidado do dia": fica só nesta sessão do Rachão.
-        </p>
+
         <Campo rotulo="Jogadores de linha por time">
           <Segmento valor={linhaPorTime} onChange={setLinhaPorTime}
             opcoes={[{ valor: 4, rotulo: "4 + 1 gol" }, { valor: 5, rotulo: "5 + 1 gol" }]} />
@@ -181,19 +269,99 @@ function AberturaRachao({ base, avisar, setSessao, setConvidados, setOrdemIdx })
           <Segmento valor={limitePartidas} onChange={setLimitePartidas}
             opcoes={[{ valor: 2, rotulo: "2 partidas" }, { valor: 3, rotulo: "3 partidas" }]} />
         </Campo>
-        <Botao className="w-full" onClick={() => {
-          const chegada = rodadaDoDia?.ordemChegada || [];
-          const nova = criarSessao({
-            id: id(), data, rodadaOrigemId: rodadaDoDia?.id || null,
-            ordemChegada: chegada, porId, linhaPorTime, limitePartidas,
-          });
-          setConvidados([]);
-          setOrdemIdx(Object.fromEntries([...nova.linha, ...nova.goleiros]
-            .map((jid) => [jid, chegada.indexOf(jid)])));
-          setSessao(nova);
-          avisar(`Rachão de ${new Date(data + "T12:00:00").toLocaleDateString("pt-BR")} aberto`);
-        }}>Abrir Rachão</Botao>
+
+        {!rodadaDoDia && (
+          <ChamadaManual {...{
+            elencoFiltrado, busca, setBusca, chegada, alternarChamada, removerDaChegada,
+            nomeConv, setNomeConv, posConv, setPosConv, adicionarConvidado,
+            nomeDe, ehGoleiro, nLinha, nGoleiros,
+          }} />
+        )}
+
+        <Botao className="w-full" disabled={!rodadaDoDia && chegada.length === 0} onClick={abrir}>
+          {rodadaDoDia || chegada.length === 0 ? "Abrir Rachão" : `Abrir Rachão · ${chegada.length} na lista`}
+        </Botao>
       </Painel>
+    </div>
+  );
+}
+
+/* --- chamada manual do dia sem rodada -------------------------------------
+ * Toca no nome do elenco pra marcar/desmarcar — a ORDEM DOS TOQUES vira a
+ * ordem de chegada. Convidado do dia entra pelo campo de nome (fica só neste
+ * Rachão, não encosta no elenco). Depois de aberto, atrasado se adiciona
+ * normalmente em "Adicionar à fila".                                       */
+function ChamadaManual({
+  elencoFiltrado, busca, setBusca, chegada, alternarChamada, removerDaChegada,
+  nomeConv, setNomeConv, posConv, setPosConv, adicionarConvidado,
+  nomeDe, ehGoleiro, nLinha, nGoleiros,
+}) {
+  return (
+    <div className="space-y-3" style={{ borderTop: `1px solid ${T.borda}`, paddingTop: 12 }}>
+      <Secao titulo="Lista do dia" detalhe="toque na ordem de chegada" />
+
+      <div className="grid grid-cols-3 gap-1.5">
+        <Contador rotulo="Na lista" valor={chegada.length} cor={T.verde} />
+        <Contador rotulo="Linha" valor={nLinha} />
+        <Contador rotulo="Goleiros" valor={nGoleiros} cor={T.gk} />
+      </div>
+
+      {chegada.length > 0 && (
+        <div className="space-y-1 rounded-lg p-2" style={{ background: "rgba(0,0,0,.22)", maxHeight: 230, overflowY: "auto" }}>
+          {chegada.map((jid, i) => (
+            <div key={jid} className="flex items-center justify-between rounded px-2 py-1.5" style={{ background: "rgba(0,0,0,.18)" }}>
+              <span className="flex items-center gap-1.5" style={{ minWidth: 0, fontSize: 12.5 }}>
+                <b style={{ color: T.fraco, flexShrink: 0 }}>{i + 1}º</b>
+                {ehGoleiro(jid) && <IconeGoleiro tam={11} />}
+                <span className="truncate">{nomeDe(jid)}</span>
+              </span>
+              <button onClick={() => removerDaChegada(jid)} title="Tirar da lista"
+                style={{ padding: "4px 7px", fontSize: 13, color: T.laranja, flexShrink: 0 }}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <CampoBusca value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar no elenco…" />
+      <div className="flex flex-wrap gap-1.5">
+        {elencoFiltrado.length === 0 && (
+          <p style={{ padding: 6, fontSize: 12, color: T.fraco }}>Ninguém no elenco com esse nome.</p>
+        )}
+        {elencoFiltrado.map((j) => {
+          const pos = chegada.indexOf(j.id);
+          const on = pos !== -1;
+          return (
+            <button key={j.id} onClick={() => alternarChamada(j.id)}
+              className="flex items-center gap-1.5 rounded-full"
+              style={{
+                padding: "9px 13px", minHeight: 42, fontSize: 13.5, fontWeight: 600,
+                border: `1px solid ${on ? T.verde : T.borda}`,
+                background: on ? "rgba(61,214,140,.16)" : "rgba(255,255,255,.04)",
+                color: on ? T.verde : T.secundario,
+              }}>
+              {on && <b style={{ fontSize: 11, opacity: 0.85 }}>{pos + 1}</b>}
+              {j.posicao === "GOLEIRO" && <IconeGoleiro tam={13} />}
+              {j.nome}
+            </button>
+          );
+        })}
+      </div>
+
+      <div>
+        <p style={{ marginBottom: 6, fontSize: 11, color: T.fraco, fontStyle: "italic" }}>
+          Convidado que só vai jogar hoje — fica só neste Rachão, não entra pro elenco.
+        </p>
+        <div className="flex gap-1.5">
+          <input value={nomeConv} onChange={(e) => setNomeConv(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && adicionarConvidado()}
+            placeholder="Nome do convidado" style={{ ...inputStyle, flex: 1, padding: "10px 8px", fontSize: 14 }} />
+          <select value={posConv} onChange={(e) => setPosConv(e.target.value)}
+            style={{ ...inputStyle, width: "auto", padding: "10px 4px", fontSize: 12 }}>
+            <option value="LINHA">Linha</option><option value="GOLEIRO">Gol</option>
+          </select>
+          <Botao style={{ padding: "0 16px" }} onClick={adicionarConvidado}>+</Botao>
+        </div>
+      </div>
     </div>
   );
 }
