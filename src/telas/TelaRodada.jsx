@@ -17,6 +17,7 @@ import { IconeSetaDireita, IconeTrofeu } from "../components/icones";
 import { Historico } from "./TelaConfig";
 import { LimiteErro } from "../components/LimiteErro";
 import { GatilhoLancesCampeonato } from "./lances/GatilhoLancesCampeonato";
+import { CronometroPartida } from "../components/CronometroPartida";
 
 /* =========================== TELA: RODADA ================================*/
 
@@ -56,7 +57,9 @@ function TelaRodada({ base, setBase, dados, cfg: cfgGlobal, avisar }) {
 
   return (
     <div className="space-y-4">
-      <CabecalhoPagina titulo="Gestão da Rodada" descricao={new Date(rodada.data + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })} />
+      <CabecalhoPagina titulo="Gestão da Rodada"
+        descricao={new Date(rodada.data + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })}
+        acao={<CronometroPartida />} />
       <div className="flex items-center justify-between rounded-xl px-4 py-3" style={{ background: T.ouroFraco, border: "1px solid rgba(245,197,24,.34)" }}>
         <div className="flex items-center" style={{ gap: 10 }}>
           <button

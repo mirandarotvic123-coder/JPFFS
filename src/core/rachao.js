@@ -84,7 +84,7 @@ function criarSessao({ id, data, rodadaOrigemId, ordemChegada = [], porId = {}, 
   }
   return {
     id, data, rodadaOrigemId: rodadaOrigemId || null,
-    linhaPorTime: linhaPorTime === 5 ? 5 : 4,
+    linhaPorTime: [4, 5, 6].includes(linhaPorTime) ? linhaPorTime : 4,
     limitePartidas: limitePartidas === 2 ? 2 : 3,
     linha, goleiros, quadra: null, timeEmEspera: null, historico: [],
   };
@@ -213,7 +213,7 @@ function encerrarPartida(sessao) {
   // essa regra de fila não muda esse desfecho, só a mensagem seria redundante, por isso fica de
   // fora daqui.
   if (resultado === "empate" && !q.forcarSaidaAoFim) {
-    const limiarFilaGrande = Math.ceil(sessao.linhaPorTime * 1.5); // 6 (4 na linha) ou 8 (5 na linha)
+    const limiarFilaGrande = Math.ceil(sessao.linhaPorTime * 1.5); // 6 (4 na linha), 8 (5) ou 9 (6)
     if (aguardandoLinha(sessao).length >= limiarFilaGrande) {
       return aplicarDesfecho(sessao, {
         ladoQueFica: null, partidasSeguidas: 0,
