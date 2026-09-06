@@ -13,6 +13,7 @@ import {
 } from "../components/ui";
 import { LimiteErro } from "../components/LimiteErro";
 import { GatilhoLances } from "./lances/GatilhoLances";
+import { CronometroPartida } from "../components/CronometroPartida";
 
 /* =========================== TELA: RACHÃO =================================
  * Fila por ordem de chegada, times Amarelo × Azul, vencedor fica em quadra
@@ -103,7 +104,8 @@ function TelaRachao({ base, avisar }) {
     <div className="rachao-layout">
       <div className="space-y-4 rachao-conteudo" style={{ flex: 1, minWidth: 0 }}>
         <CabecalhoPagina titulo="Rachão"
-          descricao={new Date(sessao.data + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })} />
+          descricao={new Date(sessao.data + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })}
+          acao={<CronometroPartida />} />
 
         <Painel className="grid grid-cols-4 gap-1.5 p-2">
           <Contador rotulo="No dia" valor={presentesTotal} cor={T.verde} />
@@ -178,7 +180,7 @@ function AberturaRachao({ base, avisar, setSessao, setConvidados, setOrdemIdx })
   const hoje = new Date().toISOString().slice(0, 10);
   const [rasc] = useState(() => carregarRascunhoAbertura(hoje));
   const [data, setData] = useState(rasc?.data ?? hoje);
-  const [linhaPorTime, setLinhaPorTime] = useState(rasc?.linhaPorTime === 5 ? 5 : 4);
+  const [linhaPorTime, setLinhaPorTime] = useState([4, 5, 6].includes(rasc?.linhaPorTime) ? rasc.linhaPorTime : 4);
   const [limitePartidas, setLimitePartidas] = useState(rasc?.limitePartidas === 2 ? 2 : 3);
   // chamada manual (só usada quando NÃO há rodada na data): `chegada` são os ids na ordem em
   // que o pessoal foi chegando — elenco e convidados do dia misturados, igual `ordemChegada`
@@ -263,7 +265,7 @@ function AberturaRachao({ base, avisar, setSessao, setConvidados, setOrdemIdx })
 
         <Campo rotulo="Jogadores de linha por time">
           <Segmento valor={linhaPorTime} onChange={setLinhaPorTime}
-            opcoes={[{ valor: 4, rotulo: "4 + 1 gol" }, { valor: 5, rotulo: "5 + 1 gol" }]} />
+            opcoes={[{ valor: 4, rotulo: "4 + 1 gol" }, { valor: 5, rotulo: "5 + 1 gol" }, { valor: 6, rotulo: "6 + 1 gol" }]} />
         </Campo>
         <Campo rotulo="Sai depois de quantas partidas seguidas" dica="Art. 29º — com 25+ presentes o Estatuto recomenda 2 (a não ser que a locação seja de 2h ou mais).">
           <Segmento valor={limitePartidas} onChange={setLimitePartidas}

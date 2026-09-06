@@ -245,3 +245,12 @@ input:-webkit-autofill:focus {
   .rachao-conteudo { padding-right: 232px; }
   .rachao-lista-chegada { position: fixed; top: 88px; right: 18px; width: 204px; max-height: calc(100vh - 88px - 18px); overflow-y: auto; }
 }
+
+/* ============================================================================
+ * Cronômetro da partida (ver components/CronometroPartida.jsx) — usado no
+ * cabeçalho do Rachão e da Gestão da Rodada.
+ * Pisca o mostrador quando a contagem regressiva chega a zero.
+ * ==========================================================================*/
+@keyframes crono-pulsa { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+.crono-pulsa { animation: crono-pulsa 1s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .crono-pulsa { animation: none; } }
