@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { T } from "../../theme";
-import { Painel, Chip, Secao } from "../../components/ui";
+import { Painel, Chip, Secao, Segmento } from "../../components/ui";
 import { IconeSetaDireita, IconeTrofeu } from "../../components/icones";
 import {
   copaDaTemporada, faseAtual, statusDaFase, statusDaPartida, vencedorDaPartida, placarDaPartida, campeoesDaCopa,
 } from "../../core/copaHendor";
 import { FASE_CURTA, formatarData, nomesDe, nomeDupla, textoDaDupla, notasDeSubstituicao } from "./util";
 import { PartidaDetalhe } from "./PartidaDetalhe";
+import { ArvoreChaveamento } from "./ArvoreChaveamento";
 import { ResultadosCopa } from "./ResultadosCopa";
 import { DocumentacaoCopa } from "./DocumentacaoCopa";
 
@@ -69,7 +70,12 @@ function PartidaCard({ copa, partida, nomes, abrir, souOrganizador }) {
     : <div style={estilo}>{conteudo}</div>;
 }
 
+/* Vista escolhida (árvore ou por fase) fica só neste aparelho — é conveniência, não dado. */
+const lerVista = () => { try { return localStorage.getItem("jpffs:copaVista") === "fases" ? "fases" : "arvore"; } catch { return "arvore"; } };
+
 function Chaveamento({ copa, nomes, abrir, souOrganizador }) {
+  const [vista, setVista] = useState(lerVista);
+  const mudarVista = (v) => { setVista(v); try { localStorage.setItem("jpffs:copaVista", v); } catch { /* modo privado */ } };
   const [faseId, setFaseId] = useState(() => faseAtual(copa));
   const fase = copa.fases.find((f) => f.id === faseId);
   const campeoes = campeoesDaCopa(copa);
@@ -90,6 +96,12 @@ function Chaveamento({ copa, nomes, abrir, souOrganizador }) {
         </Painel>
       )}
 
+      <Segmento valor={vista} onChange={mudarVista}
+        opcoes={[{ valor: "arvore", rotulo: "Chaveamento" }, { valor: "fases", rotulo: "Por fase" }]} />
+
+      {vista === "arvore" && <ArvoreChaveamento {...{ copa, nomes, abrir }} />}
+
+      {vista === "fases" && <>
       <div className="flex rounded-xl p-1" style={{ background: "rgba(255,255,255,.06)", border: `1px solid ${T.borda}` }}>
         {copa.fases.map((f) => {
           const ativo = f.id === faseId;
@@ -108,6 +120,7 @@ function Chaveamento({ copa, nomes, abrir, souOrganizador }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {partidas.map((p) => <PartidaCard key={p.id} {...{ copa, partida: p, nomes, abrir, souOrganizador }} />)}
       </div>
+      </>}
     </div>
   );
 }

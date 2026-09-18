@@ -521,7 +521,7 @@ Uma dupla sem `jogadores` é montada a partir do vencedor da partida de origem, 
 Cada arquivo em [`src/telas/`](src/telas/) é uma aba. `App.jsx` roteia por
 `aba` e passa `{ base, setBase, dados, cfg, avisar }`. A **primeira tela** ([`TelaEscolha`](src/telas/TelaEscolha.jsx),
 sempre exibida ao abrir) pergunta qual campeonato ver: **Campeonato JPFFS** (as abas abaixo, como sempre) ou
-**Copa Hendor** ([`telas/copa/`](src/telas/copa/): Chaveamento, Resultados, Documentação; visitante só vê, organizador
+**Copa Hendor** ([`telas/copa/`](src/telas/copa/): Chaveamento — em **árvore** (`ArvoreChaveamento`, rola pro lado no celular e abre na fase atual) ou **por fase**, escolha lembrada no aparelho —, Resultados, Documentação; visitante só vê, organizador
 lança as cobranças, troca jogadores e dá W.O. direto nos cartões das partidas). O botão "Trocar" do cabeçalho volta à escolha.
 `?simulacao=1` na URL liga o **modo ensaio**: nada é gravado nem recebido em tempo real (útil porque o `npm run dev` usa o banco de produção).
 
