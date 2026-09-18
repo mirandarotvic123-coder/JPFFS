@@ -489,7 +489,7 @@ function Documentacao({ cfg }) {
         <div className="space-y-2">
           <div className="flex items-center gap-2"><span style={{ color: T.ouro, fontWeight: 900 }}>▌</span> faixa dourada na linha = está na zona de classificação da Supercopa</div>
           <div className="flex items-center gap-2"><IconeGoleiro tam={14} /> jogador que atua como goleiro</div>
-          <div className="flex items-center gap-2"><span style={{ color: T.vermelho, fontWeight: 800 }}>$</span> pendência financeira — só um aviso visual, não desconta ponto nem bloqueia o sorteio</div>
+          <div className="flex items-center gap-2"><span style={{ color: T.vermelho, fontWeight: 800 }}>$</span> pendência financeira — nunca desconta ponto. Pode ser só aviso, ou tirar o jogador do sorteio e/ou do Rachão (definido no Elenco)</div>
           <div className="flex items-center gap-2"><span style={{ color: T.secundario, fontWeight: 800 }}>(*)</span> pontuação a confirmar — sinaliza que os pontos aguardam alguma confirmação (ex.: pagamento)</div>
           <div className="flex items-center gap-2"><span style={{ background: "rgba(192,140,255,.22)", color: T.roxo, fontSize: 9, fontWeight: 800, padding: "1px 4px", borderRadius: 3 }}>CONV</span> jogador convidado, fora da classificação oficial</div>
           <div className="flex items-center gap-2"><span style={{ fontStyle: "italic", color: T.laranja, fontSize: 11 }}>itálico laranja</span> na súmula = entrou só pra completar a equipe, não pontuou nada</div>

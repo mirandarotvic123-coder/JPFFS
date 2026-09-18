@@ -136,7 +136,8 @@ saneamento/migração no carregamento):
       "ativo": true,                    // false = fora da chamada, mantém histórico
       "convidado": false,              // true = joga mas fica fora da classificação
       "estrelasIniciais": 1,           // §11º — todo mundo entra com 1★
-      "pendenciaFinanceira": false,    // só sinaliza, não desconta
+      "pendenciaFinanceira": false,    // marca o $; nunca desconta ponto
+      "pendenciaEfeito": "aviso",      // só vale com pendenciaFinanceira: "aviso" (só sinaliza) | "sorteio" (fora do sorteio, joga o Rachão) | "total" (fora do sorteio e do Rachão)
       "pontuacaoPendente": false,      // idem
       "posicaoInferida": false,        // goleiro deduzido do ícone da tabela oficial
       "fotoUrl": "https://…"           // opcional; bucket "avatares"

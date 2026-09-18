@@ -1,6 +1,6 @@
 import React, { useState, useRef } from "react";
 import { T } from "../theme";
-import { idsDoTime } from "../core/regras";
+import { idsDoTime, efeitoPendencia } from "../core/regras";
 import { id, enviarFotoJogador } from "../core/repositorio";
 import {
   Botao, Painel, inputStyle, Campo, CabecalhoPagina, Secao, Segmento, Interruptor,
@@ -132,7 +132,7 @@ function TelaElenco({ base, setBase, dados, cfg, avisar }) {
               { r: inativo ? "INATIVO" : "ATIVO", c: inativo ? T.fraco : T.verde },
               !j.convidado && { r: "OFICIAL", c: T.gk },
               j.convidado && { r: "CONVIDADO", c: T.roxo },
-              j.pendenciaFinanceira && { r: "DEVENDO", c: T.vermelho },
+              j.pendenciaFinanceira && { r: { sorteio: "DEVENDO · SEM SORTEIO", total: "DEVENDO · BLOQUEADO" }[efeitoPendencia(j)] || "DEVENDO", c: T.vermelho },
               j.pontuacaoPendente && { r: "A CONFIRMAR", c: T.laranja },
             ].filter(Boolean);
             return (
@@ -215,7 +215,24 @@ function TelaElenco({ base, setBase, dados, cfg, avisar }) {
 
                     <Interruptor ligado={!!j.pendenciaFinanceira} onChange={() => atualizar(j.id, { pendenciaFinanceira: !j.pendenciaFinanceira })}
                       titulo="Pendência financeira ($)" cor={T.vermelho}
-                      descricao="Só sinaliza na tabela e na chamada. Não desconta pontos nem bloqueia o sorteio." />
+                      descricao={j.pendenciaFinanceira ? "Marca o jogador com $. Escolha abaixo o que isso impede. Nunca desconta pontos." : "Marca o jogador com $ na tabela e na chamada. Depois você escolhe se ele também fica fora do sorteio e/ou do Rachão."} />
+                    {j.pendenciaFinanceira && (
+                      <div className="space-y-1.5">
+                        <Segmento valor={efeitoPendencia(j)} onChange={(v) => atualizar(j.id, { pendenciaEfeito: v })}
+                          opcoes={[
+                            { valor: "aviso", rotulo: "Só avisar" },
+                            { valor: "sorteio", rotulo: "Sem sorteio", cor: T.laranja },
+                            { valor: "total", rotulo: "Bloqueado", cor: T.vermelho },
+                          ]} />
+                        <p style={{ fontSize: 11, color: T.secundario }}>
+                          {{
+                            aviso: "Só sinaliza. Continua entrando no sorteio e no Rachão normalmente.",
+                            sorteio: "Fora do sorteio do Campeonato (ex.: pagou depois do prazo). Marca presença, entra na ordem de chegada e joga o Rachão.",
+                            total: "Fora do sorteio e do Rachão (ex.: não pagou). Não dá pra marcar presença nem colocar na fila.",
+                          }[efeitoPendencia(j)]}
+                        </p>
+                      </div>
+                    )}
 
                     <Interruptor ligado={!!j.pontuacaoPendente} onChange={() => atualizar(j.id, { pontuacaoPendente: !j.pontuacaoPendente })}
                       titulo="Pontuação a confirmar (*)" cor={T.laranja}
