@@ -81,6 +81,21 @@ const cand = C.candidatosSubstituto(c2, C.partidaPorId(c2, "q1"), (id) => posica
 eq(cand.slice(0, 4), ["jean", "daniel", "samuel", "gueno"], "candidatos ordenados por classificação");
 ok(!cand.includes("teruya") && !cand.includes("alexandre"), "quem já joga / já saiu não é candidato");
 
+/* substitutos possíveis: filtros de inadimplência, inativo, convidado, quem já joga e quem faltou */
+const c3 = copaHendor2026();
+const jog = ["samuel", "jean", "hendor", "pietro", "daniel", "gueno", "ricardo", "convid", "inativo", "alexandre", "teruya"].map((id) => ({ id, nome: id }));
+jog.find((j) => j.id === "jean").pendenciaFinanceira = true;
+jog.find((j) => j.id === "convid").convidado = true;
+jog.find((j) => j.id === "inativo").ativo = false;
+const pos3 = { samuel: 20, jean: 3, hendor: 1, pietro: 2, daniel: 7, gueno: 30, ricardo: 12 };
+const sp = C.substitutosPossiveis(c3, C.partidaPorId(c3, "q1"), jog, (id) => pos3[id]);
+eq(sp.daFaseAnterior, ["hendor", "daniel", "samuel", "gueno"], "da fase anterior: sem devendo, na ordem da classificação");
+eq(sp.bloqueados, ["jean"], "inadimplente aparece só como bloqueado");
+eq(sp.outros, ["ricardo"], "outros: quem está fora da Copa, ativo e oficial");
+ok(![...sp.daFaseAnterior, ...sp.outros].some((id) => ["convid", "inativo", "alexandre", "teruya", "pietro"].includes(id)), "sem convidado, inativo, ausente (alexandre) nem quem já joga (teruya, pietro)");
+jog.find((j) => j.id === "jean").pendenciaFinanceira = false;
+ok(C.substitutosPossiveis(c3, C.partidaPorId(c3, "q1"), jog, (id) => pos3[id]).daFaseAnterior.includes("jean"), "sem pendência, jean volta a ser candidato");
+
 const st = C.estatisticasJogadores(copa);
 ok(st.teruya.chutes > 0 && st.kaike.defesasTentadas > 0, "estatísticas por jogador");
 

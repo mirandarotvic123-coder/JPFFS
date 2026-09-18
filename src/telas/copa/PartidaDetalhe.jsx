@@ -1,11 +1,11 @@
 import React, { useState } from "react";
 import { T } from "../../theme";
-import { Botao, Painel, Secao, Segmento, Chip } from "../../components/ui";
+import { Botao, Painel, Secao, Segmento, Chip, inputStyle } from "../../components/ui";
 import { IconeSetaEsquerda } from "../../components/icones";
 import { id } from "../../core/repositorio";
 import {
   CHUTES_POR_DUPLA, outro, estadoDisputa, iniciarDisputa, registrarChute, desfazerChute, marcarLesionado,
-  placarDaPartida, vencedorDaPartida, duplaEfetiva, statusDaPartida, candidatosSubstituto,
+  placarDaPartida, vencedorDaPartida, duplaEfetiva, statusDaPartida, substitutosPossiveis,
 } from "../../core/copaHendor";
 import { formatarData, nomeDupla, textoDaDupla, notasDeSubstituicao } from "./util";
 
@@ -160,11 +160,15 @@ function AoVivo({ copa, partida, nomes, souOrganizador, mudarPartida, duplas }) 
 
 /* ----------------------------- troca de jogador --------------------------- */
 
-function TrocaJogador({ copa, partida, dados, nomes, lado, sai, fechar, mudarPartida, setBase, avisar }) {
+function TrocaJogador({ copa, partida, base, dados, nomes, lado, sai, fechar, mudarPartida, setBase, avisar }) {
   const [aplicar, setAplicar] = useState("sim");
   const [marcarDevendo, setMarcarDevendo] = useState(false);
+  const [outro_, setOutro] = useState("");
   const posicaoDe = (jid) => dados.classificacao.find((l) => l.id === jid)?.posicao;
-  const candidatos = candidatosSubstituto(copa, partida, posicaoDe);
+  const { daFaseAnterior, outros, bloqueados } = substitutosPossiveis(copa, partida, base.jogadores, posicaoDe);
+  const candidatos = daFaseAnterior.slice(0, 8);
+  const demais = [...daFaseAnterior.slice(8), ...outros];
+  const rotuloPos = (j) => (posicaoDe(j) ? `${posicaoDe(j)}º geral` : "—");
   const penaliza = aplicar === "sim";
 
   const confirmar = (entra) => {
@@ -208,18 +212,37 @@ function TrocaJogador({ copa, partida, dados, nomes, lado, sai, fechar, mudarPar
         </label>
       )}
       <p style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", color: T.fraco }}>
-        Quem entra — eliminados da fase anterior, por classificação
+        Quem entra — eliminados da fase anterior (Art. 55 §1), por classificação
       </p>
       <div className="space-y-1.5">
         {candidatos.length === 0 && <p style={{ fontSize: 12, color: T.fraco }}>Nenhum eliminado disponível.</p>}
-        {candidatos.slice(0, 8).map((j) => (
+        {candidatos.map((j) => (
           <button key={j} onClick={() => confirmar(j)} className="flex w-full items-center justify-between rounded-lg"
             style={{ padding: "10px 12px", minHeight: 44, background: "rgba(255,255,255,.05)", border: `1px solid ${T.borda}`, fontSize: 13.5, fontWeight: 700, color: T.texto }}>
             <span>{nomes[j]}</span>
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: T.secundario }}>{posicaoDe(j) ? `${posicaoDe(j)}º geral` : "—"}</span>
+            <span style={{ fontSize: 11.5, fontWeight: 600, color: T.secundario }}>{rotuloPos(j)}</span>
           </button>
         ))}
       </div>
+      {demais.length > 0 && (
+        <div className="space-y-1.5">
+          <p style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: ".12em", textTransform: "uppercase", color: T.fraco }}>
+            Outros jogadores fora da Copa — escolha do organizador
+          </p>
+          <div className="flex gap-2">
+            <select value={outro_} onChange={(e) => setOutro(e.target.value)} style={{ ...inputStyle, flex: 1, padding: "10px 8px", fontSize: 13 }}>
+              <option value="">Escolher jogador…</option>
+              {demais.map((j) => <option key={j} value={j}>{nomes[j]} — {rotuloPos(j)}</option>)}
+            </select>
+            <Botao style={{ padding: "0 14px" }} disabled={!outro_} onClick={() => confirmar(outro_)}>Trocar</Botao>
+          </div>
+        </div>
+      )}
+      {bloqueados.length > 0 && (
+        <p style={{ fontSize: 11, color: T.vermelho }}>
+          Fora por pendência financeira ($): {bloqueados.map((j) => nomes[j]).join(", ")} (Arts. 42 e 85).
+        </p>
+      )}
       <div className="flex gap-2">
         <Botao variante="secundario" className="flex-1" style={{ fontSize: 11.5 }} onClick={() => confirmar(null)}>Sem substituto</Botao>
         <Botao variante="secundario" className="flex-1" style={{ fontSize: 11.5 }} onClick={fechar}>Cancelar</Botao>

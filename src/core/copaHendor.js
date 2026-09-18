@@ -191,6 +191,34 @@ function candidatosSubstituto(copa, partida, posicaoDe) {
     .sort((a, b) => (posicaoDe(a) ?? 999) - (posicaoDe(b) ?? 999));
 }
 
+/* Quem pode entrar no lugar de um ausente. Três grupos, todos fora de quem já joga a fase e de
+ * quem foi trocado por ausência:
+ *   daFaseAnterior — eliminados da fase anterior, por classificação (é a ordem do Art. 55 §1);
+ *   outros         — qualquer outro jogador do elenco que não está na Copa agora (ex.: eliminado
+ *                    antes, ou que nem entrou), por classificação — decisão do organizador;
+ *   bloqueados     — teriam vaga, mas estão com pendência financeira ($) e por isso ficam de
+ *                    fora (Arts. 42 e 85: inadimplente é eliminado da Copa).
+ * Inativos e convidados nunca entram (não disputam o Campeonato). */
+function substitutosPossiveis(copa, partida, jogadores, posicaoDe) {
+  const porId = Object.fromEntries(jogadores.map((j) => [j.id, j]));
+  const jogando = new Set();
+  for (const p of copa.partidas.filter((x) => x.fase === partida.fase))
+    for (const l of ["A", "B"]) duplaEfetiva(copa, p, l).jogadores.forEach((j) => jogando.add(j));
+  const ausentes = new Set(copa.partidas.flatMap((p) => ["A", "B"].flatMap((l) => (p[`dupla${l}`]?.subs || []).map((s) => s.sai))));
+  const porPosicao = (a, b) => (posicaoDe(a) ?? 999) - (posicaoDe(b) ?? 999);
+  const elegivel = (id) => { const j = porId[id]; return !!j && j.ativo !== false && !j.convidado && !jogando.has(id) && !ausentes.has(id); };
+
+  const anteriores = candidatosSubstituto(copa, partida, posicaoDe).filter(elegivel);
+  const noAnterior = new Set(anteriores);
+  const restantes = jogadores.map((j) => j.id).filter((id) => elegivel(id) && !noAnterior.has(id)).sort(porPosicao);
+  const devendo = (id) => !!porId[id].pendenciaFinanceira;
+  return {
+    daFaseAnterior: anteriores.filter((id) => !devendo(id)),
+    outros: restantes.filter((id) => !devendo(id)),
+    bloqueados: [...anteriores, ...restantes].filter(devendo),
+  };
+}
+
 /* Gols e defesas por jogador, somando as disputas com chute a chute. */
 function estatisticasJogadores(copa) {
   const est = {};
@@ -209,5 +237,5 @@ export {
   registrarChute, desfazerChute, marcarLesionado,
   partidaPorId, placarDaPartida, vencedorDaPartida, duplaEfetiva, statusDaPartida, statusDaFase,
   faseAtual, campeoesDaCopa, copaDaTemporada, campeoesHendor, penalidadesDaCopa,
-  candidatosSubstituto, estatisticasJogadores,
+  candidatosSubstituto, substitutosPossiveis, estatisticasJogadores,
 };
