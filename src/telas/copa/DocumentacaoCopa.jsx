@@ -51,7 +51,7 @@ function DocumentacaoCopa({ copa }) {
         <Lista>
           <Item>Só se inscreve quem está <Forte>em dia</Forte> com o JPFFS. Sócios Lendário e Pro pagam a taxa única de inscrição; Amador paga também a mensalidade do mês em que há disputa.</Item>
           <Item>Atraso ou falta de pagamento nos meses da disputa: o jogador é <Forte cor={T.vermelho}>eliminado da Copa</Forte> (Art. 42 §único e Art. 85 §2).</Item>
-          <Item>No app, quem está com pendência financeira (<Forte cor={T.vermelho}>$</Forte>) é só sinalizado. Quem decide a eliminação é o organizador.</Item>
+          <Item>No app, a pendência financeira (<Forte cor={T.vermelho}>$</Forte>) é só um aviso na dupla — quem decide a eliminação é o organizador. Só quem estiver com o $ marcado como "Sem sorteio" ou "Bloqueado" fica de fora da lista de substitutos.</Item>
         </Lista>
       </ItemDoc>
 

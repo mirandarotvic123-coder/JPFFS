@@ -240,7 +240,7 @@ function TrocaJogador({ copa, partida, base, dados, nomes, lado, sai, fechar, mu
       )}
       {bloqueados.length > 0 && (
         <p style={{ fontSize: 11, color: T.vermelho }}>
-          Fora por pendência financeira ($): {bloqueados.map((j) => nomes[j]).join(", ")} (Arts. 42 e 85).
+          Fora por pendência financeira ($ "Sem sorteio" ou "Bloqueado"): {bloqueados.map((j) => nomes[j]).join(", ")} (Arts. 42 e 85).
         </p>
       )}
       <div className="flex gap-2">

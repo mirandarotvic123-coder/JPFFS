@@ -196,8 +196,9 @@ function candidatosSubstituto(copa, partida, posicaoDe) {
  *   daFaseAnterior — eliminados da fase anterior, por classificação (é a ordem do Art. 55 §1);
  *   outros         — qualquer outro jogador do elenco que não está na Copa agora (ex.: eliminado
  *                    antes, ou que nem entrou), por classificação — decisão do organizador;
- *   bloqueados     — teriam vaga, mas estão com pendência financeira ($) e por isso ficam de
- *                    fora (Arts. 42 e 85: inadimplente é eliminado da Copa).
+ *   bloqueados     — teriam vaga, mas estão com pendência financeira ($) marcada como "Sem sorteio"
+ *                    ou "Bloqueado" (Arts. 42 e 85: inadimplente é eliminado da Copa). Com "Só avisar"
+ *                    o jogador continua elegível.
  * Inativos e convidados nunca entram (não disputam o Campeonato). */
 function substitutosPossiveis(copa, partida, jogadores, posicaoDe) {
   const porId = Object.fromEntries(jogadores.map((j) => [j.id, j]));
@@ -211,7 +212,8 @@ function substitutosPossiveis(copa, partida, jogadores, posicaoDe) {
   const anteriores = candidatosSubstituto(copa, partida, posicaoDe).filter(elegivel);
   const noAnterior = new Set(anteriores);
   const restantes = jogadores.map((j) => j.id).filter((id) => elegivel(id) && !noAnterior.has(id)).sort(porPosicao);
-  const devendo = (id) => !!porId[id].pendenciaFinanceira;
+  // não importa efeitoPendencia de regras.js (import circular): mesma regra, "aviso" não barra
+  const devendo = (id) => !!porId[id].pendenciaFinanceira && ["sorteio", "total"].includes(porId[id].pendenciaEfeito);
   return {
     daFaseAnterior: anteriores.filter((id) => !devendo(id)),
     outros: restantes.filter((id) => !devendo(id)),
