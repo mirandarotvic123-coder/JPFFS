@@ -4,6 +4,7 @@
  */
 import { AMARELO, AZUL } from "../theme";
 import { criarRng, novaSeed, embaralharRng, distribuirProporcional } from "./rng";
+import { campeoesHendor, penalidadesDaCopa } from "./copaHendor";
 
 const CONFIG_PADRAO = {
   pontosPresenca: 1, pontosVitoria: 3, pontosEmpate: 1, pontosDerrota: 0,
@@ -13,7 +14,7 @@ const CONFIG_PADRAO = {
   cartoesPorPonto: 3, pontosPorCicloAmarelo: 1, pontosPorVermelho: 1,
   converterSegundoAmarelo: true,
   jogadoresPorTime: 5, goleirosPorTime: 1,
-  zonaSupercopa: 12, goleirosSupercopa: 2, campeoesHendor: [],
+  zonaSupercopa: 12, goleirosSupercopa: 2,
   criteriosDesempate: ["pontos", "vitorias", "saldo", "golsPro", "cartoes", "alfabetica"],
   rodadasAntiRepeticao: 3, usarAproveitamento: false,
   pesos: { rigida: 100000, amplitude: 1000, desvio: 300, faixa: 40, faixaPartida: 900, varianciaInterna: 60, repeticao: 8, aproveitamento: 15 },
@@ -160,6 +161,13 @@ function calcularEstatisticas(base) {
       for (const j of base.jogadores) novo[j.id].sequencia.push(naRodada[j.id] || "–");
   }
 
+  // Penalidades da Copa Hendor (−5 do Art. 55 §4): a Copa roda em data FIFA, sem rodada
+  // do Campeonato, então o desconto mora na própria Copa e entra aqui como desconto manual.
+  for (const pen of penalidadesDaCopa(base)) {
+    const st = novo[pen.jogadorId]; if (!st) continue;
+    st.penalidadeManual += Math.abs(pen.valor);
+  }
+
   const denom = cfg.baseAproveitamento === "previstas" ? cfg.rodadasPrevistas : rodadasRealizadas;
   const teto = denom * cfg.tetoPorRodada;
 
@@ -217,7 +225,7 @@ function calcularClassificacao(base) {
   const rankGoleiro = new Map(soGoleiros.map((l, i) => [l.id, i + 1]));
   const nLinhaSuper = cfg.zonaSupercopa ?? 12;
   const nGkSuper = cfg.goleirosSupercopa ?? 2;
-  const hendor = new Set((cfg.campeoesHendor || []).filter(Boolean));
+  const hendor = new Set(campeoesHendor(base)); // dupla vencedora da final da Copa (Art. 58)
 
   const linhaClassificada = new Set(soLinha.slice(0, nLinhaSuper).map((l) => l.id));
   const hendorLinha = soLinha.filter((l) => hendor.has(l.id));
