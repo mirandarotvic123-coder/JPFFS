@@ -221,6 +221,43 @@ function substitutosPossiveis(copa, partida, jogadores, posicaoDe) {
   };
 }
 
+/* Desfazer uma troca feita por engano (só antes da disputa começar). Cada troca leva um `id` e a
+ * penalidade −5 dela leva `trocaId`; trocas antigas, sem id, caem no par partida + jogador que saiu.
+ * Devolve a copa nova e o que foi removido (a tela usa `penalidade.marcouDevendo` pra desligar o $
+ * que a própria troca ligou), ou null se não há troca pra desfazer. */
+const penalidadeDaTroca = (copa, partida, sub) => (copa.penalidades || []).find((p) =>
+  p.trocaId ? p.trocaId === sub.id : !p.semSubstituto && p.partidaId === partida.id && p.jogadorId === sub.sai);
+
+function desfazerUltimaTroca(copa, partidaId, lado) {
+  const partida = partidaPorId(copa, partidaId);
+  const subs = partida?.[`dupla${lado}`]?.subs || [];
+  const sub = subs[subs.length - 1];
+  if (!sub || partida.disputa) return null;
+  const penalidade = penalidadeDaTroca(copa, partida, sub);
+  return {
+    sub, penalidade,
+    copa: {
+      ...copa,
+      penalidades: (copa.penalidades || []).filter((p) => p !== penalidade),
+      partidas: copa.partidas.map((p) => (p.id !== partidaId ? p : { ...p, [`dupla${lado}`]: { ...p[`dupla${lado}`], subs: subs.slice(0, -1) } })),
+    },
+  };
+}
+
+/* Desfazer W.O.: tira o W.O. e as penalidades geradas por "sem substituto" nessa partida
+ * (o W.O. da dupla inteira, Art. 54, não gera penalidade). */
+function desfazerWo(copa, partidaId) {
+  const removidas = (copa.penalidades || []).filter((p) => p.partidaId === partidaId && p.semSubstituto);
+  return {
+    penalidades: removidas,
+    copa: {
+      ...copa,
+      penalidades: (copa.penalidades || []).filter((p) => !removidas.includes(p)),
+      partidas: copa.partidas.map((p) => { if (p.id !== partidaId) return p; const { wo, ...resto } = p; return resto; }),
+    },
+  };
+}
+
 /* Gols e defesas por jogador, somando as disputas com chute a chute. */
 function estatisticasJogadores(copa) {
   const est = {};
@@ -239,5 +276,5 @@ export {
   registrarChute, desfazerChute, marcarLesionado,
   partidaPorId, placarDaPartida, vencedorDaPartida, duplaEfetiva, statusDaPartida, statusDaFase,
   faseAtual, campeoesDaCopa, copaDaTemporada, campeoesHendor, penalidadesDaCopa,
-  candidatosSubstituto, substitutosPossiveis, estatisticasJogadores,
+  candidatosSubstituto, substitutosPossiveis, desfazerUltimaTroca, desfazerWo, estatisticasJogadores,
 };

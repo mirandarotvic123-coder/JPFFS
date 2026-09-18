@@ -100,6 +100,43 @@ jean.pendenciaEfeito = "aviso"; ok(elegivelJean(), "pendência 'Só avisar' cont
 jean.pendenciaEfeito = undefined; ok(elegivelJean(), "pendência sem efeito definido (padrão) continua elegível");
 jean.pendenciaFinanceira = false; jean.pendenciaEfeito = "total"; ok(elegivelJean(), "efeito sem $ ligado não conta");
 
+/* desfazer troca / desfazer W.O. */
+const c4 = copaHendor2026();
+const s1d = C.partidaPorId(c4, "s1");
+s1d.duplaA = { subs: [{ id: "t1", sai: "teruya", entra: "samuel", motivo: "Ausente" }] };
+c4.penalidades = [
+  { id: "manual", jogadorId: "teruya", valor: -5, motivo: "lançada à mão" }, // não é da troca
+  { id: "p1", jogadorId: "teruya", valor: -5, partidaId: "s1", trocaId: "t1", marcouDevendo: true },
+];
+eq(C.duplaEfetiva(c4, s1d, "A").jogadores, ["samuel", "renato"], "troca aplicada");
+let u = C.desfazerUltimaTroca(c4, "s1", "A");
+eq(C.duplaEfetiva(u.copa, C.partidaPorId(u.copa, "s1"), "A").jogadores, ["teruya", "renato"], "desfazer volta a dupla original");
+eq(u.copa.penalidades.map((p) => p.id), ["manual"], "desfazer remove só a penalidade da troca");
+ok(u.penalidade.marcouDevendo && u.sub.entra === "samuel", "devolve o que removeu");
+ok(C.desfazerUltimaTroca(u.copa, "s1", "A") === null, "sem troca = null");
+// duas trocas: desfaz só a última
+const c5 = copaHendor2026(); const s1e = C.partidaPorId(c5, "s1");
+s1e.duplaA = { subs: [{ id: "a", sai: "teruya", entra: "samuel" }, { id: "b", sai: "samuel", entra: "jean" }] };
+eq(C.duplaEfetiva(c5, s1e, "A").jogadores, ["jean", "renato"], "duas trocas em cadeia");
+u = C.desfazerUltimaTroca(c5, "s1", "A");
+eq(C.duplaEfetiva(u.copa, C.partidaPorId(u.copa, "s1"), "A").jogadores, ["samuel", "renato"], "desfaz só a última");
+// troca antiga, sem id: cai no par partida + jogador
+const c6 = copaHendor2026(); C.partidaPorId(c6, "s1").duplaA = { subs: [{ sai: "teruya", entra: "samuel" }] };
+c6.penalidades = [{ id: "legado", jogadorId: "teruya", valor: -5, partidaId: "s1" }];
+eq(C.desfazerUltimaTroca(c6, "s1", "A").copa.penalidades, [], "troca sem id acha a penalidade pelo par");
+// não desfaz depois que a disputa começou
+const c7 = copaHendor2026(); const s1g = C.partidaPorId(c7, "s1");
+s1g.duplaA = { subs: [{ id: "x", sai: "teruya", entra: "samuel" }] }; s1g.disputa = C.iniciarDisputa({ moeda: { vencedor: "A", escolha: "bater" }, ordem });
+ok(C.desfazerUltimaTroca(c7, "s1", "A") === null, "com disputa iniciada não desfaz");
+// W.O.: "sem substituto" leva a penalidade junto; W.O. da dupla não
+const c8 = copaHendor2026(); const s2h = C.partidaPorId(c8, "s2"); s2h.wo = "B";
+c8.penalidades = [{ id: "sem", jogadorId: "aranha", valor: -5, partidaId: "s2", semSubstituto: true }, { id: "outra", jogadorId: "victor", valor: -5, partidaId: "s1" }];
+const w = C.desfazerWo(c8, "s2");
+ok(!C.partidaPorId(w.copa, "s2").wo, "W.O. removido"); eq(w.copa.penalidades.map((p) => p.id), ["outra"], "penalidade do 'sem substituto' sai; as outras ficam");
+eq(w.penalidades.map((p) => p.id), ["sem"], "informa o que removeu");
+const c9 = copaHendor2026(); C.partidaPorId(c9, "s2").wo = "A"; c9.penalidades = [{ id: "z", jogadorId: "x", valor: -5, partidaId: "s2" }];
+eq(C.desfazerWo(c9, "s2").copa.penalidades.map((p) => p.id), ["z"], "W.O. da dupla não mexe em penalidade");
+
 const st = C.estatisticasJogadores(copa);
 ok(st.teruya.chutes > 0 && st.kaike.defesasTentadas > 0, "estatísticas por jogador");
 

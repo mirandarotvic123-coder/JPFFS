@@ -5,7 +5,7 @@ import { IconeSetaEsquerda } from "../../components/icones";
 import { id } from "../../core/repositorio";
 import {
   CHUTES_POR_DUPLA, outro, estadoDisputa, iniciarDisputa, registrarChute, desfazerChute, marcarLesionado,
-  placarDaPartida, vencedorDaPartida, duplaEfetiva, statusDaPartida, substitutosPossiveis,
+  placarDaPartida, vencedorDaPartida, duplaEfetiva, statusDaPartida, substitutosPossiveis, desfazerUltimaTroca, desfazerWo,
 } from "../../core/copaHendor";
 import { formatarData, nomeDupla, textoDaDupla, notasDeSubstituicao } from "./util";
 
@@ -177,19 +177,22 @@ function TrocaJogador({ copa, partida, base, dados, nomes, lado, sai, fechar, mu
       ? `${nomes[entra]} entra no lugar de ${quem}${penaliza ? ` e ${quem} perde 5 pontos no Campeonato` : ""}?`
       : `Sem substituto: a dupla ${nomeDupla(duplaEfetiva(copa, partida, lado).jogadores, nomes)} é eliminada e o adversário vence por W.O.${penaliza ? ` ${quem} perde 5 pontos.` : ""} Confirmar?`;
     if (!confirm(msg)) return;
+    const trocaId = id();
+    // só conta como "a troca ligou o $" se ele estava desligado — é isso que o desfazer reverte
+    const marcouDevendo = penaliza && marcarDevendo && !base.jogadores.find((j) => j.id === sai)?.pendenciaFinanceira;
     setBase((b) => ({
       ...b,
       jogadores: penaliza && marcarDevendo ? b.jogadores.map((j) => (j.id === sai ? { ...j, pendenciaFinanceira: true } : j)) : b.jogadores,
       copas: b.copas.map((c) => c.id !== copa.id ? c : {
         ...c,
         penalidades: penaliza
-          ? [...(c.penalidades || []), { id: id(), jogadorId: sai, valor: -5, motivo: `Ausência — ${partida.rotulo}`, partidaId: partida.id }]
+          ? [...(c.penalidades || []), { id: id(), jogadorId: sai, valor: -5, motivo: `Ausência — ${partida.rotulo}`, partidaId: partida.id, trocaId, semSubstituto: !entra, marcouDevendo }]
           : c.penalidades || [],
         partidas: c.partidas.map((p) => {
           if (p.id !== partida.id) return p;
           if (!entra) return { ...p, wo: outro(lado) };
           const d = p[`dupla${lado}`] || {};
-          return { ...p, [`dupla${lado}`]: { ...d, subs: [...(d.subs || []), { sai, entra, motivo: "Ausente (Art. 55 §1)" }] } };
+          return { ...p, [`dupla${lado}`]: { ...d, subs: [...(d.subs || []), { id: trocaId, sai, entra, motivo: "Ausente" }] } };
         }),
       }),
     }));
@@ -299,6 +302,25 @@ function FormSorteio({ partida, nomes, duplas, mudarPartida, avisar }) {
 function PreJogo(props) {
   const { copa, partida, nomes, duplas, mudarPartida, avisar } = props;
   const [trocando, setTrocando] = useState(null); // { lado, sai }
+  const desfazerTroca = (lado) => {
+    const subs = partida[`dupla${lado}`]?.subs || [];
+    const ultima = subs[subs.length - 1];
+    const previa = desfazerUltimaTroca(copa, partida.id, lado);
+    if (!previa) return;
+    const { penalidade } = previa;
+    const extra = penalidade ? ` A penalidade de −5 de ${nomes[ultima.sai]} também é removida${penalidade.marcouDevendo ? " e o $ dele é desligado" : ""}.` : "";
+    if (!confirm(`Desfazer a troca? ${nomes[ultima.entra]} sai da dupla e ${nomes[ultima.sai]} volta.${extra}`)) return;
+    props.setBase((b) => {
+      const r = desfazerUltimaTroca(b.copas.find((c) => c.id === copa.id), partida.id, lado);
+      if (!r) return b;
+      return {
+        ...b,
+        jogadores: r.penalidade?.marcouDevendo ? b.jogadores.map((j) => (j.id === r.sub.sai ? { ...j, pendenciaFinanceira: false } : j)) : b.jogadores,
+        copas: b.copas.map((c) => (c.id === copa.id ? r.copa : c)),
+      };
+    });
+    avisar("Troca desfeita");
+  };
   const woContra = (lado) => {
     const nome = nomeDupla(duplas[lado], nomes);
     if (confirm(`${nome} não compareceu? O adversário vence por W.O. (Art. 54).`)) {
@@ -319,6 +341,12 @@ function PreJogo(props) {
                 Trocar {props.nomes[j]}
               </button>
             ))}
+            {(partida[`dupla${lado}`]?.subs || []).length > 0 && (
+              <button onClick={() => desfazerTroca(lado)} className="rounded-full"
+                style={{ padding: "8px 12px", minHeight: 38, fontSize: 12, fontWeight: 800, border: "1px solid rgba(255,165,61,.5)", color: T.laranja, background: "transparent" }}>
+                Desfazer troca
+              </button>
+            )}
             <button onClick={() => woContra(lado)} className="rounded-full"
               style={{ padding: "8px 12px", minHeight: 38, fontSize: 12, fontWeight: 800, border: "1px solid rgba(255,107,107,.5)", color: T.vermelho, background: "transparent" }}>
               W.O. da dupla
@@ -336,14 +364,28 @@ function PreJogo(props) {
 
 /* ----------------------------- correções ---------------------------------- */
 
-function CorrigirResultado({ partida, mudarPartida, avisar }) {
+function CorrigirResultado({ copa, partida, nomes, setBase, mudarPartida, avisar }) {
   const [a, setA] = useState(partida.placarManual?.A ?? 0);
   const [b, setB] = useState(partida.placarManual?.B ?? 0);
   if (partida.disputa) return null;
   return (
     <Painel className="p-3 space-y-2">
       {partida.wo && (
-        <Botao variante="secundario" className="w-full" onClick={() => { mudarPartida(partida.id, (p) => { const { wo, ...resto } = p; return resto; }); avisar("W.O. desfeito"); }}>Desfazer W.O.</Botao>
+        <Botao variante="secundario" className="w-full" onClick={() => {
+          const pens = desfazerWo(copa, partida.id).penalidades;
+          const extra = pens.length ? ` A penalidade de −5 de ${pens.map((p) => nomes[p.jogadorId]).join(", ")} também é removida.` : "";
+          if (!confirm(`Desfazer o W.O.?${extra}`)) return;
+          setBase((b) => {
+            const r = desfazerWo(b.copas.find((c) => c.id === copa.id), partida.id);
+            const desligar = new Set(r.penalidades.filter((p) => p.marcouDevendo).map((p) => p.jogadorId));
+            return {
+              ...b,
+              jogadores: desligar.size ? b.jogadores.map((j) => (desligar.has(j.id) ? { ...j, pendenciaFinanceira: false } : j)) : b.jogadores,
+              copas: b.copas.map((c) => (c.id === copa.id ? r.copa : c)),
+            };
+          });
+          avisar("W.O. desfeito");
+        }}>Desfazer W.O.</Botao>
       )}
       {partida.placarManual && (
         <>

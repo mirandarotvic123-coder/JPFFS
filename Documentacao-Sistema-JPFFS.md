@@ -509,6 +509,7 @@ Uma dupla sem `jogadores` é montada a partir do vencedor da partida de origem, 
   contra os dois defensores adversários), depois **alternadas** (uma por dupla, em rodízio) até desempatar.
   Todos têm direito às 4 cobranças: a disputa só decide depois do 8º chute, ou ao fechar uma rodada de alternadas.
 - **Lesão** (Art. 55 §3): o parceiro executa os chutes e defesas que faltam. **W.O.** (Art. 54): `wo` = lado vencedor.
+- **Desfazer troca / W.O.** (`desfazerUltimaTroca`, `desfazerWo`): só antes da disputa começar. Cada troca tem `id` e a penalidade −5 dela guarda `trocaId` (e `marcouDevendo`, se foi a troca que ligou o $), então o desfazer remove exatamente o que a troca criou e nada mais.
 - **Campeões** (`campeoesHendor`): dupla vencedora da final, que alimenta a zona da Supercopa.
 - **Penalidade −5** (Art. 55 §4): `copa.penalidades[]`, somada como desconto manual em `calcularEstatisticas`
   (a Copa roda em data FIFA, sem rodada do Campeonato, por isso não usa os ajustes da rodada).
