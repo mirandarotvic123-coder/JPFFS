@@ -544,17 +544,27 @@ function sortearEquipes(entradas, opcoes = {}) {
   };
 }
 
+/* Efeito da pendência financeira ($), escolhido no Elenco:
+ *   "aviso"   — só sinaliza (padrão; é o que valia antes de existir o efeito)
+ *   "sorteio" — marca presença e entra na ordem de chegada, mas fica fora do sorteio do
+ *               Campeonato; pode jogar o Rachão (pagou depois do prazo)
+ *   "total"   — não entra na chamada nem no Rachão (não pagou) */
+const efeitoPendencia = (j) => (j?.pendenciaFinanceira ? j.pendenciaEfeito || "aviso" : "aviso");
+const barradoDoSorteio = (j) => ["sorteio", "total"].includes(efeitoPendencia(j));
+const barradoDoRachao = (j) => efeitoPendencia(j) === "total";
+
 function poolsDoDia(base, rodada, porId, dados, cfg) {
   const statusDe = (jid) => rodada.presencas[jid] || "ausente";
   const presentes = base.jogadores.filter((j) => j.ativo !== false && ["presente", "atrasado"].includes(statusDe(j.id)));
   const info = presentes.map((j) => {
     const nivel = statusDe(j.id) === "atrasado" ? nivelSeAtrasar(dados.disciplina, rodada, j.id) : 0;
-    return { jogador: j, nivel, suspenso: nivel >= cfg.atrasosParaSuspensao, linha: porId[j.id] };
+    return { jogador: j, nivel, suspenso: nivel >= cfg.atrasosParaSuspensao, pendencia: barradoDoSorteio(j), linha: porId[j.id] };
   });
-  const aptos = info.filter((e) => !e.suspenso);
+  const aptos = info.filter((e) => !e.suspenso && !e.pendencia);
   return {
     info, aptos,
     suspensos: info.filter((e) => e.suspenso),
+    barradosPendencia: info.filter((e) => !e.suspenso && e.pendencia),
     goleiros: aptos.filter((e) => e.jogador.posicao === "GOLEIRO"),
     linha: aptos.filter((e) => e.jogador.posicao !== "GOLEIRO"),
   };
@@ -571,5 +581,5 @@ export {
   disciplinaAtrasos, nivelSeAtrasar, evVazio, eventoDe, timePorId, idsDoTime, HIST_ZERO,
   normalizarCartoes, placarDe, marcarReaproveitamentos, calcularEstatisticas,
   calcularClassificacao, variancia, avaliarTimes, buscaLocal, sortearEquipes,
-  poolsDoDia, partidasPossiveis, chaveDupla,
+  poolsDoDia, partidasPossiveis, chaveDupla, efeitoPendencia, barradoDoSorteio, barradoDoRachao,
 };

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { T, AMARELO, AZUL, corDe } from "../theme";
 import { id } from "../core/repositorio";
+import { barradoDoRachao } from "../core/regras";
 import {
   criarSessao, aguardandoLinha, goleirosLivres, proximosTimes,
   podeIniciarPartida, iniciarPartida, atribuirGoleiro, limparGoleiro, marcarGol,
@@ -205,8 +206,10 @@ function AberturaRachao({ base, avisar, setSessao, setConvidados, setOrdemIdx })
     salvarRascunhoAbertura({ data, linhaPorTime, limitePartidas, chegada, convidados: convManual });
   }, [rodadaDoDia, data, linhaPorTime, limitePartidas, chegada, convManual]);
 
-  const alternarChamada = (jid) =>
+  const alternarChamada = (jid) => {
+    if (barradoDoRachao(porId[jid])) return avisar(`${porId[jid].nome} está com pendência financeira — bloqueado no Rachão`);
     setChegada((c) => (c.includes(jid) ? c.filter((x) => x !== jid) : [...c, jid]));
+  };
   const removerDaChegada = (jid) => {
     setChegada((c) => c.filter((x) => x !== jid));
     setConvManual((cs) => cs.filter((c) => c.id !== jid)); // se for convidado, some de vez
@@ -229,8 +232,14 @@ function AberturaRachao({ base, avisar, setSessao, setConvidados, setOrdemIdx })
   const nGoleiros = chegada.filter(ehGoleiro).length;
   const nLinha = chegada.length - nGoleiros;
 
+  // pendência financeira "total" barra do Rachão também: quem já estava na chamada do
+  // Campeonato e foi marcado devendo depois sai da lista aqui.
+  const ordemDoCampeonato = rodadaDoDia?.ordemChegada || [];
+  const chegadaDoCampeonato = ordemDoCampeonato.filter((jid) => !barradoDoRachao(porId[jid]));
+  const barradosDoCampeonato = ordemDoCampeonato.filter((jid) => barradoDoRachao(porId[jid]));
+
   function abrir() {
-    const listaChegada = rodadaDoDia ? (rodadaDoDia.ordemChegada || []) : chegada;
+    const listaChegada = rodadaDoDia ? chegadaDoCampeonato : chegada.filter((jid) => !barradoDoRachao(porId[jid]));
     const porIdAbertura = rodadaDoDia ? porId : porIdManual;
     const nova = criarSessao({
       id: id(), data, rodadaOrigemId: rodadaDoDia?.id || null,
@@ -255,7 +264,10 @@ function AberturaRachao({ base, avisar, setSessao, setConvidados, setOrdemIdx })
 
         {rodadaDoDia ? (
           <p style={{ fontSize: 12, color: T.secundario }}>
-            Lista de presença vindo da ordem de chegada do Campeonato. Total de: {(rodadaDoDia.ordemChegada || []).length} jogadores.
+            Lista de presença vindo da ordem de chegada do Campeonato. Total de: {chegadaDoCampeonato.length} jogadores.
+            {barradosDoCampeonato.length > 0 && (
+              <b style={{ color: T.vermelho }}> Fora por pendência financeira: {barradosDoCampeonato.map((jid) => porId[jid].nome).join(", ")}.</b>
+            )}
           </p>
         ) : (
           <p style={{ fontSize: 12, color: T.fraco }}>
@@ -332,18 +344,23 @@ function ChamadaManual({
         {elencoFiltrado.map((j) => {
           const pos = chegada.indexOf(j.id);
           const on = pos !== -1;
+          const travado = barradoDoRachao(j);
           return (
             <button key={j.id} onClick={() => alternarChamada(j.id)}
+              title={travado ? "Pendência financeira — bloqueado" : undefined}
               className="flex items-center gap-1.5 rounded-full"
               style={{
                 padding: "9px 13px", minHeight: 42, fontSize: 13.5, fontWeight: 600,
-                border: `1px solid ${on ? T.verde : T.borda}`,
-                background: on ? "rgba(61,214,140,.16)" : "rgba(255,255,255,.04)",
-                color: on ? T.verde : T.secundario,
+                border: `1px solid ${travado ? T.vermelho : on ? T.verde : T.borda}`,
+                background: travado ? "rgba(255,107,107,.08)" : on ? "rgba(61,214,140,.16)" : "rgba(255,255,255,.04)",
+                color: travado ? T.vermelho : on ? T.verde : T.secundario,
+                opacity: travado ? 0.6 : 1,
               }}>
+              {travado && "🚫"}
               {on && <b style={{ fontSize: 11, opacity: 0.85 }}>{pos + 1}</b>}
               {j.posicao === "GOLEIRO" && <IconeGoleiro tam={13} />}
               {j.nome}
+              {travado && <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".06em" }}>BLOQUEADO</span>}
             </button>
           );
         })}
@@ -765,7 +782,11 @@ function AdicionarNaFila({ sessao, atualizar, avisar, base, convidados, setConvi
         {modo === "elenco" ? (
           <select value={jogadorId} onChange={(e) => setJogadorId(e.target.value)} style={inputStyle}>
             <option value="">— escolher jogador —</option>
-            {disponiveisElenco.map((j) => <option key={j.id} value={j.id}>{j.nome}{j.posicao === "GOLEIRO" ? " (Gol)" : ""}</option>)}
+            {disponiveisElenco.map((j) => (
+              <option key={j.id} value={j.id} disabled={barradoDoRachao(j)}>
+                {j.nome}{j.posicao === "GOLEIRO" ? " (Gol)" : ""}{barradoDoRachao(j) ? " — pendência financeira" : ""}
+              </option>
+            ))}
           </select>
         ) : (
           <div className="flex gap-1.5">

@@ -4,7 +4,7 @@ import { corDe, AMARELO, AZUL } from "../theme";
 import {
   CONFIG_PADRAO, nivelInfo, nivelSeAtrasar, normalizarCartoes, placarDe, timePorId,
   idsDoTime, marcarReaproveitamentos, sortearEquipes, poolsDoDia, partidasPossiveis,
-  evVazio, avaliarTimes, buscaLocal, chaveDupla,
+  evVazio, avaliarTimes, buscaLocal, chaveDupla, efeitoPendencia,
 } from "../core/regras";
 import { imagemEscalacoes, textoWhatsApp } from "../core/exportacao";
 import { id } from "../core/repositorio";
@@ -182,6 +182,13 @@ function EtapaPresenca({ base, setBase, rodada, atualizar, porId, cfg, dados, av
         </Painel>
       )}
 
+      {P.barradosPendencia.length > 0 && (
+        <Painel className="p-3" style={{ borderColor: T.vermelho, background: "rgba(255,107,107,.1)", fontSize: 12, color: T.secundario }}>
+          <b style={{ color: T.vermelho }}>Pendência financeira ($):</b>{" "}
+          {P.barradosPendencia.map((e) => e.jogador.nome).join(", ")}. Ficam fora do sorteio, mas seguem na ordem de chegada pro Rachão.
+        </Painel>
+      )}
+
       <CampoBusca value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar jogador…" />
 
       <div className="flex gap-1.5">
@@ -227,12 +234,16 @@ function EtapaPresenca({ base, setBase, rodada, atualizar, porId, cfg, dados, av
                   const nivel = s === "atrasado" ? nivelSeAtrasar(dados.disciplina, rodada, j.id) : 0;
                   const proximo = nivelSeAtrasar(dados.disciplina, rodada, j.id);
                   const susp = nivel >= cfg.atrasosParaSuspensao;
-                  const est = susp ? { border: T.vermelho, background: "rgba(255,107,107,.18)", color: T.vermelho }
+                  const efeitoPend = efeitoPendencia(j);
+                  const travado = efeitoPend === "total";
+                  const est = travado ? { border: T.vermelho, background: "rgba(255,107,107,.08)", color: T.vermelho }
+                    : susp ?{ border: T.vermelho, background: "rgba(255,107,107,.18)", color: T.vermelho }
                     : s === "presente" ? { border: T.verde, background: "rgba(61,214,140,.16)", color: T.verde }
                       : s === "atrasado" ? { border: T.laranja, background: "rgba(255,165,61,.16)", color: T.laranja }
                         : { border: T.borda, background: "rgba(255,255,255,.04)", color: T.secundario };
                   return (
                     <button key={j.id} onClick={() => {
+                      if (travado) return avisar(`${j.nome} está com pendência financeira — bloqueado no Campeonato e no Rachão`);
                       const novo = ciclo[s];
                       // registra a ordem de chegada de graça, sem mudar nada do fluxo do
                       // Campeonato — usada depois pra pré-preencher a fila do Rachão do mesmo dia.
@@ -242,13 +253,16 @@ function EtapaPresenca({ base, setBase, rodada, atualizar, porId, cfg, dados, av
                       atualizar({ presencas: { ...rodada.presencas, [j.id]: novo }, ordemChegada });
                       if (novo === "atrasado") avisar(`${j.nome}: ${nivelInfo(proximo, cfg).rotulo}`);
                     }} className="flex items-center gap-1.5 rounded-full"
-                      style={{ padding: "10px 14px", minHeight: 44, fontSize: 14, fontWeight: 600, border: `1px solid ${est.border}`, background: est.background, color: est.color }}>
-                      {susp && "🚫"}
+                      title={travado ? "Pendência financeira — bloqueado" : efeitoPend === "sorteio" ? "Pendência financeira — fora do sorteio, pode jogar o Rachão" : undefined}
+                      style={{ padding: "10px 14px", minHeight: 44, fontSize: 14, fontWeight: 600, border: `1px solid ${est.border}`, background: est.background, color: est.color, opacity: travado ? 0.6 : 1 }}>
+                      {(susp || travado) && "🚫"}
                       {j.posicao === "GOLEIRO" && <IconeGoleiro tam={14} />}
                       {j.nome}
                       <Estrelas n={l?.estrelas || 1} tam={9} goleiro={j.posicao === "GOLEIRO"} />
                       {nivel > 0 && <SeloAtraso nivel={nivel} cfg={cfg} mini />}
                       <Marcadores jogador={j} />
+                      {travado && <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".06em" }}>BLOQUEADO</span>}
+                      {efeitoPend === "sorteio" && <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".06em", color: T.laranja }}>SÓ RACHÃO</span>}
                     </button>
                   );
                 })}
