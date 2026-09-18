@@ -394,7 +394,8 @@ O maior módulo. Tudo puro: recebe `base`, devolve dados.
 presença, teto por rodada, ciclos de cartão, atrasos para suspensão, tamanho de
 time, zona da Supercopa, critérios de desempate, pesos do motor de sorteio). Na UI
 (aba Ajustes) quase tudo aparece **bloqueado** — a edição real está desativada de
-propósito; só "Campeões Copa Hendor" é editável.
+propósito. Os campeões da Copa Hendor não são mais digitados: saem da final da Copa
+(`core/copaHendor.js`, seção 6.6).
 
 **Pontuação** (`calcularEstatisticas`):
 `P = J·1 + V·3 + E·1 + D·0 + P⁺ − P⁻`, onde `P⁻` = penalidade manual + pontos de
@@ -410,7 +411,7 @@ vermelho. O teto (`rodadasRealizadas · tetoPorRodada`) serve para o
 **Classificação** (`calcularClassificacao`): ordena por
 `criteriosDesempate` (`pontos → vitorias → saldo → golsPro → cartoes →
 alfabetica`), separa linha × goleiro para os rankings de categoria, marca a **zona
-da Supercopa** (12 de linha + 2 goleiros, com a regra dos campeões da Copa Hendor
+da Supercopa** (12 de linha + 2 goleiros, com os campeões da Copa Hendor — `campeoesHendor(base)` —
 entrando mesmo fora do corte), e deriva as **estrelas por posição na tabela**
 (1–3 → 5★, 4–6 → 4★, 7–9 → 3★, 10–14 → 2★, resto → 1★). Convidados ficam de fora.
 
@@ -496,10 +497,32 @@ de tempo — o link "do dia" cobre Campeonato + Rachão) ou `{ modalidade }`.
 
 ---
 
+### 6.6. `core/copaHendor.js` — Copa Hendor de Penalidades (Arts. 41–56 e 85)
+
+Só funções puras sobre `base.copas[]` (sem imports — `regras.js` importa este arquivo). Cada
+partida guarda as duplas (`jogadores` + `subs`), de onde vêm os lados (`origem`), o placar
+lançado à mão nas fases já jogadas (`placarManual`), o W.O. (`wo`) e a `disputa` chute a chute.
+Uma dupla sem `jogadores` é montada a partir do vencedor da partida de origem, e as substituições
+(Art. 55 §1) trocam quem saiu por quem entrou — então o chaveamento avança sozinho.
+
+- **Sequência dos chutes** (`chuteEsperado`): 8 cobranças (X1 bate 2, Y1 bate 2, X2, Y2; cada cobrador
+  contra os dois defensores adversários), depois **alternadas** (uma por dupla, em rodízio) até desempatar.
+  Todos têm direito às 4 cobranças: a disputa só decide depois do 8º chute, ou ao fechar uma rodada de alternadas.
+- **Lesão** (Art. 55 §3): o parceiro executa os chutes e defesas que faltam. **W.O.** (Art. 54): `wo` = lado vencedor.
+- **Campeões** (`campeoesHendor`): dupla vencedora da final, que alimenta a zona da Supercopa.
+- **Penalidade −5** (Art. 55 §4): `copa.penalidades[]`, somada como desconto manual em `calcularEstatisticas`
+  (a Copa roda em data FIFA, sem rodada do Campeonato, por isso não usa os ajustes da rodada).
+- Dados iniciais da Copa 2026 em `data/copaHendor2026.js` (oitavas e quartas com placar); `migrarBase` injeta a copa
+  quando a base ainda não tem `copas`. Testes: `npx vite-node testes/copaHendor.teste.mjs`.
+
 ## 7. As telas
 
 Cada arquivo em [`src/telas/`](src/telas/) é uma aba. `App.jsx` roteia por
-`aba` e passa `{ base, setBase, dados, cfg, avisar }`.
+`aba` e passa `{ base, setBase, dados, cfg, avisar }`. A **primeira tela** ([`TelaEscolha`](src/telas/TelaEscolha.jsx),
+sempre exibida ao abrir) pergunta qual campeonato ver: **Campeonato JPFFS** (as abas abaixo, como sempre) ou
+**Copa Hendor** ([`telas/copa/`](src/telas/copa/): Chaveamento, Resultados, Documentação; visitante só vê, organizador
+lança as cobranças, troca jogadores e dá W.O. direto nos cartões das partidas). O botão "Trocar" do cabeçalho volta à escolha.
+`?simulacao=1` na URL liga o **modo ensaio**: nada é gravado nem recebido em tempo real (útil porque o `npm run dev` usa o banco de produção).
 
 | Tela | Aba | Quem vê | O que faz |
 | --- | --- | --- | --- |

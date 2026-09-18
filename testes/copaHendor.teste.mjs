@@ -63,7 +63,7 @@ eq(C.chuteEsperado(d, 2).defensor, "teruya", "parceiro defende no lugar do lesio
 /* vencedor via disputa, W.O. e avanço automático */
 const s1 = P("s1");
 s1.disputa = nova();
-eq(C.statusDaPartida(copa, s1), "pronta", "sem chutes = pronta");
+eq(C.statusDaPartida(copa, s1), "em_andamento", "disputa iniciada, sem chutes = em andamento");
 s1.disputa = jogar(s1.disputa, ["gol", "gol", "gol", "gol", "defendeu", "defendeu", "defendeu", "defendeu"]);
 eq(C.statusDaPartida(copa, s1), "em_andamento", "empatada = em andamento");
 s1.disputa = jogar(s1.disputa, ["gol", "defendeu"]);

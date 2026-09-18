@@ -134,7 +134,7 @@ function duplaEfetiva(copa, partida, lado) {
 
 function statusDaPartida(copa, partida) {
   if (vencedorDaPartida(partida)) return "encerrada";
-  if (partida.disputa && partida.disputa.chutes.length > 0) return "em_andamento";
+  if (partida.disputa) return "em_andamento"; // já sorteada/iniciada, mesmo antes do 1º chute
   const prontas = ["A", "B"].every((l) => duplaEfetiva(copa, partida, l).jogadores.length === 2);
   return prontas ? "pronta" : "aguardando";
 }

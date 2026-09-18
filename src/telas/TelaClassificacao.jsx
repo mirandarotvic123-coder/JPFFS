@@ -3,7 +3,7 @@ import { T, ESCUDO } from "../theme";
 import { eventoDe, placarDe } from "../core/regras";
 import { csvClassificacao, imagemTabela, baixarArquivo } from "../core/exportacao";
 import {
-  Botao, Painel, Secao, SeloAtraso, CampoBusca, Estrelas, IconeGoleiro, IconeLinha, Marcadores, AvatarJogador,
+  Botao, Painel, Secao, SeloAtraso, CampoBusca, Estrelas, IconeGoleiro, IconeLinha, Marcadores, AvatarJogador, ItemDoc,
 } from "../components/ui";
 import { IconeSetaDireita } from "../components/icones";
 
@@ -304,28 +304,6 @@ function Resultados({ base, cfg }) {
 
 /* ======================= TELA: DOCUMENTAÇÃO ===============================*/
 
-function ItemDoc({ id, aberta, setAberta, titulo, resumo, children }) {
-  const estaAberta = aberta === id;
-  return (
-    <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${T.borda}` }}>
-      <button onClick={() => setAberta(estaAberta ? null : id)}
-        className="flex w-full items-center justify-between gap-3 text-left"
-        style={{ padding: "13px 14px", background: estaAberta ? "rgba(240,192,64,.08)" : "rgba(255,255,255,.03)" }}>
-        <span className="min-w-0">
-          <span style={{ display: "block", fontSize: 13.5, fontWeight: 800, color: estaAberta ? T.ouro : T.texto }}>{titulo}</span>
-          <span style={{ display: "block", fontSize: 11, color: T.fraco, marginTop: 2 }}>{resumo}</span>
-        </span>
-        <span style={{ fontSize: 12, color: T.secundario, flexShrink: 0, transform: estaAberta ? "rotate(180deg)" : "none", transition: "transform .15s" }}>▾</span>
-      </button>
-      {estaAberta && (
-        <div style={{ padding: "4px 14px 16px", background: "rgba(0,0,0,.15)", fontSize: 12.5, lineHeight: 1.7, color: T.secundario }}>
-          {children}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function Documentacao({ cfg }) {
   const [aberta, setAberta] = useState("pontuacao");
   const linhaPorTime = cfg.jogadoresPorTime - cfg.goleirosPorTime;
@@ -464,7 +442,9 @@ function Documentacao({ cfg }) {
         resumo="Os 2 campeões dessa copa paralela ganham vaga garantida na Supercopa.">
         <p>Os 2 campeões da Copa Hendor entram na zona de classificação da Supercopa mesmo que estejam fora do corte
           por pontos. Se já estiverem classificados por mérito, nada muda. Vale pra qualquer jogador, inclusive
-          goleiro — que aí disputa a vaga extra só com os outros goleiros, nunca com a linha.</p>
+          goleiro — que aí disputa a vaga extra só com os outros goleiros, nunca com a linha. Os campeões são definidos
+          sozinhos pela final da Copa (escolha "Copa Hendor de Penalidades" na primeira tela). Quem faltar ou desistir da
+          Copa sem justificativa perde 5 pontos aqui no Campeonato (Art. 55 §4 do Estatuto).</p>
       </ItemDoc>
 
       <ItemDoc id="convidados" aberta={aberta} setAberta={setAberta}

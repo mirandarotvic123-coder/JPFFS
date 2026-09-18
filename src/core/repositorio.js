@@ -24,7 +24,13 @@ async function carregarBase() {
   }
 }
 
+/* ?simulacao=1 na URL → ensaio: lê a base normalmente, mas NADA é gravado (nem no banco, nem
+ * no backup local) e o tempo real é ignorado. Serve pra testar a Copa/Rachão com jogo de
+ * mentira sem sujar os dados de produção — o `npm run dev` fala com o mesmo Supabase. */
+const SIMULACAO = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("simulacao") === "1";
+
 async function salvarBase(b) {
+  if (SIMULACAO) return true;
   try { localStorage.setItem("jpffs:backup", JSON.stringify({ dados: b, em: Date.now() })); } catch { }
 
   const gravar = async () => {
@@ -231,7 +237,7 @@ function migrarBase(base) {
   return b;
 }
 export {
-  carregarBase, salvarBase, enviarFotoJogador, id, migrarBase, buscarPerfil,
+  SIMULACAO, carregarBase, salvarBase, enviarFotoJogador, id, migrarBase, buscarPerfil,
   listarPerfis, decidirPerfil,
   enviarLance, listarLances, urlAssinadaLance, excluirLance, tituloLance, nomeArquivoLance,
 };
