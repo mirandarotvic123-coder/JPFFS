@@ -68,7 +68,7 @@ const msgErro = (e) => e?.message || e?.error_description || String(e);
 const rotuloTipo = (t) => (t === "gol" ? "Gol" : "Lance");
 
 const ROTULO_FASE = {
-  gravando: { txt: "gravando +5s…", cor: T.laranja },
+  gravando: { txt: "gravando o final do lance…", cor: T.laranja },
   aguardando: { txt: "aguardando decisão", cor: T.ouro },
   enviando: { txt: "enviando…", cor: T.gk },
   enviado: { txt: "salvo", cor: T.verde },
