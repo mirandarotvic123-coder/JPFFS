@@ -369,11 +369,51 @@ function aplicarDesfecho(sessao, { ladoQueFica, partidasSeguidas, motivo }) {
     };
   }
 
+  // guarda como a sessão estava ANTES deste encerramento (só 1 nível — a última partida) pra
+  // reabrirUltimaPartida poder desfazer. A quadra volta sem decisão pendente, com o placar.
+  const { desfazer: _anterior, ...semDesfazer } = sessao;
+  const desfazer = { ...semDesfazer, quadra: { ...q, pendente: null } };
+
   return {
-    sessao: { ...sessao, linha, goleiros, quadra: novaQuadra, timeEmEspera, historico: [...sessao.historico, registro] },
+    sessao: { ...sessao, linha, goleiros, quadra: novaQuadra, timeEmEspera, historico: [...sessao.historico, registro], desfazer },
     aviso: motivo + (novaQuadra ? "" : " Aguardando mais gente pra formar a próxima partida."),
     pendente: false,
   };
+}
+
+/* Encerra a partida com a decisão do organizador, ignorando a regra automática — pra quando
+ * o resultado das regras não bate com o que aconteceu na quadra. ladoQueFica: "amarelo" |
+ * "azul" | null (os dois saem). Segue o mesmo caminho de aplicarDesfecho: fila, goleiros, corte
+ * do Art. 29º e próxima partida são calculados como em qualquer outro encerramento. */
+function encerrarManual(sessao, ladoQueFica) {
+  const q = sessao.quadra;
+  if (!q) return { sessao, aviso: "Nenhuma partida em andamento.", pendente: false };
+  const partidasSeguidas = ladoQueFica === null ? 0 : ladoQueFica === q.incumbente ? q.partidasSeguidas + 1 : 1;
+  const motivo = ladoQueFica === null
+    ? "Os dois times saem (decidido na mão)."
+    : `${NOME_LADO[ladoQueFica]} permanece em quadra (decidido na mão).`;
+  return aplicarDesfecho(sessao, { ladoQueFica, partidasSeguidas, motivo });
+}
+
+/* Desfaz o ÚLTIMO encerramento: a partida volta a estar em andamento, com o placar e os
+ * times de antes, e a fila como estava antes de ela acabar — pra corrigir o placar, quem
+ * saiu/entrou ou decidir na mão quem fica, e encerrar de novo. Só a última partida (a foto é
+ * tirada em aplicarDesfecho). O que mudou na fila DEPOIS do encerramento é preservado: quem
+ * chegou entra no fim; quem foi removido continua fora. Se a partida seguinte já tinha
+ * começado, ela é desfeita (volta pra fila). */
+function reabrirUltimaPartida(sessao) {
+  const antes = sessao.desfazer;
+  if (!antes || !antes.quadra) return { sessao, aviso: "Não há partida para reabrir.", ok: false };
+  const noAntes = new Set([...antes.linha, ...antes.goleiros]);
+  const agora = new Set([...sessao.linha, ...sessao.goleiros]);
+  let restaurada = {
+    ...antes,
+    linha: [...antes.linha, ...sessao.linha.filter((jid) => !noAntes.has(jid))],
+    goleiros: [...antes.goleiros, ...sessao.goleiros.filter((jid) => !noAntes.has(jid))],
+    desfazer: null,
+  };
+  for (const jid of noAntes) if (!agora.has(jid)) restaurada = removerJogador(restaurada, jid);
+  return { sessao: restaurada, aviso: `Partida ${antes.quadra.numero} reaberta — corrija e encerre de novo.`, ok: true };
 }
 
 /* --- substituição no meio da partida (Art. 25º §2º) ------------------------
@@ -506,7 +546,7 @@ export {
   criarSessao, aguardandoLinha, goleirosLivres, proximosTimes,
   podeIniciarPartida, iniciarPartida,
   atribuirGoleiro, limparGoleiro, marcarGol,
-  encerrarPartida, resolverParOuImpar, resolverPrimeiroGol,
+  encerrarPartida, encerrarManual, reabrirUltimaPartida, resolverParOuImpar, resolverPrimeiroGol,
   substituirLinha, removerJogador, inserirNaFila,
   ordemGeral, reclassificarJogador,
   avisosSessao,
