@@ -17,14 +17,19 @@
  * ~5 anos aguenta; se algum device velho engasgar, baixar a resolução em
  * abrirCamera() (ou o videoBitsPerSecond) é o primeiro ajuste.
  *
- * Com JANELA=20s e DEFASAGEM=10s, o gravador "mais velho" sempre tem entre ~10s
- * e ~20s de história — ou seja, o clipe sai com 10–20s ANTES do sinal + 5s
- * depois (~15–25s no total, quase sempre perto de 20).
+ * DURAÇÃO FIXA: com JANELA=17s e DEFASAGEM=8,5s, o gravador "mais velho" sempre
+ * tem entre ~8,5s e ~17s de história no momento do sinal. Em vez de gravar um
+ * "depois" fixo (que dava clipes de 15–25s), o "depois" é calculado na hora:
+ * TOTAL - idade do buffer. Assim o clipe fecha sempre em ~20s, com o "depois"
+ * entre 3s e ~11,5s (e o "antes" entre ~8,5s e 17s — sobra folga pro atraso
+ * humano entre o lance e o toque no botão).
  */
 
-const JANELA_MS = 20000; // cada gravador grava no máximo isso, aí recicla
-const DEFASAGEM_MS = 10000; // 2º gravador começa meio ciclo depois do 1º
-const DEPOIS_MS = 5000; // quanto grava depois do sinal
+const TOTAL_MS = 20000; // duração-alvo do clipe
+const JANELA_MS = 17000; // cada gravador grava no máximo isso, aí recicla
+const DEFASAGEM_MS = JANELA_MS / 2; // 2º gravador começa meio ciclo depois do 1º
+const DEPOIS_MIN_MS = 3000; // nunca grava menos que isso depois do sinal
+const DEPOIS_MAX_MS = 12000; // teto (buffer recém-iniciado: clipe sai mais curto que TOTAL)
 const FATIA_MS = 1000; // timeslice — só pra ter dado parcial e status ao vivo
 
 export function formatosSuportados() {
@@ -194,6 +199,7 @@ export function criarGravador(stream, { aoMudarEstado } = {}) {
   let idCaptura = null; // id da captura em andamento (trava local durante os +5s)
   let ultimoDadoEm = performance.now(); // último chunk recebido — detecta recorder travado (tela preta)
   const canais = []; // { rec, chunks, inicio, fase, timer, alvo, resolver }
+  let timerB = null; // partida atrasada do 2º gravador
 
   const idade = (c) => performance.now() - c.inicio;
   const gravando = (c) => c.rec && c.rec.state === "recording";
@@ -260,32 +266,41 @@ export function criarGravador(stream, { aoMudarEstado } = {}) {
     try { rec.start(FATIA_MS); } catch { /* stream encerrado */ }
   }
 
+  /* Liga os dois gravadores: o 1º agora, o 2º meio ciclo depois — é essa
+   * defasagem que garante sempre um buffer de 8,5–17s. Usado na partida e no
+   * "retomar" (senão os dois voltariam em fase e o clipe sairia curto). */
+  function arrancar() {
+    inicioGeral = performance.now();
+    const a = { fase: 0 };
+    const b = { fase: DEFASAGEM_MS };
+    canais.push(a, b);
+    iniciarCanal(a);
+    agendarReciclagem(a);
+    timerB = setTimeout(() => {
+      if (!rodando) return;
+      iniciarCanal(b);
+      agendarReciclagem(b);
+    }, DEFASAGEM_MS);
+  }
+
   return {
     iniciar() {
       if (rodando) return;
       rodando = true;
-      inicioGeral = performance.now();
-      const a = { fase: 0 };
-      const b = { fase: DEFASAGEM_MS };
-      canais.push(a, b);
-      iniciarCanal(a);
-      agendarReciclagem(a);
-      setTimeout(() => {
-        if (!rodando) return;
-        iniciarCanal(b);
-        agendarReciclagem(b);
-      }, DEFASAGEM_MS);
+      arrancar();
       notificar();
     },
 
-    /* Escolhe o gravador com mais história, deixa rodar +5s e para pra fechar o
-     * arquivo. Devolve Promise<Blob> do clipe, ou null se já houver captura em
-     * andamento (trava local) ou a câmera estiver desligada. */
+    /* Escolhe o gravador com mais história, deixa rodar o "depois" (calculado
+     * pra fechar em TOTAL_MS) e para pra fechar o arquivo. Devolve
+     * Promise<Blob> do clipe, ou null se já houver captura em andamento (trava
+     * local) ou a câmera estiver desligada. */
     capturar(id) {
       if (!rodando || idCaptura != null) return null;
       const cands = canais.filter(gravando);
       if (!cands.length) return null;
       const canal = cands.reduce((m, c) => (idade(c) > idade(m) ? c : m));
+      const depoisMs = Math.min(DEPOIS_MAX_MS, Math.max(DEPOIS_MIN_MS, TOTAL_MS - idade(canal)));
       idCaptura = id;
       canal.alvo = "captura";
       clearTimeout(canal.timer);
@@ -296,7 +311,7 @@ export function criarGravador(stream, { aoMudarEstado } = {}) {
         }
         // rede de segurança: se o stop não disparar o onstop, libera a trava
         setTimeout(() => { if (idCaptura === id) { idCaptura = null; notificar(); } }, 3000);
-      }, DEPOIS_MS);
+      }, depoisMs);
       notificar();
       return p;
     },
@@ -312,16 +327,16 @@ export function criarGravador(stream, { aoMudarEstado } = {}) {
     reiniciarGravadores() {
       if (!rodando) return;
       idCaptura = null;
-      inicioGeral = performance.now();
+      clearTimeout(timerB);
       for (const c of canais) {
         clearTimeout(c.timer);
         c.alvo = null;
         // não deixa uma captura em curso pendurada — resolve com o que houver
         if (c.resolver) { try { c.resolver(new Blob((c.chunks || []).slice(), { type: mime || "video/webm" })); } catch { /* nada */ } c.resolver = null; }
         try { if (c.rec) { c.rec.onstop = null; c.rec.stop(); } } catch { /* já parado */ }
-        iniciarCanal(c);
-        agendarReciclagem(c);
       }
+      canais.length = 0;
+      arrancar(); // recomeça defasado, como na partida
       ultimoDadoEm = performance.now();
       notificar();
     },
@@ -330,6 +345,7 @@ export function criarGravador(stream, { aoMudarEstado } = {}) {
 
     parar() {
       rodando = false;
+      clearTimeout(timerB);
       for (const c of canais) {
         clearTimeout(c.timer);
         try {
