@@ -514,9 +514,10 @@ em detalhe — **leia antes de mexer**.
 
 ### 6.3. `core/lances.js` — buffer duplo de gravação
 
-Motor de captura de clipe de ~20s (15 antes + 5 depois). **Dois `MediaRecorder`**
-gravam o mesmo stream, defasados meio ciclo (`JANELA=20s`, `DEFASAGEM=10s`). No
-sinal, escolhe o gravador com mais história, deixa +5 s e chama `stop()` — o Blob
+Motor de captura de clipe de **20s fixos** (`TOTAL_MS`). **Dois `MediaRecorder`**
+gravam o mesmo stream, defasados meio ciclo (`JANELA=17s`, `DEFASAGEM=8,5s`). No
+sinal, escolhe o gravador com mais história, deixa rodar `TOTAL − idade do buffer`
+(entre 3 e 12 s) e chama `stop()` — o Blob
 que sai é um arquivo **encerrado de verdade** pelo navegador (duração correta, sem
 buraco). Concatenar chunks de uma gravação em andamento **não funciona** (o
 navegador só finaliza os metadados no `stop()`).
@@ -630,11 +631,11 @@ Resumo para desenvolvimento:
   duplo, seção 6.3). iPhone grava MP4, Android WebM; cada um toca direto no
   `<video>`, sem conversão.
 - **Sinal em 2 fases via Supabase Realtime**, canal `lances:<canalId>`:
-  - `disparo` (broadcast) → todas as câmeras ativas capturam +5 s. Carrega
+  - `disparo` (broadcast) → todas as câmeras ativas capturam o "depois" (3–12 s, fecha 20 s). Carrega
     `{ id, modalidade, partidaId, partidaRotulo }`.
   - `decisao` (broadcast) → `salvar` (com `tipo` e `jogadorNome`) ou `descartar`.
   - `presence` → numera os ângulos (1, 2, …) na ordem de conexão.
-  - Um novo `disparo` durante os +5 s de outro é ignorado (trava local).
+  - Um novo `disparo` durante o "depois" de outro é ignorado (trava local).
 - **`canalId` é do DIA:** `dia-<AAAA-MM-DD>` (= `rodada.data` / `sessao.data`). O
   **mesmo link de câmera cobre o Campeonato e o Rachão** do dia — as partidas
   rolam uma de cada vez no mesmo campo. A modalidade/partida de cada clipe vem no
