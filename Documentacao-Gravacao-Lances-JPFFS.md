@@ -28,10 +28,10 @@ lances usando os celulares que estiverem posicionados no campo como câmeras —
 quantidade é livre, escolhida a cada partida — sincronizados em tempo real com o
 sistema.
 
-Cada clipe tem cerca de **15 a 25 segundos** (a meta é ~20s: por volta de 15s
-antes e 5s depois do momento em que o gol ou o lance é marcado) e fica pronto
-sozinho, sem precisar editar vídeo depois. A duração não é exata por causa de
-como o buffer funciona (ver seção 2.2).
+Cada clipe tem **20 segundos** — de ~8 a 17s antes do momento em que o gol ou o
+lance é marcado, mais de 3 a 11s depois, sempre fechando em 20s — e fica pronto
+sozinho, sem precisar editar vídeo depois. Só sai mais curto se a câmera acabou
+de ser ligada (ou retomada) e ainda não juntou histórico (ver seção 2.2).
 
 Os clipes saem sempre na **vertical (720×1280)**, prontos para postar em
 stories/reels. O iPhone entrega a câmera "deitada" mesmo com o celular em pé —
@@ -52,13 +52,13 @@ cortada e a tela de câmera avisa.
 ### 1.2. Resumo do funcionamento
 
 1. Os celulares-câmera ficam gravando continuamente em segundo plano, mantendo
-   sempre os últimos ~15 segundos prontos.
+   sempre pelo menos os últimos ~8 segundos prontos (até 17).
 2. Alguém marca um gol ou um lance no aparelho que está lançando as estatísticas
    (tela do Campeonato ou do Rachão).
-3. Cada celular-câmera ativo trava o que já tinha gravado e continua por mais 5
-   segundos.
+3. Cada celular-câmera ativo trava o que já tinha gravado e continua pelo tempo
+   que falta para fechar 20 segundos (de 3 a 11s).
 4. O próprio celular fecha o arquivo — um clipe separado por câmera (ângulo),
-   pronto cerca de 5 segundos depois do clique.
+   pronto de 3 a 11 segundos depois do clique.
 
 ---
 
@@ -94,15 +94,16 @@ Detalhes:
 - **Sem uso paralelo.** Ninguém deve mexer nesse celular para outra coisa
   enquanto ele estiver gravando.
 
-### 2.2. Buffer contínuo (os últimos ~15 segundos)
+### 2.2. Buffer contínuo (de ~8 a 17 segundos de história)
 
 Em vez de um único gravador contínuo, cada celular roda **dois gravadores em
-paralelo**, defasados meio ciclo. Cada gravador grava no máximo ~20 segundos e
-então reinicia. Assim, a qualquer momento existe um gravador com pelo menos
-~10–20 segundos de história pronta.
+paralelo**, defasados meio ciclo (8,5s). Cada gravador grava no máximo 17
+segundos e então reinicia. Assim, a qualquer momento existe um gravador com
+~8–17 segundos de história pronta.
 
-No sinal de gol/lance, o sistema pega o gravador que já tem mais história, deixa
-ele rodar mais 5 segundos e o encerra. Isso faz o navegador **fechar o arquivo
+No sinal de gol/lance, o sistema pega o gravador que já tem mais história e
+calcula quanto falta para fechar **20 segundos** (20s menos a idade do buffer,
+com mínimo de 3s). Deixa ele rodar esse tempo e o encerra. Isso faz o navegador **fechar o arquivo
 de verdade** — com duração correta, sem trechos "mortos", tocando do começo ao
 fim em qualquer player. (Concatenar pedaços de uma gravação ainda em andamento
 gera um arquivo com duração errada e um vão de tempo morto — o navegador só
@@ -126,17 +127,16 @@ mesma rede.
 
 No instante em que o gol ou o lance é marcado, o sinal chega a todos os celulares
 ativos no canal, imediatamente. Cada um trava o buffer que já tinha (o
-"antes") e continua gravando por mais 5 segundos (o "depois") — independente de
-qualquer pergunta que apareça na tela em seguida.
+"antes") e continua gravando de 3 a 11 segundos (o "depois", o que faltar para
+fechar 20s) — independente de qualquer pergunta que apareça na tela em seguida.
 
 As perguntas de confirmação só decidem se o clipe é salvo ou descartado. A
 captura em si já aconteceu no momento certo, então o lance nunca é perdido por
 causa do tempo gasto respondendo.
 
-Se um novo gol/lance for marcado enquanto a captura anterior ainda está nos 5
-segundos de "depois", esse novo clique é **ignorado**, para não sobrepor duas
-capturas na mesma câmera. É preciso aguardar (cerca de 5 segundos) para registrar
-o próximo.
+Se um novo gol/lance for marcado enquanto a captura anterior ainda está no
+"depois", esse novo clique é **ignorado**, para não sobrepor duas capturas na
+mesma câmera. É preciso aguardar (até ~11 segundos) para registrar o próximo.
 
 ### 2.5. Arquivo final
 
@@ -321,8 +321,10 @@ baixar o vídeo da galeria antes do prazo vencer.
   normalmente.
 - **Aparelhos diferentes.** iPhone e Android gravam em formatos diferentes; cada
   um toca direto no sistema, sem conversão.
-- **Tempo de espera.** O clipe fica pronto cerca de 5 segundos depois do clique
+- **Tempo de espera.** O clipe fica pronto de 3 a 11 segundos depois do clique
   (o tempo real da parte "depois").
+- **Início da câmera.** Nos primeiros ~8 segundos depois de ligar (ou de tocar em
+  "retomar"), ainda não há histórico suficiente — o clipe sai mais curto que 20s.
 - **Orientação.** O clipe sempre sai vertical (720×1280) — o app gira/enquadra a
   imagem sozinho, mesmo com o iPhone entregando a câmera "deitada". Basta apoiar
   o celular **em pé** com a trava de rotação ligada; se ficar deitado, a imagem
@@ -358,8 +360,8 @@ baixar o vídeo da galeria antes do prazo vencer.
   iPhone entregando a câmera deitada.
 - **Canal em tempo real.** Supabase Realtime — `broadcast` para os sinais
   (`disparo` / `decisao`) e `presence` para numerar os ângulos.
-- **Lances sobrepostos.** Um novo clique durante os 5s de "depois" de um lance em
-  andamento é ignorado, para não sobrepor buffers na mesma câmera.
+- **Lances sobrepostos.** Um novo clique durante o "depois" (até ~11s) de um lance
+  em andamento é ignorado, para não sobrepor buffers na mesma câmera.
 - **Qualidade de vídeo.** 720p comprimido (~1,8 Mbps) — imposto pelo limite de 1
   GB de armazenamento do plano gratuito do Supabase.
 - **Acesso à câmera.** Por link `?camera=1` (não é aba do menu); exige login
