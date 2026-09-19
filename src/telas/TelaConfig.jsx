@@ -7,7 +7,7 @@ import { id, migrarBase, listarPerfis, decidirPerfil } from "../core/repositorio
 import { baseOficial } from "../data/baseOficial";
 import { Botao, Painel, inputStyle, Campo, CabecalhoPagina, SecaoRecolhivel } from "../components/ui";
 import {
-  IconeTrofeu, IconeMartelo, IconeMedalha, IconeEmbaralhar, IconeCadeado,
+  IconeTrofeu, IconeMartelo, IconeEmbaralhar, IconeCadeado,
   IconeUpload, IconeDownload, IconeConta,
 } from "../components/icones";
 
@@ -220,7 +220,6 @@ function TelaConfig({ base, setBase, dados, cfg, avisar, sessao }) {
   const inputRef = useRef(null);
   const [pontuacaoAberta, setPontuacaoAberta] = useState(false);
   const [disciplinaAberta, setDisciplinaAberta] = useState(false);
-  const [hendorAberto, setHendorAberto] = useState(false);
   const [motorAberto, setMotorAberto] = useState(false);
   const [restricoesAbertas, setRestricoesAbertas] = useState(false);
   const [ra, setRa] = useState(""); const [rb, setRb] = useState(""); const [tipo, setTipo] = useState("separados");
@@ -291,34 +290,6 @@ function TelaConfig({ base, setBase, dados, cfg, avisar, sessao }) {
           <LinhaToggle ligado={cfg.converterSegundoAmarelo} texto="2º amarelo, ou amarelo + azul, vira vermelho na mesma partida (Art. 81º §Único)" />
           <LinhaToggle ligado={cfg.perdePontoNoQuartoAtraso} texto="Cobrar ponto extra do suspenso (premissa em aberto)" />
           <p style={{ fontSize: 10, color: T.fraco, paddingTop: 8 }}>Art. 34º §8º · Art. 82º</p>
-        </SecaoRecolhivel>
-
-        <SecaoRecolhivel titulo="Campeões Copa Hendor" Icone={IconeMedalha} aberto={hendorAberto} onToggle={() => setHendorAberto((v) => !v)}
-          detalhe="2 vagas">
-          <p style={{ fontSize: 11.5, lineHeight: 1.5, color: T.fraco, paddingBottom: 8 }}>
-            Os 2 campeões da Copa Hendor de Penalidades entram na zona da Supercopa mesmo se estiverem fora do corte por pontos.
-            Vale para qualquer jogador — inclusive goleiro, que disputa a vaga extra com os outros goleiros. Deixe em branco
-            enquanto a final não acontece.
-          </p>
-          <div className="space-y-2">
-            {[0, 1].map((i) => (
-              <Campo key={i} rotulo={`Campeão ${i + 1}`}>
-                <select
-                  value={(cfg.campeoesHendor || [])[i] || ""}
-                  onChange={(e) => {
-                    const atual = [...(cfg.campeoesHendor || [])];
-                    atual[i] = e.target.value || null;
-                    mudar("campeoesHendor", atual);
-                  }}
-                  style={{ ...inputStyle, padding: "10px", fontSize: 13 }}>
-                  <option value="">— a definir —</option>
-                  {base.jogadores.filter((j) => !j.convidado).map((j) => (
-                    <option key={j.id} value={j.id}>{j.nome}{j.posicao === "GOLEIRO" ? " (GK)" : ""}</option>
-                  ))}
-                </select>
-              </Campo>
-            ))}
-          </div>
         </SecaoRecolhivel>
       </div>
 

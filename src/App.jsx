@@ -2,11 +2,14 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "./supabase";
 import { T, FUNDO_APP, ESCUDO } from "./theme";
 import { CONFIG_PADRAO, calcularClassificacao } from "./core/regras";
-import { carregarBase, salvarBase, migrarBase, buscarPerfil } from "./core/repositorio";
+import { SIMULACAO, carregarBase, salvarBase, migrarBase, buscarPerfil } from "./core/repositorio";
 import { baseOficial } from "./data/baseOficial";
 import {
   IconeTabela, IconeRodada, IconeElenco, IconeAjustes, IconeConta, IconeRachao, IconeCamera,
+  IconeTrofeu, IconeMartelo, IconeSetaEsquerda,
 } from "./components/icones";
+import { TelaEscolha } from "./telas/TelaEscolha";
+import { TelaCopaHendor } from "./telas/copa/TelaCopaHendor";
 import { TelaLogin, TelaAguardandoAprovacao, TelaNovaSenha } from "./telas/TelaAcesso";
 import { TelaRodada } from "./telas/TelaRodada";
 import { TelaClassificacao } from "./telas/TelaClassificacao";
@@ -35,6 +38,10 @@ function SpinnerCarregando({ texto }) {
 export default function App() {
   const [base, setBase] = useState(null);
   const [aba, setAba] = useState("tabela");
+  /* primeira tela: null = ainda escolhendo; "jpffs" = app de sempre; "hendor" = Copa Hendor.
+   * Não é lembrado de propósito — a escolha aparece toda vez que o app abre. */
+  const [campeonato, setCampeonato] = useState(null);
+  const [abaCopa, setAbaCopa] = useState("chaveamento");
   const [aviso, setAviso] = useState(null);
   const [sessao, setSessao] = useState(null);
   const [sessaoResolvida, setSessaoResolvida] = useState(false);
@@ -96,7 +103,7 @@ export default function App() {
 
   useEffect(() => {
     const sincronizar = async () => {
-      if (!souAprovado) return;
+      if (!souAprovado || SIMULACAO) return;
       if (document.visibilityState !== "visible") return;
       if (salvandoPendenteRef.current) return; // há alteração local pendente de salvar — não sobrescrever
       const nova = await carregarBase();
@@ -114,6 +121,7 @@ export default function App() {
       .channel("base:realtime")
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "base" }, (payload) => {
         const nova = payload.new?.dados;
+        if (SIMULACAO) return; // ensaio: o que está na tela é do ensaio, não da produção
         if (nova && Object.keys(nova).length && !salvandoPendenteRef.current) {
           pularProximoSalvar.current = true;
           setBase(migrarBase(nova));
@@ -185,6 +193,16 @@ export default function App() {
     { id: "lances", rotulo: "Lances", Icone: IconeCamera },
     { id: "elenco", rotulo: "Elenco", Icone: IconeElenco }, { id: "config", rotulo: "Ajustes", Icone: IconeAjustes },
   ].filter((a) => souOrganizador || a.id === "tabela" || a.id === "lances");
+  const abasCopa = [
+    { id: "chaveamento", rotulo: "Chaveamento", Icone: IconeTrofeu },
+    { id: "resultados", rotulo: "Resultados", Icone: IconeTabela },
+    { id: "documentacao", rotulo: "Documentação", Icone: IconeMartelo },
+  ];
+  const naCopa = campeonato === "hendor";
+  const abasAtuais = naCopa ? abasCopa : abas;
+  const abaAtiva = naCopa ? abaCopa : aba;
+  const setAbaAtiva = naCopa ? setAbaCopa : setAba;
+  const tituloCabecalho = naCopa ? "Copa Hendor" : campeonato === "jpffs" ? "Campeonato JPFFS" : "JPFFS";
 
   return (
     <div style={{ minHeight: "100vh", background: FUNDO_APP, color: T.texto, fontVariantNumeric: "tabular-nums", fontFamily: "var(--fonte-corpo)" }}>
@@ -192,9 +210,15 @@ export default function App() {
         <div className="mx-auto flex max-w-5xl items-center justify-between" style={{ gap: 8 }}>
           <div className="flex items-center" style={{ gap: 9, minWidth: 0 }}>
             <img src={ESCUDO} alt="" style={{ height: 26, width: "auto", display: "block", flexShrink: 0 }} />
-            <span className="font-destaque truncate" style={{ fontSize: 15.5, fontWeight: 700, letterSpacing: ".01em", color: T.texto }}>Campeonato JPFFS</span>
+            <span className="font-destaque truncate" style={{ fontSize: 15.5, fontWeight: 700, letterSpacing: ".01em", color: T.texto }}>{tituloCabecalho}</span>
           </div>
           <div className="flex items-center" style={{ gap: 10, flexShrink: 0 }}>
+            {campeonato && (
+              <button onClick={() => setCampeonato(null)} className="flex items-center rounded-full" title="Voltar para a escolha do campeonato"
+                style={{ gap: 5, padding: "5px 11px", fontSize: 11, fontWeight: 800, letterSpacing: ".04em", color: T.texto, border: `1px solid ${T.tier4}`, background: "transparent" }}>
+                <IconeSetaEsquerda tam={12} cor={T.texto} /> Trocar
+              </button>
+            )}
             {souOrganizador && <span className="font-destaque" style={{
               fontSize: 9.5, fontWeight: 700, letterSpacing: ".1em", textTransform: "uppercase",
               color: T.ouro, border: `1px solid ${T.ouro}`, borderRadius: 999, padding: "3px 9px",
@@ -208,30 +232,41 @@ export default function App() {
             </button>
           </div>
         </div>
+        {SIMULACAO && (
+          <p className="mx-auto max-w-5xl text-center" style={{ marginTop: 6, fontSize: 10.5, fontWeight: 800, letterSpacing: ".1em", textTransform: "uppercase", color: T.sobreOuro, background: T.ouro, borderRadius: 6, padding: "3px 8px" }}>
+            Simulação — nada do que você fizer aqui é salvo
+          </p>
+        )}
       </header>
 
       {aviso && <div className="fixed left-1/2 z-30 w-11/12 max-w-sm -translate-x-1/2 rounded-lg px-4 py-3 text-center"
         style={{ bottom: 150, background: T.ouro, color: T.sobreOuro, fontWeight: 800, fontSize: 13.5, boxShadow: "0 8px 28px rgba(0,0,0,.5)" }}>{aviso}</div>}
 
       <main className="conteudo-principal mx-auto max-w-5xl px-3 pt-4" style={{ paddingBottom: 104 }}>
-        {aba === "rodada" && souOrganizador && <TelaRodada {...{ base, setBase, dados, cfg, avisar: setAviso }} />}
-        {aba === "rachao" && souOrganizador && <TelaRachao {...{ base, avisar: setAviso }} />}
-        {aba === "lances" && souAprovado && (
+        {campeonato === null && <TelaEscolha {...{ base, dados }} onEscolher={setCampeonato} />}
+        {naCopa && (
+          <LimiteErro fallback={<p style={{ padding: 16, color: T.fraco, fontSize: 13 }}>Não foi possível abrir a Copa Hendor. Recarregue a página.</p>}>
+            <TelaCopaHendor {...{ aba: abaCopa, base, setBase, dados, avisar: setAviso, souOrganizador }} />
+          </LimiteErro>
+        )}
+        {campeonato === "jpffs" && aba === "rodada" && souOrganizador && <TelaRodada {...{ base, setBase, dados, cfg, avisar: setAviso }} />}
+        {campeonato === "jpffs" && aba === "rachao" && souOrganizador && <TelaRachao {...{ base, avisar: setAviso }} />}
+        {campeonato === "jpffs" && aba === "lances" && souAprovado && (
           <LimiteErro fallback={<p style={{ padding: 16, color: T.fraco, fontSize: 13 }}>Não foi possível carregar a galeria de lances.</p>}>
             <TelaGaleria {...{ perfil, avisar: setAviso }} />
           </LimiteErro>
         )}
-        {aba === "tabela" && <TelaClassificacao {...{ base, dados, cfg, avisar: setAviso }} />}
-        {aba === "elenco" && souOrganizador && <TelaElenco {...{ base, setBase, dados, cfg, avisar: setAviso }} />}
-        {aba === "config" && souOrganizador && <TelaConfig {...{ base, setBase, dados, cfg, avisar: setAviso, sessao }} />}
+        {campeonato === "jpffs" && aba === "tabela" && <TelaClassificacao {...{ base, dados, cfg, avisar: setAviso }} />}
+        {campeonato === "jpffs" && aba === "elenco" && souOrganizador && <TelaElenco {...{ base, setBase, dados, cfg, avisar: setAviso }} />}
+        {campeonato === "jpffs" && aba === "config" && souOrganizador && <TelaConfig {...{ base, setBase, dados, cfg, avisar: setAviso, sessao }} />}
       </main>
 
-      <nav className="nav-principal fixed bottom-0 left-0 right-0 z-20" style={{ background: "rgba(0,16,57,.97)", borderTop: `1px solid ${T.borda}` }}>
+      {campeonato && <nav className="nav-principal fixed bottom-0 left-0 right-0 z-20" style={{ background: "rgba(0,16,57,.97)", borderTop: `1px solid ${T.borda}` }}>
         <div className="mx-auto flex max-w-5xl">
-          {abas.map((a) => {
-            const ativo = aba === a.id;
+          {abasAtuais.map((a) => {
+            const ativo = abaAtiva === a.id;
             return (
-              <button key={a.id} onClick={() => setAba(a.id)} title={a.rotulo} className="flex flex-1 flex-col items-center nav-item"
+              <button key={a.id} onClick={() => setAbaAtiva(a.id)} title={a.rotulo} className="flex flex-1 flex-col items-center nav-item"
                 style={{ gap: 3, padding: "11px 0 13px", color: ativo ? T.ouro : T.fraco, fontSize: 10, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase" }}>
                 <span className="nav-item-icone" style={{ display: "inline-flex", borderRadius: 10, padding: 6, background: ativo ? T.tier2 : "transparent" }}>
                   <a.Icone tam={19} cor={ativo ? T.ouro : T.fraco} />
@@ -241,7 +276,7 @@ export default function App() {
             );
           })}
         </div>
-      </nav>
+      </nav>}
     </div>
   );
 }

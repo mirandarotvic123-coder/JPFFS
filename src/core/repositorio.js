@@ -4,6 +4,7 @@
 import { supabase } from "../supabase";
 import { baseOficial } from "../data/baseOficial";
 import { CONFIG_PADRAO } from "./regras";
+import { copaHendor2026 } from "../data/copaHendor2026";
 
 /* --- infra/repositorio (Supabase) ---------------------------------------*/
 
@@ -23,7 +24,13 @@ async function carregarBase() {
   }
 }
 
+/* ?simulacao=1 na URL → ensaio: lê a base normalmente, mas NADA é gravado (nem no banco, nem
+ * no backup local) e o tempo real é ignorado. Serve pra testar a Copa/Rachão com jogo de
+ * mentira sem sujar os dados de produção — o `npm run dev` fala com o mesmo Supabase. */
+const SIMULACAO = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("simulacao") === "1";
+
 async function salvarBase(b) {
+  if (SIMULACAO) return true;
   try { localStorage.setItem("jpffs:backup", JSON.stringify({ dados: b, em: Date.now() })); } catch { }
 
   const gravar = async () => {
@@ -215,6 +222,9 @@ function corrigirMojibake(s) {
 function migrarBase(base) {
   const b = { ...baseOficial(), ...base, config: { ...CONFIG_PADRAO, ...(base.config || {}), pesos: { ...CONFIG_PADRAO.pesos, ...(base.config?.pesos || {}) } } };
   b.restricoes = b.restricoes || [];
+  // Copa Hendor 2026 já cadastrada (oitavas e quartas lançadas): entra uma vez e passa a ser
+  // gravada junto com a base no primeiro save de um organizador.
+  b.copas = base.copas?.length ? base.copas : [copaHendor2026()];
   b.historicoInicial = base.historicoInicial || { rodadas: 0, jogadores: {} };
   if (b.historicoInicial.descricao) b.historicoInicial = { ...b.historicoInicial, descricao: corrigirMojibake(b.historicoInicial.descricao) };
   b.jogadores = (b.jogadores || []).map((j) => ({ ...j, posicao: /goleiro/i.test(j.posicao || "") ? "GOLEIRO" : "LINHA", convidado: !!j.convidado }));
@@ -227,7 +237,7 @@ function migrarBase(base) {
   return b;
 }
 export {
-  carregarBase, salvarBase, enviarFotoJogador, id, migrarBase, buscarPerfil,
+  SIMULACAO, carregarBase, salvarBase, enviarFotoJogador, id, migrarBase, buscarPerfil,
   listarPerfis, decidirPerfil,
   enviarLance, listarLances, urlAssinadaLance, excluirLance, tituloLance, nomeArquivoLance,
 };

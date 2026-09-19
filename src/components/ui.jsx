@@ -189,6 +189,29 @@ function SecaoRecolhivel({ titulo, Icone, detalhe, aberto, onToggle, children })
   );
 }
 
+/* item de acordeão da Documentação (um tópico aberto por vez; `aberta` é o id do aberto) */
+function ItemDoc({ id, aberta, setAberta, titulo, resumo, children }) {
+  const estaAberta = aberta === id;
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${T.borda}` }}>
+      <button onClick={() => setAberta(estaAberta ? null : id)}
+        className="flex w-full items-center justify-between gap-3 text-left"
+        style={{ padding: "13px 14px", background: estaAberta ? "rgba(240,192,64,.08)" : "rgba(255,255,255,.03)" }}>
+        <span className="min-w-0">
+          <span style={{ display: "block", fontSize: 13.5, fontWeight: 800, color: estaAberta ? T.ouro : T.texto }}>{titulo}</span>
+          <span style={{ display: "block", fontSize: 11, color: T.fraco, marginTop: 2 }}>{resumo}</span>
+        </span>
+        <span style={{ fontSize: 12, color: T.secundario, flexShrink: 0, transform: estaAberta ? "rotate(180deg)" : "none", transition: "transform .15s" }}>▾</span>
+      </button>
+      {estaAberta && (
+        <div style={{ padding: "4px 14px 16px", background: "rgba(0,0,0,.15)", fontSize: 12.5, lineHeight: 1.7, color: T.secundario }}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Segmento({ valor, opcoes, onChange, titulo }) {
   return (
     <div>
@@ -216,5 +239,5 @@ function Segmento({ valor, opcoes, onChange, titulo }) {
 export {
   Estrelas, IconeGoleiro, IconeLinha, CampoBusca, SeloAtraso, Botao, inputStyle, Campo,
   CabecalhoPagina, Secao, Painel, Chip, AvatarJogador, Marcadores, Contador,
-  FaixaPartida, Interruptor, Segmento, SecaoRecolhivel,
+  FaixaPartida, Interruptor, Segmento, SecaoRecolhivel, ItemDoc,
 };
