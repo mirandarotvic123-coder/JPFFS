@@ -5,7 +5,7 @@ import { barradoDoRachao } from "../core/regras";
 import {
   criarSessao, aguardandoLinha, goleirosLivres, proximosTimes,
   podeIniciarPartida, iniciarPartida, atribuirGoleiro, limparGoleiro, marcarGol,
-  encerrarPartida, resolverParOuImpar, resolverPrimeiroGol, substituirLinha, removerJogador,
+  encerrarPartida, encerrarManual, reabrirUltimaPartida, resolverParOuImpar, resolverPrimeiroGol, substituirLinha, removerJogador,
   inserirNaFila, ordemGeral, reclassificarJogador, avisosSessao, NOME_LADO,
 } from "../core/rachao";
 import {
@@ -120,6 +120,16 @@ function TelaRachao({ base, avisar }) {
         ))}
 
         <QuadraAoVivo {...{ sessao, atualizar: setSessao, avisar, nomes }} />
+        {sessao.desfazer && (
+          <Botao variante="secundario" className="w-full" style={{ minHeight: 40, fontSize: 12 }} onClick={() => {
+            const n = sessao.desfazer.quadra?.numero;
+            if (!confirm(`Reabrir a partida ${n}? Ela volta a estar em andamento, com o placar que tinha, e a fila volta ao que era antes de encerrar. Quem chegou ou saiu da fila depois é mantido. Se a partida seguinte já começou, ela é desfeita.`)) return;
+            const r = reabrirUltimaPartida(sessao);
+            setSessao(r.sessao); avisar(r.aviso);
+          }}>
+            ↩ Reabrir a partida {sessao.desfazer.quadra?.numero} (corrigir placar, quem sai e quem entra)
+          </Botao>
+        )}
         <LimiteErro>
           <GatilhoLances
             partidaId={`rachao-${sessao.id}`}
@@ -389,6 +399,7 @@ function ChamadaManual({
 
 function QuadraAoVivo({ sessao, atualizar, avisar, nomes }) {
   const q = sessao.quadra;
+  const [naMao, setNaMao] = useState(false);
 
   if (!q) {
     if (sessao.timeEmEspera) {
@@ -475,6 +486,29 @@ function QuadraAoVivo({ sessao, atualizar, avisar, nomes }) {
         atualizar(r.sessao);
         if (r.aviso) avisar(r.aviso);
       }}>Encerrar partida</Botao>
+      <button onClick={() => setNaMao((v) => !v)} className="w-full text-center"
+        style={{ fontSize: 11, fontWeight: 700, color: T.fraco, textDecoration: "underline" }}>
+        {naMao ? "Fechar" : "O resultado das regras não bate? Decidir na mão quem fica"}
+      </button>
+      {naMao && (
+        <div className="space-y-2 rounded-lg p-2" style={{ background: "rgba(0,0,0,.22)" }}>
+          <p style={{ fontSize: 11, color: T.secundario }}>
+            Encerra a partida escolhendo quem fica. A fila, o goleiro e o corte do Art. 29º seguem normalmente a partir daí.
+          </p>
+          <div className="grid grid-cols-3 gap-1.5">
+            {["amarelo", "azul"].map((lado) => (
+              <Botao key={lado} style={{ background: corDe(lado).hex, color: "#fff", minHeight: 40, fontSize: 11 }} onClick={() => {
+                const r = encerrarManual(sessao, lado);
+                atualizar(r.sessao); setNaMao(false); avisar(r.aviso);
+              }}>{corDe(lado).cor} fica</Botao>
+            ))}
+            <Botao variante="secundario" style={{ minHeight: 40, fontSize: 11 }} onClick={() => {
+              const r = encerrarManual(sessao, null);
+              atualizar(r.sessao); setNaMao(false); avisar(r.aviso);
+            }}>Os dois saem</Botao>
+          </div>
+        </div>
+      )}
     </Painel>
   );
 }
@@ -614,83 +648,155 @@ const IconeArrastar = ({ cor }) => (
 );
 
 /* Fila de linha com reordenação por arrastar (pointer events — funciona no
- * toque e no mouse). Substitui as setinhas ▲▼: pegar pelo "⠿" e soltar na
- * posição. Enquanto arrasta, a lista reordena ao vivo; ao soltar, commita
- * um único `inserirNaFila` (move só o jogador arrastado, na frente do vizinho
- * de baixo — os outros mantêm a ordem relativa). */
+ * toque e no mouse). Pegar pelo "⠿" e soltar na posição.
+ *
+ * Desenhado pra NÃO travar em celular: a lista fica parada durante o gesto (a
+ * linha arrastada só acompanha o dedo por transform e uma barra mostra onde vai
+ * cair) — nenhum nó do DOM muda de lugar no meio do arraste, então o navegador
+ * não solta o "pointer capture" do botão (o que deixava o soltar se perder e a
+ * fila presa). Os listeners de mover/soltar ficam na `window`, então soltar em
+ * qualquer lugar da tela (ou o navegador cancelar o toque) sempre encerra o
+ * gesto. Ao soltar, commita um único `inserirNaFila` (move só o jogador
+ * arrastado, na frente do vizinho de baixo — os outros mantêm a ordem relativa). */
 function FilaLinhaArrastavel({ filaLinha, nomes, sessao, atualizar, avisar, ordemIdx }) {
   const [dragId, setDragId] = useState(null);
-  const [ordemLocal, setOrdemLocal] = useState(null);
-  const ordemLocalRef = useRef(null);
-  const linhasRef = useRef(new Map()); // jid -> elemento da linha
-  useEffect(() => { ordemLocalRef.current = ordemLocal; }, [ordemLocal]);
+  const [alvo, setAlvo] = useState(null); // { indice, barraY, dy }
+  const linhasRef = useRef(new Map());   // jid -> elemento da linha
+  const caixaRef = useRef(null);
+  const gestoRef = useRef(null);         // { jid, pointerId, retas, yInicio, yAtual, novoIdx }
+  const rolagemRef = useRef(0);
+  const propsRef = useRef(null);
+  propsRef.current = { filaLinha, nomes, sessao, atualizar, avisar };
+  // as funções abaixo são recriadas a cada render; a window recebe estes invólucros
+  // estáveis (sempre chamam a versão mais nova) pra add/removeEventListener baterem.
+  const fnsRef = useRef({});
+  const estaveis = useRef({
+    mover: (e) => fnsRef.current.aoMoverJanela(e),
+    soltar: (e) => fnsRef.current.aoSoltarJanela(e),
+    foco: () => fnsRef.current.aoPerderFoco(),
+  }).current;
 
-  const ordem = ordemLocal || filaLinha;
+  /* onde a linha cairia, com o dedo na altura `yAtual` (coordenadas da página —
+   * assim continua certo mesmo se a página rolar durante o arraste). */
+  function recalcular() {
+    const g = gestoRef.current;
+    if (!g) return;
+    const outros = g.retas.filter((r) => r.jid !== g.jid);
+    const yPag = g.yAtual + window.scrollY;
+    const novoIdx = outros.filter((r) => yPag > r.meio).length;
+    g.novoIdx = novoIdx;
+    const caixaTopo = caixaRef.current ? caixaRef.current.getBoundingClientRect().top + window.scrollY : 0;
+    const barraPag = novoIdx < outros.length ? outros[novoIdx].topo - 1 : outros.length ? outros[outros.length - 1].base + 1 : 0;
+    setAlvo({ indice: novoIdx, barraY: barraPag - caixaTopo, dy: yPag - g.yInicio });
+  }
+
+  function encerrarGesto(commitar) {
+    const g = gestoRef.current;
+    gestoRef.current = null;
+    window.removeEventListener("pointermove", estaveis.mover);
+    window.removeEventListener("pointerup", estaveis.soltar);
+    window.removeEventListener("pointercancel", estaveis.soltar);
+    window.removeEventListener("blur", estaveis.foco);
+    cancelAnimationFrame(rolagemRef.current);
+    setDragId(null);
+    setAlvo(null);
+    if (!g || !commitar) return;
+    const { filaLinha: fila, nomes: nm, sessao: ses, atualizar: atu, avisar: avi } = propsRef.current;
+    if (fila.indexOf(g.jid) === g.novoIdx) return; // caiu onde já estava
+    const outros = fila.filter((jid) => jid !== g.jid);
+    const antesDeId = g.novoIdx < outros.length ? outros[g.novoIdx] : null;
+    atu(inserirNaFila(ses, g.jid, antesDeId, false));
+    avi(`${nm[g.jid] || "Jogador"} agora é ${g.novoIdx + 1}º na fila`);
+  }
+  function aoMoverJanela(e) {
+    const g = gestoRef.current;
+    if (!g || e.pointerId !== g.pointerId) return;
+    g.yAtual = e.clientY;
+    recalcular();
+  }
+  function aoSoltarJanela(e) {
+    const g = gestoRef.current;
+    if (!g || e.pointerId !== g.pointerId) return;
+    encerrarGesto(e.type === "pointerup"); // toque cancelado pelo navegador = desiste, não move
+  }
+  function aoPerderFoco() { encerrarGesto(false); }
+  fnsRef.current = { aoMoverJanela, aoSoltarJanela, aoPerderFoco };
+
+  /* perto da borda da tela, rola a página sozinha enquanto o dedo segura */
+  function loopRolagem() {
+    const g = gestoRef.current;
+    if (!g) return;
+    const borda = 90;
+    if (g.yAtual < borda) { window.scrollBy(0, -Math.ceil((borda - g.yAtual) / 6)); recalcular(); }
+    else if (g.yAtual > window.innerHeight - borda) { window.scrollBy(0, Math.ceil((g.yAtual - (window.innerHeight - borda)) / 6)); recalcular(); }
+    rolagemRef.current = requestAnimationFrame(loopRolagem);
+  }
 
   function aoDescer(e, jid) {
-    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+    if (gestoRef.current) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    e.preventDefault();
+    const retas = filaLinha.map((id) => {
+      const r = linhasRef.current.get(id)?.getBoundingClientRect();
+      const topo = (r?.top ?? 0) + window.scrollY, base = (r?.bottom ?? 0) + window.scrollY;
+      return { jid: id, topo, base, meio: (topo + base) / 2 };
+    });
+    gestoRef.current = { jid, pointerId: e.pointerId, retas, yInicio: e.clientY + window.scrollY, yAtual: e.clientY, novoIdx: filaLinha.indexOf(jid) };
+    window.addEventListener("pointermove", estaveis.mover);
+    window.addEventListener("pointerup", estaveis.soltar);
+    window.addEventListener("pointercancel", estaveis.soltar);
+    window.addEventListener("blur", estaveis.foco);
     setDragId(jid);
-    setOrdemLocal(filaLinha);
-  }
-  function aoMover(e) {
-    if (!dragId) return;
-    const ords = ordemLocalRef.current || filaLinha;
-    const y = e.clientY;
-    let alvo = ords.length - 1;
-    for (let k = 0; k < ords.length; k++) {
-      const r = linhasRef.current.get(ords[k])?.getBoundingClientRect();
-      if (r && y < r.top + r.height / 2) { alvo = k; break; }
-    }
-    const atual = ords.indexOf(dragId);
-    if (atual === -1 || alvo === atual) return;
-    const novo = [...ords];
-    novo.splice(atual, 1);
-    novo.splice(alvo, 0, dragId);
-    setOrdemLocal(novo);
-  }
-  function aoSoltar() {
-    const jid = dragId;
-    const ords = ordemLocalRef.current;
-    setDragId(null);
-    setOrdemLocal(null);
-    if (!jid || !ords || !filaLinha.includes(jid)) return;
-    if (ords.join() === filaLinha.join()) return; // nada mudou
-    const pos = ords.indexOf(jid);
-    const antesDeId = pos < ords.length - 1 ? ords[pos + 1] : null;
-    atualizar(inserirNaFila(sessao, jid, antesDeId, false));
-    avisar(`${nomes[jid] || "Jogador"} agora é ${pos + 1}º na fila`);
+    recalcular();
+    rolagemRef.current = requestAnimationFrame(loopRolagem);
   }
 
+  // saiu da tela no meio do gesto: solta os listeners
+  useEffect(() => () => { if (gestoRef.current) encerrarGesto(false); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
-    <Painel className="space-y-1 p-2" style={{ userSelect: dragId ? "none" : "auto" }}>
-      {ordem.length === 0 && <p style={{ padding: 8, textAlign: "center", fontSize: 12, color: T.fraco }}>Ninguém aguardando.</p>}
-      {ordem.map((jid, i) => (
-        <div key={jid} ref={(el) => { if (el) linhasRef.current.set(jid, el); else linhasRef.current.delete(jid); }}
-          className="flex items-center justify-between rounded px-2 py-1.5"
-          style={{
-            background: dragId === jid ? T.tier3 : "rgba(0,0,0,.18)",
-            boxShadow: dragId === jid ? "0 6px 18px rgba(0,0,0,.45)" : "none",
-            opacity: dragId && dragId !== jid ? 0.65 : 1,
-            transition: dragId ? "none" : "background .12s, opacity .12s",
-          }}>
-          <span className="flex items-center" style={{ minWidth: 0, gap: 6, fontSize: 12.5 }}>
-            <button onPointerDown={(e) => aoDescer(e, jid)} onPointerMove={aoMover} onPointerUp={aoSoltar} onPointerCancel={aoSoltar}
-              title="Arraste para reordenar"
-              style={{ touchAction: "none", cursor: dragId === jid ? "grabbing" : "grab", padding: "6px 5px", display: "flex", flexShrink: 0 }}>
-              <IconeArrastar cor={dragId === jid ? T.secundario : T.fraco} />
-            </button>
-            <b style={{ color: T.fraco, flexShrink: 0 }}>{i + 1}º</b>
-            <span className="truncate">{nomes[jid] || "?"}</span>
-          </span>
-          <div className="flex items-center" style={{ gap: 2, flexShrink: 0 }}>
-            <button onClick={() => { atualizar(reclassificarJogador(sessao, jid, true, ordemIdx)); avisar(`${nomes[jid]} virou goleiro pro resto do dia`); }}
-              title="Reclassificar como goleiro pro resto do dia" style={{ padding: "4px 6px", fontSize: 9, fontWeight: 800, color: T.gk }}>GOL</button>
-            <button onClick={() => { atualizar(removerJogador(sessao, jid)); avisar(`${nomes[jid]} saiu da fila`); }}
-              style={{ padding: "4px 7px", fontSize: 13, color: T.laranja }}>✕</button>
+    <Painel className="space-y-1 p-2" style={{ position: "relative", userSelect: dragId ? "none" : "auto", WebkitUserSelect: dragId ? "none" : "auto" }}>
+      {filaLinha.length === 0 && <p style={{ padding: 8, textAlign: "center", fontSize: 12, color: T.fraco }}>Ninguém aguardando.</p>}
+      <div ref={caixaRef} className="space-y-1" style={{ position: "relative" }}>
+        {filaLinha.map((jid, i) => (
+          <div key={jid} ref={(el) => { if (el) linhasRef.current.set(jid, el); else linhasRef.current.delete(jid); }}
+            className="flex items-center justify-between rounded px-2 py-1.5"
+            style={{
+              background: dragId === jid ? T.tier3 : "rgba(0,0,0,.18)",
+              boxShadow: dragId === jid ? "0 6px 18px rgba(0,0,0,.45)" : "none",
+              opacity: dragId && dragId !== jid ? 0.65 : 1,
+              transform: dragId === jid && alvo ? `translateY(${alvo.dy}px)` : "none",
+              position: "relative", zIndex: dragId === jid ? 2 : 0,
+              transition: dragId ? "none" : "background .12s, opacity .12s",
+            }}>
+            <span className="flex items-center" style={{ minWidth: 0, gap: 6, fontSize: 12.5 }}>
+              <button onPointerDown={(e) => aoDescer(e, jid)} onContextMenu={(e) => e.preventDefault()}
+                title="Arraste para reordenar"
+                style={{
+                  touchAction: "none", cursor: dragId === jid ? "grabbing" : "grab", padding: "6px 5px", display: "flex", flexShrink: 0,
+                  WebkitUserSelect: "none", userSelect: "none", WebkitTouchCallout: "none",
+                }}>
+                <IconeArrastar cor={dragId === jid ? T.secundario : T.fraco} />
+              </button>
+              <b style={{ color: T.fraco, flexShrink: 0 }}>{i + 1}º</b>
+              <span className="truncate">{nomes[jid] || "?"}</span>
+            </span>
+            <div className="flex items-center" style={{ gap: 2, flexShrink: 0 }}>
+              <button onClick={() => { atualizar(reclassificarJogador(sessao, jid, true, ordemIdx)); avisar(`${nomes[jid]} virou goleiro pro resto do dia`); }}
+                title="Reclassificar como goleiro pro resto do dia" style={{ padding: "4px 6px", fontSize: 9, fontWeight: 800, color: T.gk }}>GOL</button>
+              <button onClick={() => { atualizar(removerJogador(sessao, jid)); avisar(`${nomes[jid]} saiu da fila`); }}
+                style={{ padding: "4px 7px", fontSize: 13, color: T.laranja }}>✕</button>
+            </div>
           </div>
-        </div>
-      ))}
-      {ordem.length > 1 && (
+        ))}
+        {dragId && alvo && (
+          <div aria-hidden="true" style={{
+            position: "absolute", left: 0, right: 0, top: alvo.barraY - 1, height: 3, borderRadius: 2,
+            background: T.ouro, boxShadow: `0 0 6px ${T.ouro}`, pointerEvents: "none", zIndex: 3,
+          }} />
+        )}
+      </div>
+      {filaLinha.length > 1 && (
         <p style={{ padding: "2px 6px 0", fontSize: 9.5, color: T.fraco }}>Arraste pela alça à esquerda para mudar a ordem da fila.</p>
       )}
     </Painel>

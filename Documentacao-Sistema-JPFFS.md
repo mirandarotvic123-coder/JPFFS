@@ -512,6 +512,13 @@ par-ou-ímpar), `substituirLinha`, `removerJogador`, `inserirNaFila`,
 `reclassificarJogador`. O cabeçalho do arquivo documenta cada suposição de regra
 em detalhe — **leia antes de mexer**.
 
+Correções de fim de partida: `aplicarDesfecho` guarda em `sessao.desfazer` uma foto
+da sessão **antes** do encerramento (1 nível — só a última partida).
+`reabrirUltimaPartida` restaura essa foto (quadra com o placar, fila de antes), preserva
+quem chegou/saiu depois e devolve `desfazer: null`. `encerrarManual(sessao, lado|null)`
+encerra escolhendo quem fica (ou "os dois saem"), passando pelo mesmo `aplicarDesfecho`
+(fila, goleiros e corte do Art. 29º seguem normais). Testes: `testes/rachao.teste.mjs`.
+
 ### 6.3. `core/lances.js` — buffer duplo de gravação
 
 Motor de captura de clipe de **20s fixos** (`TOTAL_MS`). **Dois `MediaRecorder`**
@@ -595,7 +602,7 @@ lança as cobranças, troca jogadores e dá W.O. direto nos cartões das partida
 | Tela | Aba | Quem vê | O que faz |
 | --- | --- | --- | --- |
 | [`TelaClassificacao`](src/telas/TelaClassificacao.jsx) | Tabela | todos | Classificação geral, resultados por rodada, e a aba **Documentação** (regras do Estatuto, dentro do app). Exporta CSV/PNG. |
-| [`TelaRodada`](src/telas/TelaRodada.jsx) | Rodada | organizador | Fluxo de 3 etapas: **Presença** (chamada, registra `ordemChegada`; pendência `total` trava o botão e `sorteio` marca mas fica fora do sorteio) → **Sorteio** (motor de equilíbrio, ajuste fino arrastando, "Gravar partidas") → **Partidas** (súmulas ao vivo: gols, assistências, cartões, gol contra, gol não computado; encaixe de vagas abertas; ajustes P⁺/P⁻; fechar rodada). |
+| [`TelaRodada`](src/telas/TelaRodada.jsx) | Rodada | organizador | Fluxo de 3 etapas: **Presença** (chamada, registra `ordemChegada`; pendência `total` trava o botão e `sorteio` marca mas fica fora do sorteio) → **Sorteio** (motor de equilíbrio, ajuste fino arrastando, "Gravar partidas") → **Partidas** (súmulas ao vivo: gols, assistências, cartões, gol contra, gol não computado; encaixe de vagas abertas; **⇄ troca o jogador de qualquer vaga** (leva o "só completando" §10 se escolhido; apaga os lançamentos do que sai, com confirmação); ajustes P⁺/P⁻; fechar rodada). |
 | [`TelaRachao`](src/telas/TelaRachao.jsx) | Rachão | organizador | Abertura (puxa `ordemChegada` da rodada do dia **ou** chamada manual quando não há rodada) → quadra ao vivo, fila arrastável, próximos times, histórico do dia. Estado no `localStorage`. Jogador com pendência `total` não entra na lista nem na fila. |
 | [`TelaElenco`](src/telas/TelaElenco.jsx) | Elenco | organizador | Cadastro/edição de jogadores, foto, posição, flags (ativo, convidado, **pendência financeira com efeito**: só avisar / sem sorteio / bloqueado), importar CSV/JSON. |
 | [`TelaConfig`](src/telas/TelaConfig.jsx) | Ajustes | organizador | Cadastros de acesso (aprovar/bloquear), histórico de rodadas (reabrir recalcula), regras (quase tudo bloqueado), export/import da base (JSON), restaurar padrão / base oficial. |

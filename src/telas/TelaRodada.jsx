@@ -1071,6 +1071,7 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
   const jog = Object.fromEntries(base.jogadores.map((j) => [j.id, j]));
   const [pendenteVaga, setPendenteVaga] = useState({});
   const [cartoesAbertos, setCartoesAbertos] = useState({});
+  const [trocando, setTrocando] = useState(null); // { jid, timeId, goleiro, novoId, pontua } — trocar um jogador da partida por outro
   const [aberta, setAberta] = useState(!jogo.encerrado); // partidas já encerradas começam recolhidas
   const tA = timePorId(rodada, jogo.timeA), tB = timePorId(rodada, jogo.timeB);
   const p = placarDe(jogo, rodada);
@@ -1113,6 +1114,33 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
       : rodada.jogos;
     atualizar({ times: novoTimes, jogos: novoJogos });
     avisar(repete ? `${jog[jogadorId]?.nome} completou a equipe — não pontua` : `${jog[jogadorId]?.nome} entrou na vaga e vai pontuar`);
+  };
+
+  /* Troca quem está numa vaga da partida por outro jogador (escolheu o errado, ou quem
+   * veio não era o combinado). Mantém a vaga (time, goleiro/linha) e leva junto o "só
+   * completando" conforme a escolha; os lançamentos (gol, assistência, cartão) do jogador que
+   * sai NESTA partida são descartados — quem chama já confirmou. */
+  const trocarJogador = (timeId, jidAntigo, jidNovo, pontua) => {
+    if (!jidNovo || jidNovo === jidAntigo) return;
+    const l = porId[jidNovo];
+    const cand = candidatos.find((e) => e.jogador.id === jidNovo);
+    const novoTimes = (rodada.times || []).map((t) => t.id !== timeId ? t : {
+      ...t,
+      jogadores: (t.jogadores || []).map((j) => j.jogadorId !== jidAntigo ? j : {
+        ...j, jogadorId: jidNovo,
+        estrelaNoSorteio: cand?.jogador?.convidado ? (cand.jogador.estrelasIniciais || 1) : (l?.estrelas || 1),
+      }),
+    });
+    const { [jidAntigo]: _descartado, ...eventos } = jogo.eventos || {};
+    const soCartoesNovo = [...(jogo.soCartoes || []).filter((x) => x !== jidAntigo), ...(pontua ? [] : [jidNovo])];
+    atualizar({
+      times: novoTimes,
+      jogos: rodada.jogos.map((g) => g.id !== jogo.id ? g : {
+        ...g, eventos, soCartoes: [...new Set(soCartoesNovo)], completaTime: (g.completaTime || []).filter((x) => x !== jidAntigo),
+      }),
+    });
+    setTrocando(null);
+    avisar(`${jog[jidNovo]?.nome} entrou no lugar de ${jog[jidAntigo]?.nome}${pontua ? "" : " (só completando)"}`);
   };
 
   const setEvento = (jid, campo, d) => {
@@ -1161,18 +1189,76 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
                   <Estrelas n={estrelaNoSorteio || 1} tam={9} goleiro={atuaComoGoleiro} />
                   {niveis?.[jid] && <SeloAtraso nivel={niveis[jid]} cfg={cfg} mini />}
                 </span>
-                <button onClick={() => mudar({
-                  completaTime: (jogo.completaTime || []).filter((x) => x !== jid),
-                  soCartoes: soCartao ? (jogo.soCartoes || []).filter((x) => x !== jid) : [...new Set([...(jogo.soCartoes || []), jid])],
-                })} title="Art. 34º §10º — entrou só para completar equipe: não pontua nada, nem cartão"
-                  style={{
-                    flexShrink: 0, borderRadius: 3, padding: "1px 4px", fontSize: 9, fontWeight: 800,
-                    background: soCartao ? "rgba(255,165,61,.22)" : "rgba(255,255,255,.07)",
-                    color: soCartao ? T.laranja : T.fraco
-                  }}>
-                  §10
-                </button>
+                <span className="flex shrink-0 items-center gap-1">
+                  <button onClick={() => setTrocando((t) => (t?.jid === jid ? null : { jid, timeId: time.id, goleiro: !!atuaComoGoleiro, novoId: "", pontua: !soCartao }))}
+                    title="Trocar este jogador por outro (escolheu o errado?)"
+                    style={{
+                      borderRadius: 3, padding: "1px 5px", fontSize: 10, fontWeight: 800,
+                      background: trocando?.jid === jid ? "rgba(255,200,61,.22)" : "rgba(255,255,255,.07)",
+                      color: trocando?.jid === jid ? T.ouro : T.fraco,
+                    }}>
+                    ⇄
+                  </button>
+                  <button onClick={() => mudar({
+                    completaTime: (jogo.completaTime || []).filter((x) => x !== jid),
+                    soCartoes: soCartao ? (jogo.soCartoes || []).filter((x) => x !== jid) : [...new Set([...(jogo.soCartoes || []), jid])],
+                  })} title="Art. 34º §10º — entrou só para completar equipe: não pontua nada, nem cartão"
+                    style={{
+                      borderRadius: 3, padding: "1px 4px", fontSize: 9, fontWeight: 800,
+                      background: soCartao ? "rgba(255,165,61,.22)" : "rgba(255,255,255,.07)",
+                      color: soCartao ? T.laranja : T.fraco
+                    }}>
+                    §10
+                  </button>
+                </span>
               </div>
+              {trocando?.jid === jid && (() => {
+                const opcoes = [...candidatos].sort((a, b) => {
+                  if (atuaComoGoleiro) {
+                    const ga = a.jogador.posicao === "GOLEIRO" ? 0 : 1, gb = b.jogador.posicao === "GOLEIRO" ? 0 : 1;
+                    if (ga !== gb) return ga - gb;
+                  }
+                  return a.jogador.nome.localeCompare(b.jogador.nome, "pt-BR");
+                });
+                const lancou = bruto.gols + bruto.assistencias + bruto.ca + bruto.cv + bruto.cz;
+                return (
+                  <div className="mb-1.5 space-y-1.5 rounded" style={{ background: "rgba(255,200,61,.08)", border: `1px dashed ${T.ouro}`, padding: 5 }}>
+                    <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".06em", color: T.ouro }}>
+                      TROCAR {(jog[jid]?.nome || "").toUpperCase()} POR…
+                    </span>
+                    <select value={trocando.novoId} onChange={(e) => {
+                      const novoId = e.target.value;
+                      setTrocando((t) => ({ ...t, novoId, pontua: novoId ? !apareceuEmOutroJogo(novoId) : t.pontua }));
+                    }} style={{ ...inputStyle, padding: "7px 4px", fontSize: 11.5 }}>
+                      <option value="">— escolher jogador —</option>
+                      {opcoes.map(({ jogador: o, linha: lin }) => (
+                        <option key={o.id} value={o.id}>
+                          {o.nome}{o.posicao === "GOLEIRO" ? " (GK)" : ""} · {lin?.estrelas || 1}★
+                          {apareceuEmOutroJogo(o.id) ? " · já jogou noutro jogo" : ""}
+                        </option>
+                      ))}
+                    </select>
+                    {trocando.novoId && (
+                      <Segmento valor={trocando.pontua} onChange={(v) => setTrocando((t) => ({ ...t, pontua: v }))}
+                        opcoes={[
+                          { valor: true, rotulo: "Vai pontuar" },
+                          { valor: false, rotulo: "Só completando (§10º)", cor: T.laranja },
+                        ]} />
+                    )}
+                    {opcoes.length === 0 && <p style={{ fontSize: 9.5, color: T.fraco }}>Ninguém presente disponível — marque a chegada na etapa Presença.</p>}
+                    <div className="flex gap-1.5">
+                      <Botao variante="secundario" className="flex-1" style={{ minHeight: 36, fontSize: 11 }} onClick={() => setTrocando(null)}>Cancelar</Botao>
+                      <Botao className="flex-1" style={{ minHeight: 36, fontSize: 11 }} disabled={!trocando.novoId}
+                        onClick={() => {
+                          if (lancou > 0 && !confirm(`${jog[jid]?.nome} tem lançamentos nesta partida (gols, assistências ou cartões). Trocar apaga esses lançamentos — o placar não muda sozinho, ajuste-o se precisar. Continuar?`)) return;
+                          trocarJogador(trocando.timeId, jid, trocando.novoId, trocando.pontua);
+                        }}>
+                        Trocar
+                      </Botao>
+                    </div>
+                  </div>
+                );
+              })()}
               {soCartao && <p style={{ fontSize: 9.5, color: T.laranja, marginBottom: 4 }}>completou equipe — não pontua nada, nem cartão</p>}
               {!soCartao && virouVermelho && bruto.ca >= 2 && <p style={{ fontSize: 9.5, color: T.vermelho, marginBottom: 4 }}>2º amarelo → vermelho (Art. 81º) · cartões bloqueados nesta partida</p>}
               {!soCartao && virouVermelho && bruto.ca < 2 && <p style={{ fontSize: 9.5, color: T.vermelho, marginBottom: 4 }}>Amarelo + azul → vermelho (Art. 81º) · cartões bloqueados nesta partida</p>}
