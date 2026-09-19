@@ -1,7 +1,7 @@
 # JPFFS — Documentação técnica do sistema
 
-**Campeonato JPFFS + Rachão + Gravação de Lances**
-Referência de desenvolvimento · gerada em 05/09/2026 · cobre o que está no ar hoje
+**Campeonato JPFFS + Rachão + Copa Hendor + Gravação de Lances**
+Referência de desenvolvimento · criada em 05/09/2026 · atualizada em 19/09/2026 (Copa Hendor, pendência financeira com efeito, modo ensaio) · cobre o que está no ar hoje
 
 > Documento voltado para quem mexe no código (isto é, você / o próximo eu). Descreve
 > arquitetura, modelo de dados, regras de negócio e operação. Para o comportamento
@@ -29,10 +29,11 @@ Referência de desenvolvimento · gerada em 05/09/2026 · cobre o que está no a
 
 ## 1. Visão geral e stack
 
-O JPFFS é um app de página única (SPA) para gerir uma pelada semanal: dois módulos
+O JPFFS é um app de página única (SPA) para gerir uma pelada semanal: três módulos
 principais — **Campeonato** (rodadas com sorteio equilibrado de times, súmula,
 classificação, disciplina) e **Rachão** (fila por ordem de chegada, "quem vence
-fica") — mais o **Sistema de Gravação de Lances** (replay automático de gols usando
+fica"), a **Copa Hendor de Penalidades** (mata-mata de duplas em cobranças de
+pênalti, com chaveamento e disputa chute a chute) — mais o **Sistema de Gravação de Lances** (replay automático de gols usando
 celulares como câmeras).
 
 Roda no celular, à beira da quadra. Feito para funcionar bem em tela pequena e
@@ -53,7 +54,7 @@ Node 18+. Scripts: `npm run dev` (Vite, porta 5173), `npm run build` (→ `dist/
 ### Por que a arquitetura é assim
 
 - **Um `core/` puro e testável.** Toda regra de negócio (pontuação, disciplina,
-  classificação, sorteio, fila do Rachão) vive em módulos sem React, que recebem
+  classificação, sorteio, fila do Rachão, Copa Hendor) vive em módulos sem React, que recebem
   dados e devolvem dados. Facilita raciocinar e testar isolado.
 - **Um único ponto de I/O.** [`src/core/repositorio.js`](src/core/repositorio.js) é
   o único arquivo que fala com o Supabase. Trocar de back-end um dia é mexer só
@@ -137,7 +138,7 @@ saneamento/migração no carregamento):
       "convidado": false,              // true = joga mas fica fora da classificação
       "estrelasIniciais": 1,           // §11º — todo mundo entra com 1★
       "pendenciaFinanceira": false,    // marca o $; nunca desconta ponto
-      "pendenciaEfeito": "aviso",      // só vale com pendenciaFinanceira: "aviso" (só sinaliza) | "sorteio" (fora do sorteio, joga o Rachão) | "total" (fora do sorteio e do Rachão)
+      "pendenciaEfeito": "aviso",      // só vale com o $ ligado: "aviso" | "sorteio" | "total" (ver 6.1)
       "pontuacaoPendente": false,      // idem
       "posicaoInferida": false,        // goleiro deduzido do ícone da tabela oficial
       "fotoUrl": "https://…"           // opcional; bucket "avatares"
@@ -188,6 +189,31 @@ saneamento/migração no carregamento):
 
   "restricoes": [ { "id": "…", "a": "<jid>", "b": "<jid>", "tipo": "juntos" | "separados" } ],
 
+  "copas": [                                // Copa Hendor de Penalidades (ver 6.6)
+    {
+      "id": "hendor-2026", "tipo": "hendor", "nome": "Copa Hendor de Penalidades", "ano": 2026,
+      "fases": [ { "id": "oitavas" | "quartas" | "semis" | "final", "nome": "Semifinais", "data": "2026-10-31" } ],
+      "partidas": [
+        {
+          "id": "s1", "fase": "semis", "rotulo": "Semifinal 1",
+          "duplaA": { "jogadores": ["<jid>", "<jid>"], "subs": [ { "id": "…", "sai": "<jid>", "entra": "<jid>", "motivo": "Ausente" } ] },
+          "duplaB": { /* sem "jogadores" = montada a partir do vencedor da partida de origem */ },
+          "origem": { "A": { "de": "q1", "tipo": "vencedor" }, "B": { "de": "q2", "tipo": "vencedor" } },
+          "placarManual": { "A": 3, "B": 2 },   // fases já jogadas, só com o placar final
+          "wo": "A" | "B",                       // lado que venceu por W.O. (Art. 54)
+          "disputa": {
+            "moeda": { "vencedor": "A", "escolha": "bater" | "defender" },
+            "ordem": { "A": { "cobradores": ["<jid>", "<jid>"], "defensores": ["<jid>", "<jid>"] }, "B": { /* idem */ } },
+            "chutes": [ { "lado": "A", "cobrador": "<jid>", "defensor": "<jid>", "fase": "regular" | "alternada", "resultado": "gol" | "defendeu" } ],
+            "lesionados": ["<jid>"]
+          }
+        }
+      ],
+      "penalidades": [ { "id": "…", "jogadorId": "<jid>", "valor": -5, "motivo": "Ausência — Quartas 1",
+                         "partidaId": "q1", "trocaId": "…", "semSubstituto": false, "marcouDevendo": false } ]
+    }
+  ],
+
   "historicoInicial": {
     "rodadas": 21,
     "data": "2026-08-01",
@@ -214,6 +240,12 @@ Notas:
   devolve `divergente: true` quando os dois não batem.
 - `configSnapshot` / `configPadrao`: as regras da rodada são congeladas na
   abertura, então mudar uma regra depois não reescreve rodadas antigas.
+- `copas` mora no mesmo JSON da `base` (sem tabela nova, sem SQL). Placar e vencedor de cada
+  partida são **derivados** (`placarManual`, `wo` ou os `chutes`); nada disso é guardado pronto.
+  `migrarBase` injeta a Copa 2026 (`data/copaHendor2026.js`) quando a base ainda não tem `copas`, e ela
+  passa a ser gravada no primeiro save de um organizador. A Copa acontece em datas FIFA, sem rodada do
+  Campeonato no mesmo dia, então não disputa a escrita da linha única com as rodadas.
+- `pendenciaEfeito` (ver 6.1) só vale com `pendenciaFinanceira` ligada; sem ele, o padrão é `"aviso"`.
 
 ### 3.2. Tabela `perfis` — contas de acesso
 
@@ -272,6 +304,7 @@ Realtime habilitado (`alter publication supabase_realtime add table public.lance
 | `jpffs:cam:<partidaId>` | "câmeras ativas" lembradas p/ esta partida/rodada/dia |
 | `jpffs:camera-device` | id aleatório do aparelho-câmera (estável entre sessões) |
 | `jpffs:camera-orientacao` | `h` (horizontal, padrão) \| `v` (vertical) |
+| `jpffs:copaVista` | `arvore` (padrão) \| `fases` — como o chaveamento da Copa é mostrado neste aparelho |
 
 ---
 
@@ -382,6 +415,17 @@ Sincronização da `base` (só p/ aprovados):
 mínimo com a [`TelaCamera`](src/telas/TelaCamera.jsx), sem navegação. Continua
 exigindo login aprovado.
 
+**Primeira tela:** o estado `campeonato` (`null` \| `"jpffs"` \| `"hendor"`) decide o que
+renderizar. `null` mostra a [`TelaEscolha`](src/telas/TelaEscolha.jsx) — sempre, a cada abertura
+(de propósito, não é lembrado); `"jpffs"` mostra as abas de sempre; `"hendor"` mostra a
+[`TelaCopaHendor`](src/telas/copa/TelaCopaHendor.jsx) com barra própria (Chaveamento · Resultados ·
+Documentação). O botão "Trocar" do cabeçalho volta a `null`. Visitante aprovado só lê; quem grava é o
+organizador, como no resto do app.
+
+**Modo ensaio:** `?simulacao=1` liga `SIMULACAO` (exportada de `repositorio.js`). `salvarBase` vira
+no-op (nem banco, nem `jpffs:backup`), o Realtime e a sincronização por foco são ignorados e uma faixa
+amarela avisa. Existe porque o `npm run dev` fala com o **mesmo Supabase de produção**.
+
 ---
 
 ## 6. Módulos `core/` (lógica pura)
@@ -440,6 +484,18 @@ seed → mesmo sorteio ("Repetir seed" na UI). Vagas que não fecham viram
 `sortearParcial` (em [`TelaRodada.jsx`](src/telas/TelaRodada.jsx)) resorteia **uma**
 partida sem remover quem já está nela.
 
+**Pendência financeira (`$`).** Cada jogador tem `pendenciaFinanceira` e, se ligada, um
+`pendenciaEfeito` (`efeitoPendencia(j)` devolve `"aviso"` quando não há efeito definido):
+
+| Efeito | Chamada do Campeonato | Sorteio | Rachão |
+| --- | --- | --- | --- |
+| `aviso` (padrão) | normal | entra | entra |
+| `sorteio` | marca presença e entra na `ordemChegada` | **fora** (`poolsDoDia` o tira de `aptos` e o lista em `barradosPendencia`) | joga |
+| `total` | botão travado | fora | **fora** (lista manual e "Adicionar à fila") |
+
+`barradoDoSorteio(j)` e `barradoDoRachao(j)` são as funções que a UI consulta. Nunca desconta ponto.
+O bloqueio vale dentro do app — não há trava no banco.
+
 ### 6.2. `core/rachao.js` — fila do Rachão (Art. 25º–30º do Estatuto)
 
 Também puro: recebe uma "sessão" (o rachão de um dia), devolve uma sessão nova.
@@ -488,14 +544,15 @@ regra mora aqui, só formatação.
 `buscarPerfil` / `listarPerfis` / `decidirPerfil`, `enviarFotoJogador`,
 `enviarLance` / `listarLances` / `urlAssinadaLance` / `excluirLance` /
 `tituloLance` / `nomeArquivoLance`, `migrarBase` (saneamento + defaults no
-carregamento), `corrigirMojibake` (conserta texto com double-encoding de UTF-8
+carregamento, incluindo a injeção da Copa 2026 quando falta `copas`), `corrigirMojibake` (conserta texto com double-encoding de UTF-8
 preso em registros antigos), `id()` (gerador de id curto).
 
 `listarLances(filtro)` aceita `string` (= `partidaId`, compat), `{ partidaId }`,
 `{ partidaPrefixo }` (todas as partidas de uma rodada), `{ desde, ate }` (janela
 de tempo — o link "do dia" cobre Campeonato + Rachão) ou `{ modalidade }`.
 
----
+`SIMULACAO` (flag do modo ensaio, seção 5) é lida uma vez, com guarda `typeof window` para o módulo
+poder ser importado fora do navegador (é o que permite rodar `testes/` no Node).
 
 ### 6.6. `core/copaHendor.js` — Copa Hendor de Penalidades (Arts. 41–56 e 85)
 
@@ -509,12 +566,21 @@ Uma dupla sem `jogadores` é montada a partir do vencedor da partida de origem, 
   contra os dois defensores adversários), depois **alternadas** (uma por dupla, em rodízio) até desempatar.
   Todos têm direito às 4 cobranças: a disputa só decide depois do 8º chute, ou ao fechar uma rodada de alternadas.
 - **Lesão** (Art. 55 §3): o parceiro executa os chutes e defesas que faltam. **W.O.** (Art. 54): `wo` = lado vencedor.
+- **Substitutos** (`substitutosPossiveis`, Art. 55 §1): `daFaseAnterior` (eliminados da fase anterior, por
+  classificação), `outros` (qualquer outro jogador ativo fora da Copa — escolha do organizador) e `bloqueados`
+  (com `$` em "sem sorteio"/"bloqueado", Arts. 42 e 85; "só avisar" continua elegível). Ficam de fora quem já joga a
+  fase, quem já foi trocado por ausência, inativos e convidados. A regra de inadimplência repete `barradoDoSorteio`
+  porque `copaHendor.js` não pode importar `regras.js` (import circular).
 - **Desfazer troca / W.O.** (`desfazerUltimaTroca`, `desfazerWo`): só antes da disputa começar. Cada troca tem `id` e a penalidade −5 dela guarda `trocaId` (e `marcouDevendo`, se foi a troca que ligou o $), então o desfazer remove exatamente o que a troca criou e nada mais.
 - **Campeões** (`campeoesHendor`): dupla vencedora da final, que alimenta a zona da Supercopa.
 - **Penalidade −5** (Art. 55 §4): `copa.penalidades[]`, somada como desconto manual em `calcularEstatisticas`
   (a Copa roda em data FIFA, sem rodada do Campeonato, por isso não usa os ajustes da rodada).
+- `estatisticasJogadores`: gols e defesas por jogador (aba Resultados); `faseAtual`/`statusDaFase`/`statusDaPartida`
+  (`aguardando` → `pronta` → `em_andamento` → `encerrada`) alimentam a árvore e a tela de escolha.
 - Dados iniciais da Copa 2026 em `data/copaHendor2026.js` (oitavas e quartas com placar); `migrarBase` injeta a copa
   quando a base ainda não tem `copas`. Testes: `npx vite-node testes/copaHendor.teste.mjs`.
+
+---
 
 ## 7. As telas
 
@@ -528,9 +594,9 @@ lança as cobranças, troca jogadores e dá W.O. direto nos cartões das partida
 | Tela | Aba | Quem vê | O que faz |
 | --- | --- | --- | --- |
 | [`TelaClassificacao`](src/telas/TelaClassificacao.jsx) | Tabela | todos | Classificação geral, resultados por rodada, e a aba **Documentação** (regras do Estatuto, dentro do app). Exporta CSV/PNG. |
-| [`TelaRodada`](src/telas/TelaRodada.jsx) | Rodada | organizador | Fluxo de 3 etapas: **Presença** (chamada, registra `ordemChegada`) → **Sorteio** (motor de equilíbrio, ajuste fino arrastando, "Gravar partidas") → **Partidas** (súmulas ao vivo: gols, assistências, cartões, gol contra, gol não computado; encaixe de vagas abertas; ajustes P⁺/P⁻; fechar rodada). |
-| [`TelaRachao`](src/telas/TelaRachao.jsx) | Rachão | organizador | Abertura (puxa `ordemChegada` da rodada do dia **ou** chamada manual quando não há rodada) → quadra ao vivo, fila arrastável, próximos times, histórico do dia. Estado no `localStorage`. |
-| [`TelaElenco`](src/telas/TelaElenco.jsx) | Elenco | organizador | Cadastro/edição de jogadores, foto, posição, flags (ativo, convidado, pendência), importar CSV/JSON. |
+| [`TelaRodada`](src/telas/TelaRodada.jsx) | Rodada | organizador | Fluxo de 3 etapas: **Presença** (chamada, registra `ordemChegada`; pendência `total` trava o botão e `sorteio` marca mas fica fora do sorteio) → **Sorteio** (motor de equilíbrio, ajuste fino arrastando, "Gravar partidas") → **Partidas** (súmulas ao vivo: gols, assistências, cartões, gol contra, gol não computado; encaixe de vagas abertas; ajustes P⁺/P⁻; fechar rodada). |
+| [`TelaRachao`](src/telas/TelaRachao.jsx) | Rachão | organizador | Abertura (puxa `ordemChegada` da rodada do dia **ou** chamada manual quando não há rodada) → quadra ao vivo, fila arrastável, próximos times, histórico do dia. Estado no `localStorage`. Jogador com pendência `total` não entra na lista nem na fila. |
+| [`TelaElenco`](src/telas/TelaElenco.jsx) | Elenco | organizador | Cadastro/edição de jogadores, foto, posição, flags (ativo, convidado, **pendência financeira com efeito**: só avisar / sem sorteio / bloqueado), importar CSV/JSON. |
 | [`TelaConfig`](src/telas/TelaConfig.jsx) | Ajustes | organizador | Cadastros de acesso (aprovar/bloquear), histórico de rodadas (reabrir recalcula), regras (quase tudo bloqueado), export/import da base (JSON), restaurar padrão / base oficial. |
 | [`TelaGaleria`](src/telas/TelaGaleria.jsx) | Lances | aprovados | Clipes agrupados por partida; filtros modalidade/tipo/jogador; ver (player), baixar (todos), apagar (só organizador). Atualiza via Realtime. |
 | [`TelaCamera`](src/telas/TelaCamera.jsx) | — (link `?camera=1`) | aprovados | Vira o aparelho numa câmera: liga a câmera, entra no canal, Presence numera o ângulo, grava no sinal, sobe pro bucket `lances`. "Modo gravação" = tela cheia + Wake Lock. |
@@ -686,7 +752,9 @@ Numa sessão nova, se as tools do Supabase não aparecerem, rodar `/mcp`.
 `C:\Users\Miran\cloudflared\cloudflared.exe`):
 `cloudflared tunnel --url http://localhost:5173` → abre a URL
 `*.trycloudflare.com` no celular. [`vite.config.js`](vite.config.js) já tem
-`host: true` + `allowedHosts: ['.trycloudflare.com']`.
+`host: true` + `allowedHosts: ['.trycloudflare.com']`. **Abra sempre com `?simulacao=1` no final da URL** para
+testar sem gravar em produção (o dev server usa o mesmo Supabase); a faixa amarela confirma que o ensaio está ligado.
+Feche o `cloudflared` ao terminar — enquanto ele roda, qualquer pessoa com a URL vê a tela de login.
 
 ---
 
@@ -705,6 +773,9 @@ Numa sessão nova, se as tools do Supabase não aparecerem, rodar `/mcp`.
   `localStorage` com `try/catch` em toda leitura/escrita (modo privado, cota).
 - **Bloco de Lances:** sempre `<LimiteErro>` + `try/catch`; nunca deixar um erro
   de câmera derrubar a súmula/fila.
+- **Testes:** `testes/*.teste.mjs`, sem framework, rodados com `npx vite-node testes/<arquivo>` (saem com código 1 se
+  algo falhar). Hoje cobrem a Copa Hendor. Regra nova em `core/` merece teste ali.
+- **Testar sem gravar em produção:** `?simulacao=1` (seção 5).
 - Migração SQL: ver seção 9.2.
 
 ---
@@ -713,13 +784,18 @@ Numa sessão nova, se as tools do Supabase não aparecerem, rodar `/mcp`.
 
 | Item | Detalhe |
 | --- | --- |
-| **Escrita concorrente na `base`** | "salva tudo" com last-write-wins. Dois organizadores editando ao mesmo tempo → um sobrescreve o outro (o Realtime avisa, mas não faz merge). Na prática há um organizador ativo por vez. |
+| **Escrita concorrente na `base`** | "salva tudo" com last-write-wins. Dois organizadores editando ao mesmo tempo → um sobrescreve o outro (o Realtime avisa, mas não faz merge). Na prática há um organizador ativo por vez. A Copa Hendor cai em datas FIFA, sem rodada no mesmo dia, o que reduz o risco. |
 | **Rachão não tem histórico** | encerra o dia = descarta tudo. Não há registro entre dias nem no Supabase. De propósito, mas limita relatórios. |
-| **Bundle de 607 KB** | um chunk só, sem code-splitting. Aceitável hoje; se crescer, `manualChunks` ou `import()` dinâmico. |
+| **Bundle de ~650 KB** | um chunk só, sem code-splitting. Aceitável hoje; se crescer, `manualChunks` ou `import()` dinâmico. |
 | **Lances: ângulo duplicado / duração** | ver seção 8.1. |
 | **`dist/` versionado** | gera diff-noise; conviver com o `git checkout -- dist/`. |
 | **Doc funcional de Lances desatualizada** | não reflete link-por-dia nem orientação escolhível. |
-| **Sem testes automatizados** | o `core/` é puro justamente pra permitir — mas não há suíte hoje. |
+| **Testes só da Copa Hendor** | `testes/copaHendor.teste.mjs` (vite-node, sem runner). O resto do `core/` é puro justamente pra permitir testes, mas ainda não tem suíte. |
+| **Copa: sem cadastro de duplas nem sorteio** | O app não sorteia duplas, inscreve jogadores nem faz repescagem (Arts. 43–47): a Copa 2026 vem de `data/copaHendor2026.js`. Uma edição nova exige cadastrar o chaveamento (hoje, em código). |
+| **Copa: uma edição na tela** | `copaDaTemporada` mostra a Copa do ano de `base.temporada` (ou a última). Não há seletor de edições anteriores. |
+| **Copa: correções limitadas** | Só dá para desfazer o último chute; trocas e W.O. só se desfazem antes da disputa começar; o placar das fases já jogadas é corrigível, mas chutes já lançados não são editáveis um a um. |
+| **Copa: zona da Supercopa** | Mantida como no Campeonato (12 de linha + 2 goleiros; campeão fora do corte entra e empurra o último). O Art. 58 §3 admite leitura em que, se o campeão já está dentro, a vaga vai para o próximo colocado. |
+| **`npm run dev` usa o banco de produção** | Use `?simulacao=1` para testar sem gravar. Um teste sem a flag grava de verdade. |
 | **`naLinha` em `rodada`** | campo legado no shape, não usado no cálculo atual. |
 
 ---
