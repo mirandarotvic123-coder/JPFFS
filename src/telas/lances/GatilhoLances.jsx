@@ -3,7 +3,7 @@ import { supabase } from "../../supabase";
 import { T } from "../../theme";
 import { id as gerarId } from "../../core/repositorio";
 import { lerCamerasAtivas, salvarCamerasAtivas } from "../../core/lances";
-import { Botao, Painel, Segmento } from "../../components/ui";
+import { BotaoAtivarCameras, LinhaCameras, CaixaDecisao, AlternarTipo, BotoesDecisao, CAMPO_COMPACTO } from "./BarraCameras";
 
 /* ===================== GATILHO DE LANCES (genérico) =====================
  * Botão que dispara a gravação nas câmeras de uma partida e classifica o
@@ -91,58 +91,35 @@ function GatilhoLances({ partidaId, canalId, partidaRotulo, modalidade, jogadore
     );
   }
 
-  if (!ativo) {
-    return (
-      <Botao variante="secundario" className="w-full" onClick={() => setAtivo(true)} style={{ minHeight: 40, fontSize: 10.5 }}>
-        Ativar câmeras
-      </Botao>
-    );
-  }
+  if (!ativo) return <BotaoAtivarCameras onClick={() => setAtivo(true)} />;
 
   const jogadoresOrd = [...jogadores].sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR"));
 
   return (
-    <Painel className="space-y-2 p-3" style={{ borderColor: T.tier4 }}>
-      <div className="flex items-center justify-between" style={{ gap: 8 }}>
-        <span className="font-destaque" style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: T.ouro }}>
-          Câmeras
-        </span>
-        <button onClick={() => setAtivo(false)} style={{ fontSize: 10, color: conectado ? T.verde : T.fraco }}>
-          {conectado ? "conectado ✕" : "conectando…"}
-        </button>
-      </div>
-
-      {!aberto ? (
-        <>
-          <Botao className="w-full" onClick={gravarLance} disabled={!conectado} style={{ minHeight: 50 }}>
-            Gravar lance
-          </Botao>
-          {souOrganizador && (
-            <Botao variante="secundario" className="w-full" onClick={copiarLink} style={{ minHeight: 36, fontSize: 10.5 }}>
-              {copiado ? "Link copiado ✓" : "Copiar link de câmera do dia"}
-            </Botao>
-          )}
-          <p style={{ fontSize: 10, color: T.fraco, lineHeight: 1.4 }}>
-            Ao tocar, as câmeras já gravam os ~20s do lance. Depois você classifica — o vídeo espera a decisão.
-            {souOrganizador ? " O link vale o dia inteiro e serve também pro Campeonato — não precisa trocar." : ""}
-          </p>
-        </>
-      ) : (
-        <div className="space-y-2">
-          <p style={{ fontSize: 11, color: T.verde }}>Capturando nas câmeras… classifique:</p>
-          <Segmento valor={tipo} onChange={setTipo} opcoes={[{ valor: "gol", rotulo: "Gol" }, { valor: "lance", rotulo: "Lance" }]} />
-          <select value={jogadorId} onChange={(e) => setJogadorId(e.target.value)}
-            style={{ width: "100%", background: T.tier2, border: `1px solid ${T.tier4}`, borderRadius: 8, padding: "10px", color: T.texto, fontSize: 14 }}>
-            <option value="">— sem jogador —</option>
-            {jogadoresOrd.map((j) => <option key={j.id} value={j.id}>{j.nome || "?"}</option>)}
-          </select>
-          <div className="grid grid-cols-2 gap-2">
-            <Botao onClick={confirmar} style={{ minHeight: 44 }}>Salvar</Botao>
-            <Botao variante="secundario" onClick={descartar} style={{ minHeight: 44 }}>Descartar</Botao>
+    <div>
+      <LinhaCameras
+        conectado={conectado}
+        onDesligar={() => { setAtivo(false); fechar(); }}
+        onGravar={gravarLance}
+        podeGravar={!aberto}
+        dicaGravar="As câmeras já gravam os ~20s do lance. Depois você classifica — o vídeo espera a decisão."
+        onCopiar={souOrganizador ? copiarLink : null}
+        copiado={copiado}
+      />
+      {aberto && (
+        <CaixaDecisao>
+          <p style={{ fontSize: 11.5, fontWeight: 700, color: T.ouroClaro }}>Capturando nas câmeras… classifique o lance</p>
+          <div className="flex items-center" style={{ gap: 6 }}>
+            <AlternarTipo valor={tipo} onChange={setTipo} />
+            <select value={jogadorId} onChange={(e) => setJogadorId(e.target.value)} style={{ ...CAMPO_COMPACTO, flex: 1 }}>
+              <option value="">— sem jogador —</option>
+              {jogadoresOrd.map((j) => <option key={j.id} value={j.id}>{j.nome || "?"}</option>)}
+            </select>
           </div>
-        </div>
+          <BotoesDecisao onSim={confirmar} onNao={descartar} />
+        </CaixaDecisao>
       )}
-    </Painel>
+    </div>
   );
 }
 

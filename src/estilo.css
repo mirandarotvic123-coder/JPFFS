@@ -254,3 +254,48 @@ input:-webkit-autofill:focus {
 @keyframes crono-pulsa { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
 .crono-pulsa { animation: crono-pulsa 1s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .crono-pulsa { animation: none; } }
+
+/* ============================================================================
+ * Cabeçalho ao vivo (ver components/CabecalhoAoVivo.jsx) — Rachão e Gestão da
+ * Rodada: título + câmeras + cronômetro, CONGELADO logo abaixo da barra do
+ * topo (--altura-cabecalho-app é medida no App.jsx) enquanto a tela rola.
+ * Celular: título e cronômetro na 1ª linha, câmeras em largura cheia embaixo.
+ * A partir de tablet: tudo numa linha só, câmeras no meio.
+ * As margens negativas cobrem o respiro lateral/superior do <main> pra o
+ * conteúdo que rola por baixo não "vazar" nas bordas.
+ * ==========================================================================*/
+.cabecalho-ao-vivo {
+  position: sticky;
+  top: var(--altura-cabecalho-app, 54px);
+  z-index: 15;
+  margin: -16px -12px 0;
+  padding: 12px 12px 10px;
+  background: rgba(0, 23, 74, 0.96);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(219, 225, 255, 0.13);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "titulo crono" "cameras cameras";
+  align-items: center;
+  gap: 10px 12px;
+}
+.cabecalho-ao-vivo-titulo { grid-area: titulo; min-width: 0; }
+.cabecalho-ao-vivo-cameras { grid-area: cameras; min-width: 0; }
+.cabecalho-ao-vivo-crono { grid-area: crono; }
+@media (min-width: 768px) {
+  /* alinhado pelo topo (com respiro calculado pra ficar centrado com o
+     cronômetro) — assim título e cronômetro não "pulam" quando a caixa de
+     classificar o lance abre embaixo do botão Gravar lance */
+  .cabecalho-ao-vivo {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "titulo cameras crono";
+    align-items: start;
+    gap: 10px 20px;
+  }
+  .cabecalho-ao-vivo-titulo { padding-top: 10px; }
+  .cabecalho-ao-vivo-cameras { justify-self: center; width: 100%; max-width: 460px; padding-top: 15px; }
+}
+
+/* Galeria de lances — ângulos do mesmo lance lado a lado */
+.clipe-angulos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }

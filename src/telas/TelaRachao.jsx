@@ -14,7 +14,7 @@ import {
 } from "../components/ui";
 import { LimiteErro } from "../components/LimiteErro";
 import { GatilhoLances } from "./lances/GatilhoLances";
-import { CronometroPartida } from "../components/CronometroPartida";
+import { CabecalhoAoVivo } from "../components/CabecalhoAoVivo";
 
 /* =========================== TELA: RACHÃO =================================
  * Fila por ordem de chegada, times Amarelo × Azul, vencedor fica em quadra
@@ -104,9 +104,21 @@ function TelaRachao({ base, avisar }) {
   return (
     <div className="rachao-layout">
       <div className="space-y-4 rachao-conteudo" style={{ flex: 1, minWidth: 0 }}>
-        <CabecalhoPagina titulo="Rachão"
+        <CabecalhoAoVivo titulo="Rachão"
           descricao={new Date(sessao.data + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })}
-          acao={<CronometroPartida />} />
+          cameras={
+            <LimiteErro>
+              <GatilhoLances
+                partidaId={`rachao-${sessao.id}`}
+                canalId={`dia-${sessao.data}`}
+                partidaRotulo={rotuloRachao(sessao.data)}
+                modalidade="rachao"
+                jogadores={[...new Set([...sessao.linha, ...sessao.goleiros])].map((jid) => ({ id: jid, nome: nomes[jid] }))}
+                souOrganizador
+                avisar={avisar}
+              />
+            </LimiteErro>
+          } />
 
         <Painel className="grid grid-cols-4 gap-1.5 p-2">
           <Contador rotulo="No dia" valor={presentesTotal} cor={T.verde} />
@@ -130,17 +142,6 @@ function TelaRachao({ base, avisar }) {
             ↩ Reabrir a partida {sessao.desfazer.quadra?.numero} (corrigir placar, quem sai e quem entra)
           </Botao>
         )}
-        <LimiteErro>
-          <GatilhoLances
-            partidaId={`rachao-${sessao.id}`}
-            canalId={`dia-${sessao.data}`}
-            partidaRotulo={rotuloRachao(sessao.data)}
-            modalidade="rachao"
-            jogadores={[...new Set([...sessao.linha, ...sessao.goleiros])].map((jid) => ({ id: jid, nome: nomes[jid] }))}
-            souOrganizador
-            avisar={avisar}
-          />
-        </LimiteErro>
         <ProximosTimesPainel {...{ sessao, nomes }} />
         <FilaEConvidados {...{ sessao, atualizar: setSessao, avisar, base, convidados, setConvidados, nomes, ordemIdx, setOrdemIdx, proximoIdx }} />
         <HistoricoDoDia sessao={sessao} />
@@ -810,39 +811,43 @@ function FilaEConvidados({ sessao, atualizar, avisar, base, convidados, setConvi
 
   return (
     <div className="space-y-3">
-      <SecaoRecolhivel titulo="Fila (linha)" detalhe={`${filaLinha.length} aguardando`} aberto={filaAberta} onToggle={() => setFilaAberta((v) => !v)}>
-        <FilaLinhaArrastavel {...{ filaLinha, nomes, sessao, atualizar, avisar, ordemIdx }} />
-      </SecaoRecolhivel>
+      {/* fila, goleiros e "adicionar" num bloco mais estreito e centralizado —
+          em tela larga o nome ficava longe demais dos botões da direita */}
+      <div className="space-y-3" style={{ maxWidth: 540, marginLeft: "auto", marginRight: "auto" }}>
+        <SecaoRecolhivel titulo="Fila (linha)" detalhe={`${filaLinha.length} aguardando`} aberto={filaAberta} onToggle={() => setFilaAberta((v) => !v)}>
+          <FilaLinhaArrastavel {...{ filaLinha, nomes, sessao, atualizar, avisar, ordemIdx }} />
+        </SecaoRecolhivel>
 
-      <SecaoRecolhivel titulo="Goleiros presentes" detalhe={`${goleirosLivres(sessao).length} aguardando · ${sessao.goleiros.length} no dia`}
-        aberto={goleirosAberto} onToggle={() => setGoleirosAberto((v) => !v)}>
-        <Painel className="space-y-1 p-2">
-          {sessao.goleiros.length === 0 && <p style={{ padding: 8, textAlign: "center", fontSize: 12, color: T.fraco }}>Nenhum goleiro no dia ainda.</p>}
-          {sessao.goleiros.map((jid) => {
-            const ladoOcupado = sessao.quadra && ["amarelo", "azul"].find((l) => sessao.quadra.lados[l].goleiro === jid);
-            const rank = goleirosLivres(sessao).indexOf(jid); // ordem de chegada entre os que aguardam
-            return (
-              <div key={jid} className="flex items-center justify-between rounded px-2 py-1.5" style={{ background: ladoOcupado ? T.gkFraco : "rgba(0,0,0,.18)" }}>
-                <span className="flex items-center gap-1" style={{ fontSize: 12.5 }}>
-                  <IconeGoleiro tam={12} />
-                  {!ladoOcupado && rank >= 0 && <b style={{ color: T.fraco, marginRight: 1 }}>{rank + 1}º</b>}
-                  {nomes[jid] || "?"}
-                  {ladoOcupado && <span style={{ fontSize: 8.5, fontWeight: 800, color: T.gk }}>EM QUADRA · {NOME_LADO[ladoOcupado]}</span>}
-                </span>
-                {!ladoOcupado && (
-                  <div className="flex items-center" style={{ gap: 2 }}>
-                    <button onClick={() => { atualizar(reclassificarJogador(sessao, jid, false, ordemIdx)); avisar(`${nomes[jid]} virou linha pro resto do dia`); }}
-                      title="Reclassificar como linha pro resto do dia" style={{ padding: "4px 6px", fontSize: 9, fontWeight: 800, color: T.secundario }}>LINHA</button>
-                    <button onClick={() => { atualizar(removerJogador(sessao, jid)); avisar(`${nomes[jid]} saiu`); }} style={{ padding: "4px 7px", fontSize: 13, color: T.laranja }}>✕</button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </Painel>
-      </SecaoRecolhivel>
+        <SecaoRecolhivel titulo="Goleiros presentes" detalhe={`${goleirosLivres(sessao).length} aguardando · ${sessao.goleiros.length} no dia`}
+          aberto={goleirosAberto} onToggle={() => setGoleirosAberto((v) => !v)}>
+          <Painel className="space-y-1 p-2">
+            {sessao.goleiros.length === 0 && <p style={{ padding: 8, textAlign: "center", fontSize: 12, color: T.fraco }}>Nenhum goleiro no dia ainda.</p>}
+            {sessao.goleiros.map((jid) => {
+              const ladoOcupado = sessao.quadra && ["amarelo", "azul"].find((l) => sessao.quadra.lados[l].goleiro === jid);
+              const rank = goleirosLivres(sessao).indexOf(jid); // ordem de chegada entre os que aguardam
+              return (
+                <div key={jid} className="flex items-center justify-between rounded px-2 py-1.5" style={{ background: ladoOcupado ? T.gkFraco : "rgba(0,0,0,.18)" }}>
+                  <span className="flex items-center gap-1" style={{ fontSize: 12.5 }}>
+                    <IconeGoleiro tam={12} />
+                    {!ladoOcupado && rank >= 0 && <b style={{ color: T.fraco, marginRight: 1 }}>{rank + 1}º</b>}
+                    {nomes[jid] || "?"}
+                    {ladoOcupado && <span style={{ fontSize: 8.5, fontWeight: 800, color: T.gk }}>EM QUADRA · {NOME_LADO[ladoOcupado]}</span>}
+                  </span>
+                  {!ladoOcupado && (
+                    <div className="flex items-center" style={{ gap: 2 }}>
+                      <button onClick={() => { atualizar(reclassificarJogador(sessao, jid, false, ordemIdx)); avisar(`${nomes[jid]} virou linha pro resto do dia`); }}
+                        title="Reclassificar como linha pro resto do dia" style={{ padding: "4px 6px", fontSize: 9, fontWeight: 800, color: T.secundario }}>LINHA</button>
+                      <button onClick={() => { atualizar(removerJogador(sessao, jid)); avisar(`${nomes[jid]} saiu`); }} style={{ padding: "4px 7px", fontSize: 13, color: T.laranja }}>✕</button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </Painel>
+        </SecaoRecolhivel>
 
-      <AdicionarNaFila {...{ sessao, atualizar, avisar, base, convidados, setConvidados, ordemIdx, setOrdemIdx, proximoIdx }} />
+        <AdicionarNaFila {...{ sessao, atualizar, avisar, base, convidados, setConvidados, ordemIdx, setOrdemIdx, proximoIdx }} />
+      </div>
     </div>
   );
 }

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef } f
 import { supabase } from "../../supabase";
 import { T } from "../../theme";
 import { id as gerarId } from "../../core/repositorio";
-import { Botao, Painel } from "../../components/ui";
+import { BotaoAtivarCameras, LinhaCameras, CaixaDecisao, BotoesDecisao, CAMPO_COMPACTO } from "./BarraCameras";
 
 /* ================== GATILHO DE LANCES — CAMPEONATO =====================
  * Segue a doc, seção 3.
@@ -26,8 +26,6 @@ import { Botao, Painel } from "../../components/ui";
  * NADA do jogo (quem registra o gol é a súmula). Envolver em <LimiteErro>.
  * O canal só abre quando o organizador ativa as câmeras da rodada.
  * ===================================================================== */
-
-const CAMPO = { width: "100%", background: T.tier2, border: `1px solid ${T.tier4}`, borderRadius: 8, padding: "10px", color: T.texto, fontSize: 14 };
 
 const GatilhoLancesCampeonato = forwardRef(function GatilhoLancesCampeonato(
   { canalId, rodadaRotulo, partidas = [], ativo, setAtivo, souOrganizador, avisar },
@@ -131,74 +129,48 @@ const GatilhoLancesCampeonato = forwardRef(function GatilhoLancesCampeonato(
     );
   }
 
-  if (!ativo) {
-    return (
-      <Botao variante="secundario" className="w-full" onClick={() => setAtivo(true)} style={{ minHeight: 40, fontSize: 10.5 }}>
-        Ativar câmeras da rodada
-      </Botao>
-    );
-  }
+  if (!ativo) return <BotaoAtivarCameras onClick={() => setAtivo(true)} />;
 
   return (
-    <Painel className="space-y-2 p-3" style={{ borderColor: T.tier4 }}>
-      <div className="flex items-center justify-between" style={{ gap: 8 }}>
-        <span className="font-destaque" style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".08em", textTransform: "uppercase", color: T.ouro }}>Câmeras da rodada</span>
-        <button onClick={() => { setAtivo(false); fechar(); }} style={{ fontSize: 10, color: conectado ? T.verde : T.fraco }}>
-          {conectado ? "conectado ✕" : "conectando…"}
-        </button>
-      </div>
-
-      {fluxo === null && (
-        <>
-          {partidas.length > 1 && (
-            <label style={{ display: "block", fontSize: 10, color: T.fraco }}>
-              Partida em jogo (para “Gravar lance”)
-              <select value={partidaSelId} onChange={(e) => setPartidaSelId(e.target.value)} style={{ ...CAMPO, marginTop: 4 }}>
-                {partidas.map((p) => <option key={p.id} value={p.id}>{p.rotulo}</option>)}
-              </select>
-            </label>
-          )}
-          <Botao variante="secundario" className="w-full" onClick={abrirLance} disabled={!conectado || !partidaSel} style={{ minHeight: 46 }}>
-            Gravar lance (drible, defesa…)
-          </Botao>
-          {souOrganizador && (
-            <Botao variante="secundario" className="w-full" onClick={copiarLink} style={{ minHeight: 36, fontSize: 10.5 }}>
-              {copiado ? "Link copiado ✓" : "Copiar link de câmera do dia"}
-            </Botao>
-          )}
-          <p style={{ fontSize: 10, color: T.fraco, lineHeight: 1.4 }}>
-            O link vale o dia inteiro — serve pro Campeonato e pro Rachão, não troca a cada partida nem a cada rodada. Ao marcar um gol no <b>+</b> do jogador, as câmeras gravam e aparece aqui a pergunta de guardar o vídeo.
-          </p>
-        </>
-      )}
+    <div>
+      <LinhaCameras
+        conectado={conectado}
+        onDesligar={() => { setAtivo(false); fechar(); }}
+        onGravar={abrirLance}
+        podeGravar={!!partidaSel && fluxo === null}
+        dicaGravar="Drible, defesa, falha… (só vídeo). Gol é no + do jogador na súmula — com as câmeras ligadas ele já grava."
+        extra={partidas.length > 1 && (
+          <select value={partidaSelId} onChange={(e) => setPartidaSelId(e.target.value)} disabled={fluxo !== null}
+            title="Partida em jogo (para “Gravar lance”)" style={{ ...CAMPO_COMPACTO, flexShrink: 0, maxWidth: 118 }}>
+            {partidas.map((p) => <option key={p.id} value={p.id}>{p.curto || p.rotulo}</option>)}
+          </select>
+        )}
+        onCopiar={souOrganizador ? copiarLink : null}
+        copiado={copiado}
+      />
 
       {fluxo === "gol-gravar" && (
-        <div className="space-y-2">
-          <p style={{ fontSize: 11.5, color: T.verde }}>
-            Gol{golDe ? <> de <b>{golDe}</b></> : ""} registrado. Câmeras capturando os ~20s.
+        <CaixaDecisao>
+          <p style={{ fontSize: 12, color: T.texto }}>
+            <b style={{ color: T.ouroClaro }}>Gol{golDe ? ` de ${golDe}` : ""}</b> registrado — guardar o vídeo?
           </p>
-          <p style={{ fontSize: 11.5, color: T.secundario }}>Quer guardar o vídeo desse gol?</p>
-          <div className="grid grid-cols-2 gap-2">
-            <Botao onClick={() => decidirGravarGol(true)} style={{ minHeight: 44 }}>Sim, guardar</Botao>
-            <Botao variante="secundario" onClick={() => decidirGravarGol(false)} style={{ minHeight: 44 }}>Não</Botao>
-          </div>
-        </div>
+          <BotoesDecisao onSim={() => decidirGravarGol(true)} onNao={() => decidirGravarGol(false)} rotuloSim="Sim, guardar" rotuloNao="Não" />
+        </CaixaDecisao>
       )}
 
       {fluxo === "lance-classificar" && (
-        <div className="space-y-2">
-          <p style={{ fontSize: 11, color: T.verde }}>Capturando nas câmeras{partidaSel ? ` — ${partidaSel.rotulo}` : ""}… atribuir a um jogador?</p>
-          <select value={jogadorId} onChange={(e) => setJogadorId(e.target.value)} style={CAMPO}>
+        <CaixaDecisao>
+          <p style={{ fontSize: 11.5, fontWeight: 700, color: T.ouroClaro }}>
+            Capturando{partidaSel ? ` — ${partidaSel.curto || partidaSel.rotulo}` : ""}… atribuir a um jogador?
+          </p>
+          <select value={jogadorId} onChange={(e) => setJogadorId(e.target.value)} style={{ ...CAMPO_COMPACTO, width: "100%" }}>
             <option value="">— sem jogador —</option>
             {jogadoresLance.map((j) => <option key={j.id} value={j.id}>{j.nome || "?"}</option>)}
           </select>
-          <div className="grid grid-cols-2 gap-2">
-            <Botao onClick={salvarLance} style={{ minHeight: 44 }}>Salvar</Botao>
-            <Botao variante="secundario" onClick={descartarLance} style={{ minHeight: 44 }}>Descartar</Botao>
-          </div>
-        </div>
+          <BotoesDecisao onSim={salvarLance} onNao={descartarLance} />
+        </CaixaDecisao>
       )}
-    </Painel>
+    </div>
   );
 });
 
