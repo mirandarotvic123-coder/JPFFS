@@ -17,7 +17,7 @@ import { IconeSetaDireita, IconeTrofeu } from "../components/icones";
 import { Historico } from "./TelaConfig";
 import { LimiteErro } from "../components/LimiteErro";
 import { GatilhoLancesCampeonato } from "./lances/GatilhoLancesCampeonato";
-import { CronometroPartida } from "../components/CronometroPartida";
+import { CabecalhoAoVivo } from "../components/CabecalhoAoVivo";
 
 /* =========================== TELA: RODADA ================================*/
 
@@ -50,6 +50,34 @@ function TelaRodada({ base, setBase, dados, cfg: cfgGlobal, avisar }) {
     );
   }
 
+  return <RodadaEmAndamento key={rodada.id} {...{ base, setBase, dados, cfg, avisar, rodada, porId, nomes, atualizar, etapa, setEtapa }} />;
+}
+
+/* Rodada aberta. Câmeras de lances: canal DO DIA (`dia-<data>`) — o mesmo link
+ * cobre a rodada do Campeonato e o Rachão do dia (as partidas rolam uma de cada
+ * vez, mesmo campo). O gatilho mora no cabeçalho congelado, ao lado do
+ * cronômetro, e fica montado em qualquer etapa; a súmula chama
+ * `golMarcado` nele pelo ref. A memória "câmeras ativas" deste aparelho é por
+ * rodada (por isso o `key={rodada.id}` acima: rodada nova, estado novo). */
+function RodadaEmAndamento({ base, setBase, dados, cfg, avisar, rodada, porId, nomes, atualizar, etapa, setEtapa }) {
+  const rodadaLancesId = `camp-${rodada.id}`;
+  const canalLancesDia = `dia-${rodada.data}`;
+  const [camerasAtivas, setCamerasAtivas] = useState(() => lerCamerasAtivas(rodadaLancesId));
+  useEffect(() => { salvarCamerasAtivas(rodadaLancesId, camerasAtivas); }, [camerasAtivas, rodadaLancesId]);
+  const gatilhoLancesRef = useRef(null);
+  const partidasCamera = useMemo(() => [...(rodada.jogos || [])]
+    .filter((j) => !j.encerrado)
+    .sort((a, b) => a.numero - b.numero)
+    .map((j) => {
+      const tA = timePorId(rodada, j.timeA), tB = timePorId(rodada, j.timeB);
+      return {
+        id: `camp-${rodada.id}-${j.id}`,
+        rotulo: `Rodada ${rodada.numero} · Partida ${j.numero}`,
+        curto: `Partida ${j.numero}`,
+        jogadores: [...idsDoTime(tA), ...idsDoTime(tB)].map((jid) => ({ id: jid, nome: nomes[jid] })),
+      };
+    }), [rodada, nomes]);
+
   const etapas = [
     { id: "presenca", r: "Presença" }, { id: "times", r: "Sorteio" },
     { id: "jogos", r: `Partidas${rodada.jogos.length ? ` (${rodada.jogos.length})` : ""}` },
@@ -57,9 +85,22 @@ function TelaRodada({ base, setBase, dados, cfg: cfgGlobal, avisar }) {
 
   return (
     <div className="space-y-4">
-      <CabecalhoPagina titulo="Gestão da Rodada"
+      <CabecalhoAoVivo titulo="Gestão da Rodada"
         descricao={new Date(rodada.data + "T12:00:00").toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" })}
-        acao={<CronometroPartida />} />
+        cameras={
+          <LimiteErro>
+            <GatilhoLancesCampeonato
+              ref={gatilhoLancesRef}
+              canalId={canalLancesDia}
+              rodadaRotulo={`Rodada ${rodada.numero}`}
+              partidas={partidasCamera}
+              ativo={camerasAtivas}
+              setAtivo={setCamerasAtivas}
+              souOrganizador
+              avisar={avisar}
+            />
+          </LimiteErro>
+        } />
       <div className="flex items-center justify-between rounded-xl px-4 py-3" style={{ background: T.ouroFraco, border: "1px solid rgba(245,197,24,.34)" }}>
         <div className="flex items-center" style={{ gap: 10 }}>
           <button
@@ -98,7 +139,7 @@ function TelaRodada({ base, setBase, dados, cfg: cfgGlobal, avisar }) {
 
       {etapa === "presenca" && <EtapaPresenca {...{ base, setBase, rodada, atualizar, porId, cfg, dados, avisar, ir: () => setEtapa("times") }} />}
       {etapa === "times" && <EtapaSorteio {...{ base, rodada, atualizar, porId, cfg, dados, avisar, nomes, ir: () => setEtapa("jogos") }} />}
-      {etapa === "jogos" && <EtapaJogos {...{ base, rodada, atualizar, cfg, dados, avisar, nomes, porId }} />}
+      {etapa === "jogos" && <EtapaJogos {...{ base, rodada, atualizar, cfg, dados, avisar, nomes, porId, camerasAtivas, gatilhoLancesRef }} />}
     </div>
   );
 }
@@ -883,30 +924,9 @@ function criarPartidaExtra(sobra, cfg, nomes, restricoes, numero) {
   return { times: [timeA, timeB], jogo };
 }
 
-function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId }) {
+function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId, camerasAtivas, gatilhoLancesRef }) {
   const niveis = dados.disciplina.porRodada[rodada.id] || {};
   const [jogoAlvo, setJogoAlvo] = useState("");
-
-  /* Câmeras de lances: canal DO DIA (`dia-<data>`) — o mesmo link cobre a rodada
-   * do Campeonato e o Rachão do dia (as partidas rolam uma de cada vez, mesmo
-   * campo). O gatilho fica aqui, fora da súmula. A memória "câmeras ativas"
-   * deste aparelho continua por rodada. */
-  const rodadaLancesId = `camp-${rodada.id}`;
-  const canalLancesDia = `dia-${rodada.data}`;
-  const [camerasAtivas, setCamerasAtivas] = useState(() => lerCamerasAtivas(rodadaLancesId));
-  useEffect(() => { salvarCamerasAtivas(rodadaLancesId, camerasAtivas); }, [camerasAtivas, rodadaLancesId]);
-  const gatilhoLancesRef = useRef(null);
-  const partidasCamera = useMemo(() => [...(rodada.jogos || [])]
-    .filter((j) => !j.encerrado)
-    .sort((a, b) => a.numero - b.numero)
-    .map((j) => {
-      const tA = timePorId(rodada, j.timeA), tB = timePorId(rodada, j.timeB);
-      return {
-        id: `camp-${rodada.id}-${j.id}`,
-        rotulo: `Rodada ${rodada.numero} · Partida ${j.numero}`,
-        jogadores: [...idsDoTime(tA), ...idsDoTime(tB)].map((jid) => ({ id: jid, nome: nomes[jid] })),
-      };
-    }), [rodada, nomes]);
 
   const P = poolsDoDia(base, rodada, porId, dados, cfg);
   // Só sai do "aguardando encaixe" quem já tem uma colocação que vale (pontua) em algum jogo —
@@ -1016,19 +1036,6 @@ function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId 
           </div>
         </Painel>
       )}
-
-      <LimiteErro>
-        <GatilhoLancesCampeonato
-          ref={gatilhoLancesRef}
-          canalId={canalLancesDia}
-          rodadaRotulo={`Rodada ${rodada.numero}`}
-          partidas={partidasCamera}
-          ativo={camerasAtivas}
-          setAtivo={setCamerasAtivas}
-          souOrganizador
-          avisar={avisar}
-        />
-      </LimiteErro>
 
       {[...rodada.jogos].sort((a, b) => a.numero - b.numero).map((jogo) => (
         <div key={jogo.id}>

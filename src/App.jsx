@@ -35,6 +35,22 @@ function SpinnerCarregando({ texto }) {
   );
 }
 
+/* Publica a altura real da barra do topo em --altura-cabecalho-app, pro
+ * cabeçalho fixo das telas de partida (Rachão / Gestão da Rodada) grudar logo
+ * abaixo dela — a barra muda de altura (ex.: faixa de simulação). */
+let observadorCabecalho = null;
+function medirCabecalhoApp(el) {
+  observadorCabecalho?.disconnect();
+  observadorCabecalho = null;
+  if (!el) return;
+  const aplicar = () => document.documentElement.style.setProperty("--altura-cabecalho-app", `${el.offsetHeight}px`);
+  aplicar();
+  if (typeof ResizeObserver !== "undefined") {
+    observadorCabecalho = new ResizeObserver(aplicar);
+    observadorCabecalho.observe(el);
+  }
+}
+
 export default function App() {
   const [base, setBase] = useState(null);
   const [aba, setAba] = useState("tabela");
@@ -206,7 +222,7 @@ export default function App() {
 
   return (
     <div style={{ minHeight: "100vh", background: FUNDO_APP, color: T.texto, fontVariantNumeric: "tabular-nums", fontFamily: "var(--fonte-corpo)" }}>
-      <header className="cabecalho-app sticky top-0 z-20 px-4 py-2.5" style={{ background: "rgba(0,16,57,.94)", backdropFilter: "blur(8px)", borderBottom: `1px solid ${T.borda}` }}>
+      <header ref={medirCabecalhoApp} className="cabecalho-app sticky top-0 z-20 px-4 py-2.5" style={{ background: "rgba(0,16,57,.94)", backdropFilter: "blur(8px)", borderBottom: `1px solid ${T.borda}` }}>
         <div className="mx-auto flex max-w-5xl items-center justify-between" style={{ gap: 8 }}>
           <div className="flex items-center" style={{ gap: 9, minWidth: 0 }}>
             <img src={ESCUDO} alt="" style={{ height: 26, width: "auto", display: "block", flexShrink: 0 }} />

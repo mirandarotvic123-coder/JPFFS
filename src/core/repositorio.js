@@ -167,12 +167,13 @@ async function listarLances(filtro) {
 }
 
 /* Título automático do clipe (formato da doc, seção 5.2):
- *   Tipo — Jogador (ou "sem jogador") — HH:mm — Ângulo N          */
-function tituloLance(l) {
+ *   Tipo — Jogador (ou "sem jogador") — HH:mm — Ângulo N
+ * `semAngulo` tira o final — é o título do cartão que junta os ângulos. */
+function tituloLance(l, { semAngulo = false } = {}) {
   const tipo = l.tipo === "gol" ? "Gol" : "Lance";
   const jogador = (l.jogador_nome || "").trim() || "sem jogador";
   const hora = new Date(l.criado_em).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-  return `${tipo} — ${jogador} — ${hora} — Ângulo ${l.angulo}`;
+  return semAngulo ? `${tipo} — ${jogador} — ${hora}` : `${tipo} — ${jogador} — ${hora} — Ângulo ${l.angulo}`;
 }
 
 async function urlAssinadaLance(caminhoStorage, segundos = 3600) {
