@@ -1,9 +1,9 @@
 # JPFFS — Documentação técnica do sistema
 
 **Campeonato JPFFS + Rachão + Copa Hendor + Gravação de Lances**
-Referência de desenvolvimento · criada em 05/09/2026 · atualizada em 19/09/2026 (Copa Hendor, pendência financeira com efeito, modo ensaio) · cobre o que está no ar hoje
+Referência de desenvolvimento · criada em 05/09/2026 · atualizada em 02/10/2026 (cabeçalho ao vivo com câmeras, Galeria por lance, correções do Rachão) · cobre o que está no ar hoje
 
-> Documento voltado para quem mexe no código (isto é, você / o próximo eu). Descreve
+> Documento voltado para quem mexe no código. Descreve
 > arquitetura, modelo de dados, regras de negócio e operação. Para o comportamento
 > funcional da Gravação de Lances do ponto de vista do usuário, ver o documento
 > irmão [`Documentacao-Gravacao-Lances-JPFFS.md`](Documentacao-Gravacao-Lances-JPFFS.md).
@@ -603,10 +603,10 @@ lança as cobranças, troca jogadores e dá W.O. direto nos cartões das partida
 | --- | --- | --- | --- |
 | [`TelaClassificacao`](src/telas/TelaClassificacao.jsx) | Tabela | todos | Classificação geral, resultados por rodada, e a aba **Documentação** (regras do Estatuto, dentro do app). Exporta CSV/PNG. |
 | [`TelaRodada`](src/telas/TelaRodada.jsx) | Rodada | organizador | Fluxo de 3 etapas: **Presença** (chamada, registra `ordemChegada`; pendência `total` trava o botão e `sorteio` marca mas fica fora do sorteio) → **Sorteio** (motor de equilíbrio, ajuste fino arrastando, "Gravar partidas") → **Partidas** (súmulas ao vivo: gols, assistências, cartões, gol contra, gol não computado; encaixe de vagas abertas; **⇄ troca o jogador de qualquer vaga** (leva o "só completando" §10 se escolhido; apaga os lançamentos do que sai, com confirmação); ajustes P⁺/P⁻; fechar rodada). |
-| [`TelaRachao`](src/telas/TelaRachao.jsx) | Rachão | organizador | Abertura (puxa `ordemChegada` da rodada do dia **ou** chamada manual quando não há rodada) → quadra ao vivo, fila arrastável, próximos times, histórico do dia. Estado no `localStorage`. Jogador com pendência `total` não entra na lista nem na fila. |
+| [`TelaRachao`](src/telas/TelaRachao.jsx) | Rachão | organizador | Abertura (puxa `ordemChegada` da rodada do dia **ou** chamada manual quando não há rodada) → quadra ao vivo, fila arrastável, próximos times, histórico do dia; **reabrir a última partida** e **decidir na mão quem fica** (seção 6.2). Fila, Goleiros e Adicionar à fila numa coluna centralizada de 540px. Estado no `localStorage`. Jogador com pendência `total` não entra na lista nem na fila. |
 | [`TelaElenco`](src/telas/TelaElenco.jsx) | Elenco | organizador | Cadastro/edição de jogadores, foto, posição, flags (ativo, convidado, **pendência financeira com efeito**: só avisar / sem sorteio / bloqueado), importar CSV/JSON. |
 | [`TelaConfig`](src/telas/TelaConfig.jsx) | Ajustes | organizador | Cadastros de acesso (aprovar/bloquear), histórico de rodadas (reabrir recalcula), regras (quase tudo bloqueado), export/import da base (JSON), restaurar padrão / base oficial. |
-| [`TelaGaleria`](src/telas/TelaGaleria.jsx) | Lances | aprovados | Clipes agrupados por partida; filtros modalidade/tipo/jogador; ver (player), baixar (todos), apagar (só organizador). Atualiza via Realtime. |
+| [`TelaGaleria`](src/telas/TelaGaleria.jsx) | Lances | aprovados | Clipes agrupados por partida e, dentro dela, **por lance**: os ângulos do mesmo lance viram um cartão só, lado a lado, com **"Ver juntos"** (player com os vídeos lado a lado). Filtros modalidade/tipo/jogador; ver, baixar (todos), apagar (só organizador). Atualiza via Realtime. |
 | [`TelaCamera`](src/telas/TelaCamera.jsx) | — (link `?camera=1`) | aprovados | Vira o aparelho numa câmera: liga a câmera, entra no canal, Presence numera o ângulo, grava no sinal, sobe pro bucket `lances`. "Modo gravação" = tela cheia + Wake Lock. |
 
 Componentes compartilhados em [`src/components/ui.jsx`](src/components/ui.jsx)
@@ -615,6 +615,14 @@ Componentes compartilhados em [`src/components/ui.jsx`](src/components/ui.jsx)
 [`src/components/icones.jsx`](src/components/icones.jsx) (baseados no Lucide).
 [`LimiteErro`](src/components/LimiteErro.jsx) é o error boundary que embrulha os
 blocos de Lances.
+
+**Cabeçalho ao vivo.** No Rachão e na Gestão da Rodada, título, câmeras e
+cronômetro ficam numa faixa só que gruda no topo ao rolar
+([`CabecalhoAoVivo`](src/components/CabecalhoAoVivo.jsx), CSS `.cabecalho-ao-vivo`
+em `estilo.css`, `position: sticky` logo abaixo da barra do app — a altura dela é
+medida no `App.jsx` e publicada em `--altura-cabecalho-app`). A barra de câmeras
+é compacta (status/desligar · Gravar lance · copiar link) e a classificação do
+lance / "guardar vídeo do gol?" abre logo abaixo, dentro do próprio cabeçalho.
 
 ### 7.1. Chamada manual do Rachão (dias sem rodada)
 
@@ -655,9 +663,22 @@ Resumo para desenvolvimento:
   tipo escolhido depois) e
   [`GatilhoLancesCampeonato`](src/telas/lances/GatilhoLancesCampeonato.jsx)
   (`forwardRef`, expõe `golMarcado(...)` — o "+" do jogador na súmula é que
-  dispara; "Gravar lance" separado para não-gols). Ambos em `<LimiteErro>`.
-- **Câmeras ativas** lembradas por aparelho (`jpffs:cam:<partidaId>`), some só ao
-  tocar "conectado ✕".
+  dispara; "Gravar lance" separado para não-gols, com seletor de partida quando
+  há mais de uma aberta). Ambos em `<LimiteErro>`. A parte visual é compartilhada
+  em [`BarraCameras`](src/telas/lances/BarraCameras.jsx) e mora no
+  `CabecalhoAoVivo` (seção 7).
+- **Campeonato:** o estado das câmeras vive em `RodadaEmAndamento` (TelaRodada,
+  `key={rodada.id}`), não na aba Partidas — o gatilho fica montado em qualquer
+  etapa da rodada e a súmula continua chamando `golMarcado` pelo ref.
+- **Câmeras ativas** lembradas por aparelho (`jpffs:cam:<chave>`), some só ao
+  tocar no status "Ao vivo ✕".
+- **Galeria por lance:** `juntarAngulos` ([`ListaClipes`](src/telas/lances/ListaClipes.jsx))
+  junta num cartão os clipes da mesma partida + tipo + jogador que subiram até
+  90 s um do outro — nunca dois do mesmo ângulo no mesmo cartão (ângulo repetido
+  vira cartão próprio, pra não esconder nada).
+- **Tela preta:** a `TelaCamera` detecta quando os pedaços de vídeo param de
+  chegar (> 3 s — tela apagou / app foi pro fundo) e mostra "TELA TRAVOU — toque
+  para retomar", que reinicia só os gravadores, sem derrubar câmera nem canal.
 - **Orientação** escolhida pelo operador na `TelaCamera` (`jpffs:camera-orientacao`):
   horizontal (padrão, pega mais campo) grava cru; vertical passa pelo canvas.
 - **Vídeo:** 720p comprimido (~1,8 Mbps, ~5 MB / 20 s) — imposto pelo limite de
@@ -669,12 +690,13 @@ Resumo para desenvolvimento:
 - **Mesmo ângulo gravado 2×** — a atribuição de ângulo por Presence reembaralha
   em reconexão, e/ou o `disparo` é processado 2×. Falta dedup por `cid` + opção de
   fixar o ângulo na mão.
-- **Duração não fecha 20 s exatos** — de projeto (janela 20 s defasada 10 s →
-  15–25 s), agravado por recorder pausando. Falta duração-alvo adaptativa.
-- **Falta teste E2E em produção** de: Campeonato ponta-a-ponta, Galeria ao vivo,
-  1ª execução do Cron de limpeza.
-- A doc funcional ainda descreve canal por-rodada e vídeo sempre vertical — passar
-  uma revisão depois que as pendências acima caírem.
+- ~~Duração não fecha 20 s exatos~~ — **resolvido** em 19/09 (duração fixa, seção
+  6.3); falta confirmar em campo.
+- **Falta teste em campo / no celular** de: Campeonato ponta-a-ponta, Galeria ao
+  vivo (agora com ângulos lado a lado), cabeçalho congelado, retomada de "tela
+  travou".
+- **Cron de limpeza:** consertado em 19/09 (ver 9.3) — conferir que responde 200
+  e que os clipes antigos sumiram.
 
 ---
 
@@ -693,6 +715,7 @@ painel, em ordem. Todos idempotentes.
 | `004-lances.sql` | tabela `lances` + policies + bucket privado `lances` + policies de storage |
 | `005-backfill-perfis.sql` | cria `perfis` p/ contas órfãs (criadas antes do trigger da 001 existir). Já rodado; não deve mais ser necessário |
 | `006-lances-prod.sql` | Realtime em `lances`, coluna `partida_rotulo`, função `uso_bucket_lances()`, `pg_net` + `pg_cron`, índices, e o passo-a-passo do Cron |
+| `007-lances-service-role.sql` | `grant select, delete on lances to service_role` — sem isso a Edge Function de limpeza dava `permission denied` |
 | `limpar-lances/index.ts` | Edge Function da limpeza (ver 9.3) |
 
 Ao adicionar uma tabela nova: **lembrar do `GRANT ... to authenticated`** (seção
@@ -722,8 +745,18 @@ segundo plano (`EdgeRuntime.waitUntil`).
 Sempre apaga o arquivo no Storage **antes** da linha da tabela — se o storage
 falhar, a linha fica e a próxima execução tenta de novo.
 
-Conferir execuções:
+**Pegadinhas (consertadas em 19/09/2026 — a limpeza nunca tinha funcionado antes):**
+
+- A função tem `verify_jwt = true` → o Cron precisa mandar
+  `Authorization: Bearer <anon JWT>` no `net.http_post`. Com `headers := '{}'`
+  toda chamada voltava **401**.
+- O `service_role` precisa de `select, delete` em `lances` (migração 007).
+
+Conferir execuções — `cron.job_run_details` mostrar "succeeded" só quer dizer que
+o `pg_net` enfileirou a requisição; o status HTTP de verdade está em
+`net._http_response`:
 `select * from cron.job_run_details order by start_time desc limit 5;`
+`select id, status_code, created from net._http_response order by created desc limit 5;`
 
 ### 9.4. Supabase MCP
 
@@ -795,10 +828,9 @@ Feche o `cloudflared` ao terminar — enquanto ele roda, qualquer pessoa com a U
 | **Escrita concorrente na `base`** | "salva tudo" com last-write-wins. Dois organizadores editando ao mesmo tempo → um sobrescreve o outro (o Realtime avisa, mas não faz merge). Na prática há um organizador ativo por vez. A Copa Hendor cai em datas FIFA, sem rodada no mesmo dia, o que reduz o risco. |
 | **Rachão não tem histórico** | encerra o dia = descarta tudo. Não há registro entre dias nem no Supabase. De propósito, mas limita relatórios. |
 | **Bundle de ~650 KB** | um chunk só, sem code-splitting. Aceitável hoje; se crescer, `manualChunks` ou `import()` dinâmico. |
-| **Lances: ângulo duplicado / duração** | ver seção 8.1. |
+| **Lances: ângulo duplicado** | ver seção 8.1. |
 | **`dist/` versionado** | gera diff-noise; conviver com o `git checkout -- dist/`. |
-| **Doc funcional de Lances desatualizada** | não reflete link-por-dia nem orientação escolhível. |
-| **Testes só da Copa Hendor** | `testes/copaHendor.teste.mjs` (vite-node, sem runner). O resto do `core/` é puro justamente pra permitir testes, mas ainda não tem suíte. |
+| **Poucos testes** | Só `testes/copaHendor.teste.mjs` e `testes/rachao.teste.mjs` (vite-node, sem runner: `npx vite-node testes/<arquivo>`). O resto do `core/` é puro justamente pra permitir testes, mas ainda não tem suíte. |
 | **Copa: sem cadastro de duplas nem sorteio** | O app não sorteia duplas, inscreve jogadores nem faz repescagem (Arts. 43–47): a Copa 2026 vem de `data/copaHendor2026.js`. Uma edição nova exige cadastrar o chaveamento (hoje, em código). |
 | **Copa: uma edição na tela** | `copaDaTemporada` mostra a Copa do ano de `base.temporada` (ou a última). Não há seletor de edições anteriores. |
 | **Copa: correções limitadas** | Só dá para desfazer o último chute; trocas e W.O. só se desfazem antes da disputa começar; o placar das fases já jogadas é corrigível, mas chutes já lançados não são editáveis um a um. |
