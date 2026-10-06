@@ -146,18 +146,16 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
 
   /* fluxo do "+ Gol": autor → assistência */
   function golDe(lado, jid) {
-    if (soCartoes.has(jid)) {
-      // só completando (Art. 35º §1º) não pontua: o gol vale pro placar do time, mas não vai pra estatística dele
+    const naoComputado = soCartoes.has(jid);
+    if (naoComputado) {
+      // só completando (Art. 35º §1º) não pontua: o gol vale pro placar do time, mas não vai pra
+      // estatística dele — a assistência, se veio de quem vale, conta normalmente (pergunta abaixo)
       ajustarGolQueSomaNoPlacar(`golsNaoComputados${lado}`, lado, 1);
       gravarLanceDoGol(jid, nome(jid));
-      avisar(`${nome(jid)} só completa a equipe (Art. 35º §1º) — entrou como gol não computado`);
-      setFolha(null);
-      return;
-    }
-    somarGol(jid);
+    } else somarGol(jid);
     const companheiros = idsDoTime(timeDe(lado)).filter((x) => x !== jid && !soCartoes.has(x));
-    if (companheiros.length) setFolha({ tipo: "gol", lado, autor: jid });
-    else { setFolha(null); avisar(`Gol de ${nome(jid)}`); }
+    if (companheiros.length) setFolha({ tipo: "gol", lado, autor: jid, naoComputado });
+    else { setFolha(null); avisar(naoComputado ? `${nome(jid)} só completa a equipe — gol não computado` : `Gol de ${nome(jid)}`); }
   }
   function golSemAutor(lado, campo) {
     if (campo === "contra") ajustarGolQueSomaNoPlacar(`golsContra${outro(lado)}`, lado, 1);
@@ -169,7 +167,7 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
   function assistencia(jid) {
     const autor = folha?.autor;
     if (jid) setEvento(jid, "assistencias", 1);
-    avisar(`Gol de ${nome(autor)}${jid ? ` · assistência de ${nome(jid)}` : ""}`);
+    avisar(`Gol de ${nome(autor)}${folha?.naoComputado ? " (não computado)" : ""}${jid ? ` · assistência de ${nome(jid)}` : ""}`);
     setFolha(null);
   }
   /* gols já lançados de um lado, pra lista do bloco do time (cada um com × pra tirar) */
@@ -265,7 +263,8 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
       )}
 
       {folha?.tipo === "gol" && folha.autor && (
-        <Folha titulo={`Gol de ${nome(folha.autor)} ✓`} subtitulo="Assistência de quem?" cor={corDe(timeDe(folha.lado).chave).hex} onFechar={() => assistencia(null)}>
+        <Folha titulo={`Gol de ${nome(folha.autor)} ✓`}
+          subtitulo={folha.naoComputado ? "Gol não computado (só completa) — assistência de quem?" : "Assistência de quem?"} cor={corDe(timeDe(folha.lado).chave).hex} onFechar={() => assistencia(null)}>
           <GradeJogadores ids={idsDoTime(timeDe(folha.lado)).filter((x) => x !== folha.autor && !soCartoes.has(x))} nome={nome}
             goleiros={goleirosDe(timeDe(folha.lado))} onEscolher={assistencia} />
           <div style={{ marginTop: 12 }}><BotaoFolha secundario onClick={() => assistencia(null)}>Sem assistência</BotaoFolha></div>
