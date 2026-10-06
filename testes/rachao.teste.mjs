@@ -81,5 +81,30 @@ eq(m3.sessao.quadra.partidasSeguidas ?? m3.sessao.timeEmEspera?.partidasSeguidas
 /* --- encerrarManual não trava sem quadra --------------------------------------------- */
 eq(R.encerrarManual(novaSessao(), "amarelo").pendente, false, "sem quadra não quebra");
 
+/* --- ordem do Rachão a partir da rodada (Art. 35º §2º) ------------------------------ */
+{
+  const pres = (ids, st = "presente") => Object.fromEntries(ids.map((j) => [j, st]));
+  const rodada = {
+    ordemChegada: ["a", "b", "c", "d", "e", "f", "x"],
+    presencas: { ...pres(["a", "b", "c", "d", "e", "f"]), x: "ausente" },
+    times: [
+      { id: "t1", jogadores: [{ jogadorId: "a" }, { jogadorId: "b" }] }, { id: "t2", jogadores: [{ jogadorId: "c" }] },
+      { id: "t3", jogadores: [{ jogadorId: "d" }, { jogadorId: "b" }] }, { id: "t4", jogadores: [{ jogadorId: "e" }, { jogadorId: "a" }] },
+    ],
+    jogos: [
+      { numero: 2, timeA: "t3", timeB: "t4", soCartoes: ["b", "a"] }, // b e a completaram a partida 2
+      { numero: 1, timeA: "t1", timeB: "t2", soCartoes: [] },
+    ],
+  };
+  const o = R.ordemRachaoDaRodada(rodada);
+  eq(o.ordem, ["c", "d", "e", "f", "a", "b"], "quem completou vai pro fim, na ordem de chegada; ausente sai");
+  ok(o.itens.find((i) => i.jid === "a").foiProFim, "a marcado como foi pro fim");
+  eq(o.itens.find((i) => i.jid === "a").partidas.map((p) => [p.numero, p.completou]), [[1, false], [2, true]], "partidas do a");
+  eq(R.ordemRachaoDaRodada({ ordemChegada: ["a"], presencas: { a: "atrasado" } }).ordem, ["a"], "atrasado entra; sem jogos não quebra");
+  const r3 = { ...rodada, times: [...rodada.times, { id: "t5", jogadores: [{ jogadorId: "c" }] }, { id: "t6", jogadores: [] }],
+    jogos: [...rodada.jogos, { numero: 3, timeA: "t5", timeB: "t6", soCartoes: ["c"] }] };
+  eq(R.ordemRachaoDaRodada(r3).ordem, ["d", "e", "f", "a", "b", "c"], "quem completou depois (partida 3) fica atrás");
+}
+
 if (falhas) { console.log(`${falhas} teste(s) falharam`); process.exit(1); }
 console.log("rachao: tudo certo");

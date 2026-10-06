@@ -289,13 +289,13 @@ function TelaConfig({ base, setBase, dados, cfg, avisar, sessao }) {
           <LinhaToggle ligado={cfg.amareloNoSegundoAtraso} texto="2º atraso gera cartão amarelo na classificação" />
           <LinhaToggle ligado={cfg.converterSegundoAmarelo} texto="2º amarelo, ou amarelo + azul, vira vermelho na mesma partida (Art. 81º §Único)" />
           <LinhaToggle ligado={cfg.perdePontoNoQuartoAtraso} texto="Cobrar ponto extra do suspenso (premissa em aberto)" />
-          <p style={{ fontSize: 10, color: T.fraco, paddingTop: 8 }}>Art. 34º §8º · Art. 82º</p>
+          <p style={{ fontSize: 10, color: T.fraco, paddingTop: 8 }}>Art. 34º §9º · Art. 82º</p>
         </SecaoRecolhivel>
       </div>
 
       <SecaoRecolhivel titulo="Motor de sorteio" Icone={IconeEmbaralhar} aberto={motorAberto} onToggle={() => setMotorAberto((v) => !v)}
         detalhe={<><IconeCadeado tam={11} /> bloqueado</>}>
-        <p style={{ fontSize: 11, color: T.fraco, marginBottom: 4 }}>§12º — goleiro e linha juntos. Pesos internos do algoritmo de equilíbrio, travados.</p>
+        <p style={{ fontSize: 11, color: T.fraco, marginBottom: 4 }}>Art. 34º §13º e §14º — goleiro e linha juntos. Pesos internos do algoritmo de equilíbrio, travados.</p>
         {[["amplitude", "Diferença máx."], ["desvio", "Desvio padrão"], ["varianciaInterna", "Composição interna"],
         ["faixa", "Distribuição por faixa"], ["faixaPartida", "5★ espalhados entre partidas"],
         ["repeticao", "Anti-repetição"], ["aproveitamento", "Aproveitamento %"]].map(([c, r]) => (

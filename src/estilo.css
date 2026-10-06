@@ -299,3 +299,45 @@ input:-webkit-autofill:focus {
 
 /* Galeria de lances — ângulos do mesmo lance lado a lado */
 .clipe-angulos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+
+/* Súmula da partida (telas/rodada/Sumula.jsx) — um bloco por time: um
+ * embaixo do outro no celular, lado a lado a partir de tablet. */
+.sumula-times { display: grid; gap: 12px; padding: 12px; }
+@media (min-width: 640px) {
+  .sumula-times { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+}
+
+/* Lista do dia (telas/rodada/ListaDoDia.jsx) — widget recolhível no canto
+ * inferior direito da etapa Partidas. No celular fica acima da barra de
+ * navegação de baixo; a partir de 1024px a navegação vira coluna à esquerda,
+ * então desce pro canto. */
+.lista-dia {
+  position: fixed;
+  right: 12px;
+  bottom: calc(84px + env(safe-area-inset-bottom));
+  z-index: 25;
+}
+.lista-dia-botao {
+  gap: 8px; height: 46px; padding: 0 8px 0 14px; border-radius: 999px;
+  background: #F5C518; color: #241A00;
+  font-size: 12px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase;
+  box-shadow: 0 6px 20px rgba(0, 8, 30, .55);
+}
+.lista-dia-contador {
+  min-width: 30px; height: 30px; padding: 0 8px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: #241A00; color: #F5C518; font-size: 12.5px;
+}
+.lista-dia-painel {
+  width: min(280px, calc(100vw - 24px));
+  max-height: min(64vh, 560px);
+  display: flex; flex-direction: column;
+  background: #132759; border: 1px solid #F5C51866; border-radius: 14px;
+  box-shadow: 0 10px 32px rgba(0, 8, 30, .6);
+  overflow: hidden;
+}
+.lista-dia-itens { overflow-y: auto; padding: 4px 0 8px; margin: 0; list-style: none; }
+.lista-dia-itens > li + li { border-top: 1px solid rgba(219, 225, 255, .06); }
+@media (min-width: 1024px) {
+  .lista-dia { right: 20px; bottom: 20px; }
+}
