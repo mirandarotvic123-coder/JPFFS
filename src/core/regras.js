@@ -83,6 +83,13 @@ function normalizarCartoes(ev, cfg) {
   return ev;
 }
 
+/* Faltas por equipe no Campeonato (Art. 83º, item 13 "a"): até 3 faltas na partida;
+ * a partir da 4ª, cada nova falta da equipe dá SHOOTOUT pro adversário. Contagem
+ * guardada em jogo.faltasA / jogo.faltasB (ausente = 0, jogos antigos não têm). */
+const LIMITE_FALTAS = 3;
+const faltasDe = (jogo, lado) => jogo?.[`faltas${lado}`] || 0;
+const shootoutsContra = (faltas) => Math.max(0, faltas - LIMITE_FALTAS); // shootouts que a equipe CEDEU
+
 function placarDe(jogo, rodada) {
   const tA = timePorId(rodada, jogo.timeA), tB = timePorId(rodada, jogo.timeB);
   const soma = (t) => idsDoTime(t).reduce((s, jid) => s + eventoDe(jogo, jid).gols, 0);
@@ -587,7 +594,7 @@ function partidasPossiveis(nLinha, nGoleiros, cfg) {
 export {
   CONFIG_PADRAO, ROTULO_CRITERIO, estrelasPorPosicao, NIVEL_ATRASO, nivelInfo, mesDe,
   disciplinaAtrasos, nivelSeAtrasar, evVazio, eventoDe, timePorId, idsDoTime, HIST_ZERO,
-  normalizarCartoes, placarDe, marcarReaproveitamentos, calcularEstatisticas,
+  normalizarCartoes, placarDe, LIMITE_FALTAS, faltasDe, shootoutsContra, marcarReaproveitamentos, calcularEstatisticas,
   calcularClassificacao, variancia, avaliarTimes, buscaLocal, sortearEquipes,
   poolsDoDia, partidasPossiveis, chaveDupla, efeitoPendencia, barradoDoSorteio, barradoDoRachao,
 };

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { T, ESCUDO } from "../theme";
-import { eventoDe, placarDe } from "../core/regras";
+import { eventoDe, placarDe, faltasDe, shootoutsContra } from "../core/regras";
 import { csvClassificacao, imagemTabela, baixarArquivo } from "../core/exportacao";
 import {
   Botao, Painel, Secao, SeloAtraso, CampoBusca, Estrelas, IconeGoleiro, IconeLinha, Marcadores, AvatarJogador, ItemDoc,
@@ -154,6 +154,23 @@ function TelaClassificacao({ base, dados, cfg, avisar }) {
     </div>
   );
 }
+/* Faltas do jogo (Art. 83º, item 13 "a"): "faltas 2 × 4 · shootout: 1 pro Amarelo".
+ * Jogo sem falta lançada (inclusive os antigos, de antes do contador) não mostra nada. */
+function LinhaFaltas({ jogo }) {
+  const fA = faltasDe(jogo, "A"), fB = faltasDe(jogo, "B");
+  if (!fA && !fB) return null;
+  const pro = [
+    shootoutsContra(fB) > 0 && `${shootoutsContra(fB)} pro Amarelo`,
+    shootoutsContra(fA) > 0 && `${shootoutsContra(fA)} pro Azul`,
+  ].filter(Boolean);
+  return (
+    <p className="text-center" style={{ marginTop: 4, fontSize: 10.5, color: T.fraco }}>
+      faltas <b style={{ color: T.secundario }}>{fA} × {fB}</b>
+      {pro.length > 0 && <> · <b style={{ color: T.vermelho }}>shootout: {pro.join(" · ")}</b></>}
+    </p>
+  );
+}
+
 function Resultados({ base, cfg }) {
   const nomes = Object.fromEntries(base.jogadores.map((j) => [j.id, j.nome]));
   const [aberta, setAberta] = useState(null);
@@ -236,6 +253,7 @@ function Resultados({ base, cfg }) {
                           <span className="font-destaque" style={{ fontSize: 19, fontWeight: 700, color: T.texto, minWidth: 58, textAlign: "center", letterSpacing: ".05em" }}>{p.A} <span style={{ color: T.fraco }}>×</span> {p.B}</span>
                           <span className="flex-1" style={{ fontSize: 13.5, fontWeight: venceuB ? 900 : 600, color: venceuB ? "#7FB0FF" : T.texto }}>Azul</span>
                         </div>
+                        <LinhaFaltas jogo={jogo} />
                       </button>
                       {jogoAberto && (<>
                       <div className="flex justify-between" style={{ gap: 10, marginTop: 8, fontSize: 11, lineHeight: 1.7 }}>

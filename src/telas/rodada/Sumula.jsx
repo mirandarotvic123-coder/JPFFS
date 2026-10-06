@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { T, corDe } from "../../theme";
-import { normalizarCartoes, placarDe, timePorId, idsDoTime, poolsDoDia, evVazio } from "../../core/regras";
+import { normalizarCartoes, placarDe, timePorId, idsDoTime, poolsDoDia, evVazio, LIMITE_FALTAS, faltasDe, shootoutsContra } from "../../core/regras";
 import { Botao, Painel, inputStyle, Segmento, SeloAtraso, Estrelas, IconeGoleiro } from "../../components/ui";
 import { IconeSetaDireita } from "../../components/icones";
 
@@ -184,6 +184,17 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
     return itens;
   };
 
+  /* faltas da equipe (Art. 83º, item 13 "a"): na falta que antecede o estouro o mesário avisa
+   * o árbitro (letra "c"); daí em diante cada falta é shootout pro adversário */
+  const falta = (lado, d) => {
+    const novo = Math.max(0, faltasDe(jogo, lado) + d);
+    mudar({ [`faltas${lado}`]: novo });
+    if (d <= 0) return;
+    const cor = timeDe(lado).cor, adv = timeDe(outro(lado)).cor;
+    if (novo === LIMITE_FALTAS) avisar(`${cor}: ${novo}ª falta — avise o árbitro, a próxima é shootout`);
+    else if (novo > LIMITE_FALTAS) avisar(`${cor}: ${novo}ª falta — SHOOTOUT pro ${adv}`);
+  };
+
   const encerrarOuReabrir = () => {
     mudar({ encerrado: !jogo.encerrado, placarManual: jogo.placarManual || { A: p.A, B: p.B } });
     avisar(jogo.encerrado ? `Partida ${jogo.numero} reaberta` : `Partida ${jogo.numero} encerrada · ${p.A}×${p.B}`);
@@ -224,7 +235,8 @@ function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, por
               const time = timeDe(lado);
               return (
                 <BlocoTime key={lado} time={time} gols={golsDoLado(lado)} bloqueado={jogo.encerrado}
-                  onGol={() => setFolha({ tipo: "gol", lado })}>
+                  onGol={() => setFolha({ tipo: "gol", lado })}
+                  faltas={faltasDe(jogo, lado)} onFalta={(d) => falta(lado, d)} adversario={timeDe(outro(lado)).cor}>
                   {ordenarElenco(time).map((vaga) => (
                     <LinhaJogador key={vaga.jogadorId} vaga={vaga} {...propsLinha(time)}
                       aberto={expandido === vaga.jogadorId}
@@ -349,7 +361,7 @@ function PlacarPartida({ jogo, tA, tB, p, editandoPlacar, setPlacar, onEditar })
 
 /* --------------------------- Bloco de um time ----------------------------*/
 
-function BlocoTime({ time, gols, bloqueado, onGol, children }) {
+function BlocoTime({ time, gols, bloqueado, onGol, faltas, onFalta, adversario, children }) {
   const cor = corDe(time.chave).hex;
   const n = (time.jogadores || []).length;
   return (
@@ -367,6 +379,8 @@ function BlocoTime({ time, gols, bloqueado, onGol, children }) {
           </button>
         )}
       </div>
+
+      <ContadorFaltas faltas={faltas} onFalta={bloqueado ? null : onFalta} adversario={adversario} />
 
       <div className="px-3 py-2" style={{ borderBottom: `1px solid ${T.borda}` }}>
         {gols.length === 0
@@ -391,6 +405,34 @@ function BlocoTime({ time, gols, bloqueado, onGol, children }) {
         <span>Jogador</span><span className="text-center">G</span><span className="text-center">A</span><span className="text-center">Cart.</span>
       </div>
       <div style={{ padding: "0 6px 6px" }}>{children}</div>
+    </div>
+  );
+}
+
+/* Faltas da equipe: bolinhas até o limite (3); na 3ª avisa que a próxima é
+ * shootout; passou disso, mostra quantos shootouts a equipe já cedeu. */
+function ContadorFaltas({ faltas, onFalta, adversario }) {
+  const shootouts = shootoutsContra(faltas);
+  const noLimite = faltas === LIMITE_FALTAS;
+  const cor = shootouts > 0 ? T.vermelho : noLimite ? T.laranja : T.ouro;
+  return (
+    <div className="flex items-center gap-2 px-3" style={{ minHeight: 44, borderBottom: `1px solid ${T.borda}`, background: shootouts ? "rgba(255,107,107,.07)" : noLimite ? "rgba(255,165,61,.07)" : "transparent" }}>
+      <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".1em", color: T.fraco }}>FALTAS</span>
+      <span className="flex items-center gap-1" aria-label={`${faltas} faltas`}>
+        {Array.from({ length: LIMITE_FALTAS }, (_, i) => (
+          <span key={i} style={{ width: 10, height: 10, borderRadius: 999, background: i < faltas ? cor : "transparent", border: `1.5px solid ${i < faltas ? cor : T.tier4}` }} />
+        ))}
+      </span>
+      <span className="min-w-0 flex-1 truncate" style={{ fontSize: 10.5, fontWeight: 800, color: cor }}>
+        {shootouts > 0 ? `SHOOTOUT pro ${adversario}${shootouts > 1 ? ` ×${shootouts}` : ""}` : noLimite ? "próxima = shootout" : ""}
+      </span>
+      {onFalta ? (
+        <span className="flex items-center" style={{ flexShrink: 0 }}>
+          <button onClick={() => onFalta(-1)} aria-label="Tirar 1 falta" style={{ width: 34, height: 34, color: T.fraco, fontSize: 17 }}>−</button>
+          <b style={{ minWidth: 18, textAlign: "center", fontSize: 14, color: T.texto }}>{faltas}</b>
+          <button onClick={() => onFalta(1)} aria-label="Somar 1 falta" style={{ width: 34, height: 34, color: T.ouro, fontSize: 17 }}>+</button>
+        </span>
+      ) : <b style={{ fontSize: 14, color: T.texto, paddingRight: 4 }}>{faltas}</b>}
     </div>
   );
 }

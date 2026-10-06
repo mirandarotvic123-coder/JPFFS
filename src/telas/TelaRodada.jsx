@@ -1048,6 +1048,7 @@ function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId,
       <Ajustes rodada={rodada} base={base} dados={dados} onMudar={atualizar} />
 
       <ListaDoDia rodada={rodada} base={base} />
+      <div aria-hidden="true" style={{ height: 40 }} />{/* respiro pro botão flutuante não cobrir o fim da página */}
 
       {rodada.jogos.some((g) => g.encerrado) && (
         <div className="space-y-1.5">
