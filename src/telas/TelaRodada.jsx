@@ -2,15 +2,15 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { T } from "../theme";
 import { corDe, AMARELO, AZUL } from "../theme";
 import {
-  CONFIG_PADRAO, nivelInfo, nivelSeAtrasar, normalizarCartoes, placarDe, timePorId,
+  CONFIG_PADRAO, nivelInfo, nivelSeAtrasar, timePorId,
   idsDoTime, marcarReaproveitamentos, sortearEquipes, poolsDoDia, partidasPossiveis,
-  evVazio, avaliarTimes, buscaLocal, chaveDupla, efeitoPendencia,
+  avaliarTimes, buscaLocal, chaveDupla, efeitoPendencia,
 } from "../core/regras";
 import { imagemEscalacoes, textoWhatsApp } from "../core/exportacao";
 import { id } from "../core/repositorio";
 import { lerCamerasAtivas, salvarCamerasAtivas } from "../core/lances";
 import {
-  Botao, Painel, inputStyle, Campo, CabecalhoPagina, Secao, Segmento, SeloAtraso,
+  Botao, Painel, inputStyle, Campo, CabecalhoPagina, Secao, SeloAtraso,
   CampoBusca, Estrelas, IconeGoleiro, Contador, FaixaPartida, Marcadores,
 } from "../components/ui";
 import { IconeSetaDireita, IconeTrofeu } from "../components/icones";
@@ -18,6 +18,8 @@ import { Historico } from "./TelaConfig";
 import { LimiteErro } from "../components/LimiteErro";
 import { GatilhoLancesCampeonato } from "./lances/GatilhoLancesCampeonato";
 import { CabecalhoAoVivo } from "../components/CabecalhoAoVivo";
+import { Sumula } from "./rodada/Sumula";
+import { ListaDoDia } from "./rodada/ListaDoDia";
 
 /* =========================== TELA: RODADA ================================*/
 
@@ -218,7 +220,7 @@ function EtapaPresenca({ base, setBase, rodada, atualizar, porId, cfg, dados, av
 
       {P.suspensos.length > 0 && (
         <Painel className="p-3" style={{ borderColor: T.vermelho, background: "rgba(255,107,107,.1)", fontSize: 12, color: T.secundario }}>
-          <b style={{ color: T.vermelho }}>Suspensos (§8º d):</b>{" "}
+          <b style={{ color: T.vermelho }}>Suspensos (§9º d):</b>{" "}
           {P.suspensos.map((e) => `${e.jogador.nome} (${e.nivel}º atraso)`).join(", ")}. Perdem a presença e ficam fora do sorteio.
         </Painel>
       )}
@@ -698,7 +700,7 @@ function EtapaSorteio({ base, rodada, atualizar, porId, cfg, dados, avisar, nome
                   <span className="truncate">{j.nome}</span>
                   {travado && <span title="Está na partida em que pontua — bloqueado para não desfazer a escalação que vale" style={{ fontSize: 11 }}>🔒</span>}
                   {repetido && <span title="Já jogou nesta rodada — aqui só preenche a vaga, não pontua nada" style={{ fontSize: 8, fontWeight: 800, color: T.laranja }}>REPETE</span>}
-                  {!repetido && naoPontua && <span title="Completou uma vaga que estava em aberto (§10º) — não pontua nada" style={{ fontSize: 8, fontWeight: 800, color: T.laranja }}>COMPLETA</span>}
+                  {!repetido && naoPontua && <span title="Completou uma vaga que estava em aberto (Art. 35º §1º) — não pontua nada" style={{ fontSize: 8, fontWeight: 800, color: T.laranja }}>COMPLETA</span>}
                   {j.convidado && <span style={{ fontSize: 8, color: T.roxo }}>CONV</span>}
                 </span>
                 <span className="flex shrink-0 items-center gap-1">
@@ -930,7 +932,7 @@ function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId,
 
   const P = poolsDoDia(base, rodada, porId, dados, cfg);
   // Só sai do "aguardando encaixe" quem já tem uma colocação que vale (pontua) em algum jogo —
-  // quem só entrou pra completar (§10º) continua aparecendo, porque ainda não teve seu encaixe de verdade.
+  // quem só entrou pra completar (Art. 35º §1º) continua aparecendo, porque ainda não teve seu encaixe de verdade.
   const idsComVagaReal = new Set();
   for (const t of rodada.times || []) {
     const jogoDoTime = (rodada.jogos || []).find((j) => j.timeA === t.id || j.timeB === t.id);
@@ -1030,21 +1032,22 @@ function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId,
 
       {Object.keys(niveis).length > 0 && (
         <Painel className="p-3" style={{ fontSize: 11.5, color: T.secundario }}>
-          <b style={{ color: T.laranja }}>Atrasos sinalizados na súmula (§8º):</b>
+          <b style={{ color: T.laranja }}>Atrasos sinalizados na súmula (§9º):</b>
           <div className="mt-1.5 flex flex-wrap gap-1.5">
             {Object.entries(niveis).map(([jid, n]) => <span key={jid} className="flex items-center gap-1">{nomes[jid]} <SeloAtraso nivel={n} cfg={cfg} /></span>)}
           </div>
         </Painel>
       )}
 
-      {[...rodada.jogos].sort((a, b) => a.numero - b.numero).map((jogo) => (
-        <div key={jogo.id}>
-          <FaixaPartida n={jogo.numero} extra={!!jogo.extra} />
-          <Sumula {...{ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, porId, camerasAtivas, gatilhoLancesRef }} />
-        </div>
-      ))}
+      <div className="flex flex-col" style={{ gap: 28, paddingTop: 4 }}>
+        {[...rodada.jogos].sort((a, b) => a.numero - b.numero).map((jogo) => (
+          <Sumula key={jogo.id} {...{ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, porId, camerasAtivas, gatilhoLancesRef }} />
+        ))}
+      </div>
 
       <Ajustes rodada={rodada} base={base} dados={dados} onMudar={atualizar} />
+
+      <ListaDoDia rodada={rodada} base={base} />
 
       {rodada.jogos.some((g) => g.encerrado) && (
         <div className="space-y-1.5">
@@ -1069,381 +1072,6 @@ function EtapaJogos({ base, rodada, atualizar, cfg, dados, avisar, nomes, porId,
         Apagar partidas desta rodada
       </button>
     </div>
-  );
-}
-
-/* --------------------------- Súmula da partida ---------------------------*/
-
-function Sumula({ jogo, rodada, base, cfg, dados, atualizar, avisar, niveis, porId, camerasAtivas, gatilhoLancesRef }) {
-  const jog = Object.fromEntries(base.jogadores.map((j) => [j.id, j]));
-  const [pendenteVaga, setPendenteVaga] = useState({});
-  const [cartoesAbertos, setCartoesAbertos] = useState({});
-  const [trocando, setTrocando] = useState(null); // { jid, timeId, goleiro, novoId, pontua } — trocar um jogador da partida por outro
-  const [aberta, setAberta] = useState(!jogo.encerrado); // partidas já encerradas começam recolhidas
-  const tA = timePorId(rodada, jogo.timeA), tB = timePorId(rodada, jogo.timeB);
-  const p = placarDe(jogo, rodada);
-  const soCartoes = new Set([...(jogo.completaTime || []), ...(jogo.soCartoes || [])]);
-  const mudar = (patch) => atualizar({ jogos: rodada.jogos.map((g) => (g.id === jogo.id ? { ...g, ...patch } : g)) });
-  if (!tA || !tB) return null;
-  const jaNestaPartida = new Set([...idsDoTime(tA), ...idsDoTime(tB)]);
-  const candidatos = dados
-    ? poolsDoDia(base, rodada, porId, dados, cfg).aptos.filter((e) => !jaNestaPartida.has(e.jogador.id))
-    : [];
-  const apareceuEmOutroJogo = (jid) => (rodada.jogos || []).some((g) => g.id !== jogo.id &&
-    [g.timeA, g.timeB].some((tid) => idsDoTime(timePorId(rodada, tid)).includes(jid)));
-  const forcaDe = (t) => (t.jogadores || []).filter((j) => !soCartoes.has(j.jogadorId)).reduce((s, j) => s + (j.estrelaNoSorteio || 0), 0);
-  const forcaA = forcaDe(tA), forcaB = forcaDe(tB);
-  const temVagaAberta = (tA.vagasAbertas || []).length > 0 || (tB.vagasAbertas || []).length > 0;
-  const mediaForca = (forcaA + forcaB) / 2;
-  const diffForca = Math.abs(forcaA - forcaB);
-  const indiceEquilibrio = mediaForca > 0 ? Math.max(0, Math.min(100, Math.round(100 - (diffForca / mediaForca) * 70))) : 100;
-
-  const preencherVaga = (timeId, papel, jogadorId, pontua) => {
-    if (!jogadorId) return;
-    const repete = !pontua; // decisão explícita de quem preencheu a vaga, não mais um palpite automático
-    const l = porId[jogadorId];
-    const cand = candidatos.find((e) => e.jogador.id === jogadorId);
-    const novoTimes = (rodada.times || []).map((t) => {
-      if (t.id !== timeId) return t;
-      const idxVaga = (t.vagasAbertas || []).indexOf(papel);
-      const vagasAbertas = idxVaga === -1 ? (t.vagasAbertas || [])
-        : [...t.vagasAbertas.slice(0, idxVaga), ...t.vagasAbertas.slice(idxVaga + 1)];
-      return {
-        ...t, vagasAbertas,
-        jogadores: [...(t.jogadores || []), {
-          jogadorId, estrelaNoSorteio: cand?.jogador?.convidado ? (cand.jogador.estrelasIniciais || 1) : (l?.estrelas || 1),
-          atuaComoGoleiro: papel === "GOLEIRO",
-        }],
-      };
-    });
-    const novoJogos = repete
-      ? (rodada.jogos || []).map((g) => (g.id === jogo.id ? { ...g, soCartoes: [...new Set([...(g.soCartoes || []), jogadorId])] } : g))
-      : rodada.jogos;
-    atualizar({ times: novoTimes, jogos: novoJogos });
-    avisar(repete ? `${jog[jogadorId]?.nome} completou a equipe — não pontua` : `${jog[jogadorId]?.nome} entrou na vaga e vai pontuar`);
-  };
-
-  /* Troca quem está numa vaga da partida por outro jogador (escolheu o errado, ou quem
-   * veio não era o combinado). Mantém a vaga (time, goleiro/linha) e leva junto o "só
-   * completando" conforme a escolha; os lançamentos (gol, assistência, cartão) do jogador que
-   * sai NESTA partida são descartados — quem chama já confirmou. */
-  const trocarJogador = (timeId, jidAntigo, jidNovo, pontua) => {
-    if (!jidNovo || jidNovo === jidAntigo) return;
-    const l = porId[jidNovo];
-    const cand = candidatos.find((e) => e.jogador.id === jidNovo);
-    const novoTimes = (rodada.times || []).map((t) => t.id !== timeId ? t : {
-      ...t,
-      jogadores: (t.jogadores || []).map((j) => j.jogadorId !== jidAntigo ? j : {
-        ...j, jogadorId: jidNovo,
-        estrelaNoSorteio: cand?.jogador?.convidado ? (cand.jogador.estrelasIniciais || 1) : (l?.estrelas || 1),
-      }),
-    });
-    const { [jidAntigo]: _descartado, ...eventos } = jogo.eventos || {};
-    const soCartoesNovo = [...(jogo.soCartoes || []).filter((x) => x !== jidAntigo), ...(pontua ? [] : [jidNovo])];
-    atualizar({
-      times: novoTimes,
-      jogos: rodada.jogos.map((g) => g.id !== jogo.id ? g : {
-        ...g, eventos, soCartoes: [...new Set(soCartoesNovo)], completaTime: (g.completaTime || []).filter((x) => x !== jidAntigo),
-      }),
-    });
-    setTrocando(null);
-    avisar(`${jog[jidNovo]?.nome} entrou no lugar de ${jog[jidAntigo]?.nome}${pontua ? "" : " (só completando)"}`);
-  };
-
-  const setEvento = (jid, campo, d) => {
-    const at = { ...evVazio, ...(jogo.eventos[jid] || {}) };
-    const novo = { ...at, [campo]: Math.max(0, at[campo] + d) };
-    if (d > 0 && cfg.converterSegundoAmarelo && (campo === "ca" || campo === "cz")) {
-      if (novo.ca >= 2) avisar(`${jog[jid]?.nome}: 2º amarelo vira vermelho (Art. 81º §Único)`);
-      else if (novo.ca >= 1 && novo.cz >= 1) avisar(`${jog[jid]?.nome}: amarelo + azul vira vermelho (Art. 81º §Único)`);
-    }
-    mudar({ eventos: { ...jogo.eventos, [jid]: novo } });
-  };
-  const setPlacar = (lado, d) => {
-    const atual = jogo.placarManual || { A: p.calcA, B: p.calcB };
-    mudar({ placarManual: { ...atual, [lado]: Math.max(0, atual[lado] + d) } });
-  };
-  const ajustarGolQueSomaNoPlacar = (campo, ladoNoPlacar, d) => {
-    const atualCampo = jogo[campo] || 0;
-    const novoCampo = Math.max(0, atualCampo + d);
-    const diff = novoCampo - atualCampo;
-    const atualizacoes = { [campo]: novoCampo };
-    if (jogo.placarManual && diff !== 0) {
-      const pm = jogo.placarManual;
-      atualizacoes.placarManual = { ...pm, [ladoNoPlacar]: Math.max(0, pm[ladoNoPlacar] + diff) };
-    }
-    mudar(atualizacoes);
-  };
-
-  const Coluna = ({ time, lado }) => (
-    <div className="min-w-0">
-      {/* nome do time já aparece grande no placar, no topo do cartão — sem repetir aqui embaixo */}
-      <div className="space-y-1">
-        {[...(time.jogadores || [])].sort((a, b) => Number(!!b.atuaComoGoleiro) - Number(!!a.atuaComoGoleiro)).map(({ jogadorId: jid, atuaComoGoleiro, estrelaNoSorteio }) => {
-          const bruto = { ...evVazio, ...(jogo.eventos[jid] || {}) };
-          const ev = normalizarCartoes(bruto, cfg);
-          const virouVermelho = ev.cv !== bruto.cv;
-          const soCartao = soCartoes.has(jid);
-          const expulso = bruto.cv > 0 || bruto.ca >= 2 || (bruto.ca >= 1 && bruto.cz >= 1);
-          return (
-            <div key={jid} className="rounded-lg p-1.5" style={{
-              background: atuaComoGoleiro ? "rgba(79,163,255,.09)" : "rgba(0,0,0,.26)",
-              border: soCartao ? `1px dashed ${T.laranja}` : "1px solid transparent"
-            }}>
-              <div className="mb-1 flex items-start justify-between gap-1">
-                <span className="flex min-w-0 items-center gap-1" style={{ fontSize: 12.5, color: soCartao ? T.fraco : T.texto, fontStyle: soCartao ? "italic" : "normal" }}>
-                  {atuaComoGoleiro && <IconeGoleiro tam={12} />}<span className="truncate">{jog[jid]?.nome || "?"}</span>
-                  <Estrelas n={estrelaNoSorteio || 1} tam={9} goleiro={atuaComoGoleiro} />
-                  {niveis?.[jid] && <SeloAtraso nivel={niveis[jid]} cfg={cfg} mini />}
-                </span>
-                <span className="flex shrink-0 items-center gap-1">
-                  <button onClick={() => setTrocando((t) => (t?.jid === jid ? null : { jid, timeId: time.id, goleiro: !!atuaComoGoleiro, novoId: "", pontua: !soCartao }))}
-                    title="Trocar este jogador por outro (escolheu o errado?)"
-                    style={{
-                      borderRadius: 3, padding: "1px 5px", fontSize: 10, fontWeight: 800,
-                      background: trocando?.jid === jid ? "rgba(255,200,61,.22)" : "rgba(255,255,255,.07)",
-                      color: trocando?.jid === jid ? T.ouro : T.fraco,
-                    }}>
-                    ⇄
-                  </button>
-                  <button onClick={() => mudar({
-                    completaTime: (jogo.completaTime || []).filter((x) => x !== jid),
-                    soCartoes: soCartao ? (jogo.soCartoes || []).filter((x) => x !== jid) : [...new Set([...(jogo.soCartoes || []), jid])],
-                  })} title="Art. 34º §10º — entrou só para completar equipe: não pontua nada, nem cartão"
-                    style={{
-                      borderRadius: 3, padding: "1px 4px", fontSize: 9, fontWeight: 800,
-                      background: soCartao ? "rgba(255,165,61,.22)" : "rgba(255,255,255,.07)",
-                      color: soCartao ? T.laranja : T.fraco
-                    }}>
-                    §10
-                  </button>
-                </span>
-              </div>
-              {trocando?.jid === jid && (() => {
-                const opcoes = [...candidatos].sort((a, b) => {
-                  if (atuaComoGoleiro) {
-                    const ga = a.jogador.posicao === "GOLEIRO" ? 0 : 1, gb = b.jogador.posicao === "GOLEIRO" ? 0 : 1;
-                    if (ga !== gb) return ga - gb;
-                  }
-                  return a.jogador.nome.localeCompare(b.jogador.nome, "pt-BR");
-                });
-                const lancou = bruto.gols + bruto.assistencias + bruto.ca + bruto.cv + bruto.cz;
-                return (
-                  <div className="mb-1.5 space-y-1.5 rounded" style={{ background: "rgba(255,200,61,.08)", border: `1px dashed ${T.ouro}`, padding: 5 }}>
-                    <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".06em", color: T.ouro }}>
-                      TROCAR {(jog[jid]?.nome || "").toUpperCase()} POR…
-                    </span>
-                    <select value={trocando.novoId} onChange={(e) => {
-                      const novoId = e.target.value;
-                      setTrocando((t) => ({ ...t, novoId, pontua: novoId ? !apareceuEmOutroJogo(novoId) : t.pontua }));
-                    }} style={{ ...inputStyle, padding: "7px 4px", fontSize: 11.5 }}>
-                      <option value="">— escolher jogador —</option>
-                      {opcoes.map(({ jogador: o, linha: lin }) => (
-                        <option key={o.id} value={o.id}>
-                          {o.nome}{o.posicao === "GOLEIRO" ? " (GK)" : ""} · {lin?.estrelas || 1}★
-                          {apareceuEmOutroJogo(o.id) ? " · já jogou noutro jogo" : ""}
-                        </option>
-                      ))}
-                    </select>
-                    {trocando.novoId && (
-                      <Segmento valor={trocando.pontua} onChange={(v) => setTrocando((t) => ({ ...t, pontua: v }))}
-                        opcoes={[
-                          { valor: true, rotulo: "Vai pontuar" },
-                          { valor: false, rotulo: "Só completando (§10º)", cor: T.laranja },
-                        ]} />
-                    )}
-                    {opcoes.length === 0 && <p style={{ fontSize: 9.5, color: T.fraco }}>Ninguém presente disponível — marque a chegada na etapa Presença.</p>}
-                    <div className="flex gap-1.5">
-                      <Botao variante="secundario" className="flex-1" style={{ minHeight: 36, fontSize: 11 }} onClick={() => setTrocando(null)}>Cancelar</Botao>
-                      <Botao className="flex-1" style={{ minHeight: 36, fontSize: 11 }} disabled={!trocando.novoId}
-                        onClick={() => {
-                          if (lancou > 0 && !confirm(`${jog[jid]?.nome} tem lançamentos nesta partida (gols, assistências ou cartões). Trocar apaga esses lançamentos — o placar não muda sozinho, ajuste-o se precisar. Continuar?`)) return;
-                          trocarJogador(trocando.timeId, jid, trocando.novoId, trocando.pontua);
-                        }}>
-                        Trocar
-                      </Botao>
-                    </div>
-                  </div>
-                );
-              })()}
-              {soCartao && <p style={{ fontSize: 9.5, color: T.laranja, marginBottom: 4 }}>completou equipe — não pontua nada, nem cartão</p>}
-              {!soCartao && virouVermelho && bruto.ca >= 2 && <p style={{ fontSize: 9.5, color: T.vermelho, marginBottom: 4 }}>2º amarelo → vermelho (Art. 81º) · cartões bloqueados nesta partida</p>}
-              {!soCartao && virouVermelho && bruto.ca < 2 && <p style={{ fontSize: 9.5, color: T.vermelho, marginBottom: 4 }}>Amarelo + azul → vermelho (Art. 81º) · cartões bloqueados nesta partida</p>}
-              {!soCartao && !virouVermelho && bruto.cv > 0 && <p style={{ fontSize: 9.5, color: T.vermelho, marginBottom: 4 }}>Vermelho direto · cartões bloqueados nesta partida</p>}
-              <div className="grid grid-cols-2 gap-1">
-                {[["gols", "GOL"], ["assistencias", "ASS"]].map(([campo, rot]) => (
-                  <div key={campo} className="flex items-center justify-between rounded" style={{ background: "rgba(255,255,255,.06)", padding: 2, opacity: soCartao ? 0.3 : 1 }}>
-                    <button onClick={() => !soCartao && setEvento(jid, campo, -1)} style={{ padding: "4px 6px", color: T.fraco, fontSize: 15 }}>−</button>
-                    <span style={{ fontSize: 9, color: T.fraco }}>{rot}</span>
-                    <span style={{ width: 12, textAlign: "center", fontSize: 12.5, fontWeight: 800, color: T.texto }}>{bruto[campo]}</span>
-                    <button onClick={() => {
-                      if (soCartao) return;
-                      setEvento(jid, campo, 1);
-                      if (campo === "gols" && camerasAtivas) {
-                        gatilhoLancesRef?.current?.golMarcado(
-                          jid, jog[jid]?.nome,
-                          `camp-${rodada.id}-${jogo.id}`,
-                          `Rodada ${rodada.numero} · Partida ${jogo.numero}`,
-                        );
-                      }
-                    }} style={{ padding: "4px 6px", color: T.ouro, fontSize: 15 }}>+</button>
-                  </div>
-                ))}
-              </div>
-              {(() => {
-                const temCartaoReal = bruto.ca > 0 || bruto.cv > 0 || bruto.cz > 0;
-                if (!cartoesAbertos[jid] && !temCartaoReal) {
-                  return !soCartao && (
-                    <button onClick={() => setCartoesAbertos((s) => ({ ...s, [jid]: true }))}
-                      className="mt-1 w-full text-center" style={{ padding: "3px 0", fontSize: 9.5, fontWeight: 700, color: T.fraco, letterSpacing: ".04em" }}>
-                      + cartão
-                    </button>
-                  );
-                }
-                return (
-                  <>
-                    <div className="mt-1 grid grid-cols-3 gap-1">
-                      {[["ca", "CA", T.laranja], ["cv", "CV", T.vermelho], ["cz", "CA", T.gk]].map(([campo, rot, cor]) => {
-                        const desativado = soCartao;
-                        const travaSoma = !soCartao && expulso;
-                        return (
-                          <div key={campo} className="flex items-center justify-between rounded" style={{ background: `${cor}1F`, padding: 2, opacity: desativado ? 0.3 : 1 }}>
-                            <button onClick={() => !desativado && setEvento(jid, campo, -1)} style={{ padding: "4px 6px", color: T.fraco, fontSize: 15 }}>−</button>
-                            <span style={{ fontSize: 9, color: cor, fontWeight: 800 }}>{rot}</span>
-                            <span style={{ width: 12, textAlign: "center", fontSize: 12.5, fontWeight: 800, color: T.texto }}>{bruto[campo]}</span>
-                            <button onClick={() => !desativado && !travaSoma && setEvento(jid, campo, 1)} title={travaSoma ? "Já foi expulso nesta partida — não dá pra somar mais cartão" : undefined}
-                              style={{ padding: "4px 6px", color: cor, fontSize: 15, opacity: travaSoma ? 0.35 : 1 }}>+</button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {!temCartaoReal && !soCartao && (
-                      <button onClick={() => setCartoesAbertos((s) => { const c = { ...s }; delete c[jid]; return c; })}
-                        className="mt-1 w-full text-center" style={{ padding: "3px 0", fontSize: 9.5, fontWeight: 700, color: T.fraco, letterSpacing: ".04em" }}>
-                        − recolher
-                      </button>
-                    )}
-                  </>
-                );
-              })()}
-            </div>
-          );
-        })}
-        {(time.vagasAbertas || []).map((papel, vi) => {
-          const jaEscolhidos = new Set([...idsDoTime(tA), ...idsDoTime(tB)]);
-          const opcoes = candidatos.filter((e) => !jaEscolhidos.has(e.jogador.id));
-          const chave = `${time.id}-${vi}`;
-          const pend = pendenteVaga[chave];
-          return (
-            <div key={chave} className="rounded" style={{ background: "rgba(255,165,61,.1)", border: `1px dashed ${T.laranja}`, padding: 5 }}>
-              <div className="mb-1 flex items-center gap-1">
-                {papel === "GOLEIRO" ? <IconeGoleiro tam={12} /> : <span style={{ fontSize: 10, color: T.laranja }}>▢</span>}
-                <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: ".06em", color: T.laranja }}>VAGA DE {papel} · quem chegou</span>
-              </div>
-              <select value={pend?.jogadorId || ""} onChange={(e) => {
-                const jid = e.target.value;
-                if (!jid) { setPendenteVaga((s) => { const c = { ...s }; delete c[chave]; return c; }); return; }
-                setPendenteVaga((s) => ({ ...s, [chave]: { jogadorId: jid, pontua: !apareceuEmOutroJogo(jid) } }));
-              }}
-                style={{ ...inputStyle, padding: "7px 4px", fontSize: 11.5 }}>
-                <option value="">— escolher quem completa —</option>
-                {opcoes.map(({ jogador: o, linha: l }) => (
-                  <option key={o.id} value={o.id}>
-                    {o.nome}{o.posicao === "GOLEIRO" ? " (GK)" : ""} · {l?.estrelas || 1}★
-                    {apareceuEmOutroJogo(o.id) ? " · já jogou noutro jogo" : ""}
-                  </option>
-                ))}
-              </select>
-              {pend && (
-                <div className="mt-1.5 space-y-1.5">
-                  <Segmento valor={pend.pontua} onChange={(v) => setPendenteVaga((s) => ({ ...s, [chave]: { ...s[chave], pontua: v } }))}
-                    opcoes={[
-                      { valor: true, rotulo: "Vai pontuar" },
-                      { valor: false, rotulo: "Só completando (§10º)", cor: T.laranja },
-                    ]} />
-                  <Botao className="w-full" style={{ minHeight: 38, fontSize: 11 }}
-                    onClick={() => { preencherVaga(time.id, papel, pend.jogadorId, pend.pontua); setPendenteVaga((s) => { const c = { ...s }; delete c[chave]; return c; }); }}>
-                    Encaixar {jog[pend.jogadorId]?.nome}
-                  </Botao>
-                </div>
-              )}
-              {opcoes.length === 0 && <p style={{ fontSize: 9.5, color: T.fraco, marginTop: 3 }}>Ninguém presente disponível ainda — marque a chegada na etapa Presença.</p>}
-            </div>
-          );
-        })}
-      </div>
-      <div className="mt-1 flex items-center justify-between rounded px-2" style={{ background: "rgba(255,165,61,.08)" }}
-        title="Gol de quem não pontua (§10º) ou que ninguém viu quem fez — soma no placar da própria equipe sem ir pra estatística de ninguém">
-        <span style={{ fontSize: 9.5, letterSpacing: ".06em", textTransform: "uppercase", color: T.laranja }}>Gol não computado</span>
-        <div className="flex items-center">
-          <button onClick={() => ajustarGolQueSomaNoPlacar(`golsNaoComputados${lado}`, lado, -1)} style={{ padding: "6px 8px", color: T.fraco }}>−</button>
-          <span style={{ width: 12, textAlign: "center", fontSize: 12.5, fontWeight: 800 }}>{jogo[`golsNaoComputados${lado}`] || 0}</span>
-          <button onClick={() => ajustarGolQueSomaNoPlacar(`golsNaoComputados${lado}`, lado, 1)} style={{ padding: "6px 8px", color: T.laranja }}>+</button>
-        </div>
-      </div>
-      <div className="mt-1 flex items-center justify-between rounded px-2" style={{ background: "rgba(255,255,255,.06)" }}>
-        <span style={{ fontSize: 9.5, letterSpacing: ".06em", textTransform: "uppercase", color: T.fraco }}>Gol contra</span>
-        <div className="flex items-center">
-          <button onClick={() => ajustarGolQueSomaNoPlacar(`golsContra${lado}`, lado === "A" ? "B" : "A", -1)} style={{ padding: "6px 8px", color: T.fraco }}>−</button>
-          <span style={{ width: 12, textAlign: "center", fontSize: 12.5, fontWeight: 800 }}>{jogo[`golsContra${lado}`] || 0}</span>
-          <button onClick={() => ajustarGolQueSomaNoPlacar(`golsContra${lado}`, lado === "A" ? "B" : "A", 1)} style={{ padding: "6px 8px", color: T.ouro }}>+</button>
-        </div>
-      </div>
-    </div>
-  );
-
-  return (
-    <Painel style={{ borderColor: jogo.encerrado ? "rgba(61,214,140,.45)" : T.borda, position: "relative" }}>
-      <button onClick={() => setAberta((v) => !v)} title={aberta ? "Recolher esta partida" : "Expandir esta partida"}
-        style={{ position: "absolute", top: 8, right: 8, zIndex: 1, padding: 8, color: T.fraco }}>
-        <IconeSetaDireita tam={15} style={{ transform: aberta ? "rotate(90deg)" : "none", transition: "transform .15s" }} />
-      </button>
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 px-3 py-3">
-        {["A", "B"].map((lado, i) => (
-          <React.Fragment key={lado}>
-            {i === 1 && <span style={{ fontSize: 24, fontWeight: 200, color: "rgba(255,255,255,.2)" }}>×</span>}
-            <div className="text-center">
-              <p style={{ marginBottom: 4, fontSize: 10.5, fontWeight: 900, letterSpacing: ".12em", color: corDe((lado === "A" ? tA : tB).chave).hex }}>{(lado === "A" ? tA : tB).cor}</p>
-              <p style={{ marginBottom: 4, fontSize: 12, fontWeight: 800, color: T.ouro }}>{lado === "A" ? forcaA : forcaB}★</p>
-              <div className="flex items-center justify-center gap-1.5">
-                <button onClick={() => setPlacar(lado, -1)} style={{ width: 40, height: 40, borderRadius: 9, background: "rgba(255,255,255,.08)", color: T.secundario, fontSize: 20 }}>−</button>
-                <span className="font-destaque" style={{ width: 42, fontSize: 40, fontWeight: 700, lineHeight: 1 }}>{p[lado]}</span>
-                <button onClick={() => setPlacar(lado, 1)} style={{ width: 40, height: 40, borderRadius: 9, background: "rgba(255,255,255,.08)", color: T.ouro, fontSize: 20 }}>+</button>
-              </div>
-            </div>
-          </React.Fragment>
-        ))}
-      </div>
-
-      {aberta && (
-        <>
-          <div className="mx-3 mb-2 flex items-center justify-center gap-2 rounded-lg px-3 py-1.5" style={{ background: "rgba(0,0,0,.22)" }}>
-            <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", color: T.fraco }}>Equilíbrio</span>
-            <span style={{ fontSize: 13, fontWeight: 900, color: indiceEquilibrio >= 90 ? T.verde : indiceEquilibrio >= 75 ? T.ouro : T.laranja }}>{indiceEquilibrio}%</span>
-            <span style={{ fontSize: 10.5, color: T.secundario }}>· Δ {diffForca}★</span>
-            {temVagaAberta && <span style={{ fontSize: 10, color: T.laranja }}>· parcial (tem vaga aberta)</span>}
-          </div>
-
-          <p className="px-3 pb-2 text-center" style={{ fontSize: 10.5, lineHeight: 1.5, color: p.divergente ? T.laranja : T.fraco }}>
-            {p.manual ? <>Placar lançado à mão{p.divergente && ` · a soma dos gols dá ${p.calcA}×${p.calcB}`} · <button onClick={() => mudar({ placarManual: null })} style={{ textDecoration: "underline" }}>voltar ao automático</button></>
-              : "Placar somado dos gols individuais + gols contra + gols não computados. Toque em +/− para sobrescrever."}
-          </p>
-
-          <div className="grid grid-cols-2 gap-2 px-2 py-2" style={{ borderTop: `1px solid ${T.borda}` }}>
-            <Coluna time={tA} lado="A" /><Coluna time={tB} lado="B" />
-          </div>
-
-          <div className="p-3" style={{ borderTop: `1px solid ${T.borda}` }}>
-            <Botao variante={jogo.encerrado ? "secundario" : "primario"} className="w-full"
-              onClick={() => {
-                mudar({ encerrado: !jogo.encerrado, placarManual: jogo.placarManual || { A: p.A, B: p.B } });
-                avisar(jogo.encerrado ? `Partida ${jogo.numero} reaberta` : `Partida ${jogo.numero} encerrada · ${p.A}×${p.B}`);
-              }}>{jogo.encerrado ? "Reabrir partida" : "Encerrar partida"}</Botao>
-            {!jogo.encerrado && <p className="mt-1.5 text-center" style={{ fontSize: 10.5, color: T.fraco }}>Só entra na classificação depois de encerrada.</p>}
-          </div>
-        </>
-      )}
-    </Painel>
   );
 }
 

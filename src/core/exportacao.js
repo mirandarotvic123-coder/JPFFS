@@ -20,7 +20,7 @@ function csvSumula(rodada, nomes, niveis) {
   const linhas = [["Rodada", rodada.numero, "Data", rodada.data]];
   const atrasados = Object.entries(niveis || {});
   if (atrasados.length) {
-    linhas.push([]); linhas.push(["ATRASOS (Art. 34º §8º)", "Jogador", "Nível", "Punição"]);
+    linhas.push([]); linhas.push(["ATRASOS (Art. 34º §9º)", "Jogador", "Nível", "Punição"]);
     for (const [jid, n] of atrasados) linhas.push(["", nomes[jid] || jid, `${n}º`, nivelInfo(n)?.rotulo || ""]);
   }
   if ((rodada.ajustes || []).length) {
@@ -40,7 +40,7 @@ function csvSumula(rodada, nomes, niveis) {
     for (const t of [tA, tB]) for (const j of t.jogadores || []) {
       const ev = eventoDe(jogo, j.jogadorId);
       const obs = [...(jogo.completaTime || []), ...(jogo.soCartoes || [])].includes(j.jogadorId)
-        ? "Completou equipe (§10º) — não pontua nada, nem cartão" : "";
+        ? "Completou equipe (Art. 35º §1º) — não pontua nada, nem cartão" : "";
       linhas.push([t.cor, nomes[j.jogadorId] || j.jogadorId, j.atuaComoGoleiro ? "Goleiro" : "Linha",
       ev.gols, ev.assistencias, ev.ca, ev.cv, ev.cz, niveis?.[j.jogadorId] ? `${niveis[j.jogadorId]}º` : "", obs]);
     }
@@ -167,6 +167,12 @@ function imagemTabela(cl, cfg, meta) {
   }
 }
 
+/* Estatuto (estatuto/Estatuto-Geral-JPFFS-2026.pdf): Art. 34º §1º = sorteio pela
+ * classificação, pra equilibrar os times; §11º = partida sem duas equipes completas
+ * ganha sorteio adicional com os sobressalentes + atrasados dentro da tolerância.
+ * Citado no aviso de escalação provisória da imagem. */
+const ARTIGO_EQUILIBRIO = "Art. 34º §1º e §11º";
+
 function imagemEscalacoes(rodada, nomes, niveis, cfg) {
   const jogos = [...(rodada.jogos || [])].sort((a, b) => a.numero - b.numero);
   const blocos = jogos.map((jogo) => {
@@ -188,7 +194,8 @@ function imagemEscalacoes(rodada, nomes, niveis, cfg) {
       const forcaMedia = quePontuam.length ? forca / quePontuam.length : 0;
       return { cor: t.cor, hex: corDe(t.chave).hex, itens: [...itens, ...vagas], forca, forcaMedia };
     };
-    return { numero: jogo.numero, extra: !!jogo.extra, A: ladoDe(tA), B: ladoDe(tB) };
+    const incompleta = (tA.vagasAbertas || []).length + (tB.vagasAbertas || []).length > 0;
+    return { numero: jogo.numero, extra: !!jogo.extra, incompleta, A: ladoDe(tA), B: ladoDe(tB) };
   }).filter(Boolean);
   if (!blocos.length) return;
 
@@ -199,10 +206,11 @@ function imagemEscalacoes(rodada, nomes, niveis, cfg) {
 
   const esc = 2, pad = 24, larg = 680, colGap = 14;
   const hCab = 104, hPartidaHead = 28, hTimeHead = 20, hLinha = 24, gapPartida = 16, gapFinal = 34;
+  const hAviso = 58; // faixa "escalação provisória" (só nas partidas com vaga em aberto)
   const colW = (larg - pad * 2 - colGap) / 2;
 
   let alt = hCab;
-  for (const b of blocos) alt += hPartidaHead + 6 + hTimeHead + Math.max(b.A.itens.length, b.B.itens.length, 1) * hLinha + gapPartida;
+  for (const b of blocos) alt += hPartidaHead + 6 + hTimeHead + Math.max(b.A.itens.length, b.B.itens.length, 1) * hLinha + (b.incompleta ? hAviso : 0) + gapPartida;
   alt += gapFinal;
 
   const logo = new Image();
@@ -242,8 +250,8 @@ function imagemEscalacoes(rodada, nomes, niveis, cfg) {
     let y = hCab;
     for (const b of blocos) {
       x.fillStyle = "rgba(255,255,255,0.06)"; x.fillRect(pad, y, larg - pad * 2, hPartidaHead);
-      x.fillStyle = T.ouro; x.font = "800 12px system-ui, sans-serif"; x.textAlign = "center";
-      x.fillText(`PARTIDA ${b.numero}${b.extra ? " · SOBRESSALENTES" : ""}`, larg / 2, y + hPartidaHead / 2);
+      x.fillStyle = b.incompleta ? T.laranja : T.ouro; x.font = "800 12px system-ui, sans-serif"; x.textAlign = "center";
+      x.fillText(`PARTIDA ${b.numero}${b.extra ? " · SOBRESSALENTES" : ""}${b.incompleta ? " · INCOMPLETA" : ""}`, larg / 2, y + hPartidaHead / 2);
       y += hPartidaHead + 6;
 
       const colX = [pad, pad + colW + colGap];
@@ -289,11 +297,24 @@ function imagemEscalacoes(rodada, nomes, niveis, cfg) {
         });
         y += hLinha;
       }
+      if (b.incompleta) {
+        // deixa explícito, na própria imagem que vai pro grupo, que esses times ainda podem mudar
+        const yA = y + 4, hA = hAviso - 8;
+        x.fillStyle = "rgba(255,165,61,.14)"; x.fillRect(pad, yA, larg - pad * 2, hA);
+        x.fillStyle = T.laranja; x.fillRect(pad, yA, 3, hA);
+        x.textAlign = "left";
+        x.font = "800 10.5px system-ui, sans-serif";
+        x.fillText("⚠ ESCALAÇÃO PROVISÓRIA — FALTAM JOGADORES", pad + 12, yA + 12);
+        x.fillStyle = T.texto; x.font = "400 10.5px system-ui, sans-serif";
+        x.fillText("Quem chegar, inclusive atrasado dentro da tolerância, completa as vagas.", pad + 12, yA + 26);
+        x.fillText(`Pode haver novo sorteio desta partida para reequilibrar os times (${ARTIGO_EQUILIBRIO}).`, pad + 12, yA + 40);
+        y += hAviso;
+      }
       y += gapPartida;
     }
 
     x.textAlign = "left"; x.fillStyle = T.fraco; x.font = "400 10px system-ui, sans-serif";
-    x.fillText("COMPLETOU = entrou só para completar a equipe (Art. 34º §10º), não pontua · badge = nível de atraso na rodada · ★ = classe do jogador no sorteio", pad, alt - 16);
+    x.fillText("COMPLETOU = entrou só para completar a equipe (Art. 35º §1º), não pontua · badge = nível de atraso na rodada · ★ = classe do jogador no sorteio", pad, alt - 16);
 
     cv.toBlob((blob) => {
       const url = URL.createObjectURL(blob);

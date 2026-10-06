@@ -140,7 +140,7 @@ function TelaClassificacao({ base, dados, cfg, avisar }) {
         <Painel className="p-3" style={{ fontSize: 11.5, lineHeight: 1.65, color: T.secundario }}>
           <b style={{ color: T.ouro }}>Pontuação</b> · P = J + (3 × V) + E + P⁺ − P⁻ · % = P ÷ ({cfg.baseAproveitamento === "previstas" ? cfg.rodadasPrevistas : dados.rodadasRealizadas} × {cfg.tetoPorRodada}) = ÷ {dados.teto}<br />
           <b style={{ color: T.ouro }}>Cartões</b> · {cfg.cartoesPorPonto} amarelos/azuis = −{cfg.pontosPorCicloAmarelo} ponto (contagem reinicia, Art. 82º §2º) · cada vermelho = −{cfg.pontosPorVermelho}<br />
-          <b style={{ color: T.ouro }}>Atrasos</b> · 1º alerta · 2º amarelo · 3º perde a presença · 4º suspensão. Zera na virada do mês, salvo emenda (§9º)<br />
+          <b style={{ color: T.ouro }}>Atrasos</b> · 1º alerta · 2º amarelo · 3º perde a presença · 4º suspensão. Zera na virada do mês, salvo emenda (§10º)<br />
           <b style={{ color: T.ouro }}>Classe</b> · 1º-3º = 5★ · 4º-6º = 4★ · 7º-9º = 3★ · 10º-14º = 2★ · 15º+ = 1★<br />
           <span style={{ color: T.fraco }}>Escala única: a classe sai da posição geral na tabela, goleiro (<span style={{ color: T.gk }}>★ azul</span>) e linha (<span style={{ color: T.ouro }}>★ ouro</span>) na mesma fila — a cor é só identificação visual. Toque na linha para ver o rank dentro da categoria.</span><br />
           <span style={{ color: T.ouro }}>▌</span> Zona Supercopa · <IconeGoleiro tam={13} /> goleiro · <span style={{ color: T.vermelho }}>$</span> pendência · (*) a confirmar
@@ -196,7 +196,7 @@ function Resultados({ base, cfg }) {
                 <div className="flex flex-wrap items-center" style={{ gap: "6px 12px", fontSize: 10, color: T.fraco, paddingBottom: 2 }}>
                   <span className="flex items-center" style={{ gap: 4 }}><IconeGoleiro tam={11} /> goleiro · <IconeLinha tam={11} /> linha</span>
                   <span>⚽ gol · 👟 assistência · 🟨 amarelo · 🟦 azul · 🟥 vermelho · 🔴 gol contra · ❔ gol não computado</span>
-                  <span style={{ color: T.laranja, fontStyle: "italic" }}>● nome em laranja itálico = completou a equipe (§10º), não pontuou</span>
+                  <span style={{ color: T.laranja, fontStyle: "italic" }}>● nome em laranja itálico = completou a equipe (Art. 35º §1º), não pontuou</span>
                 </div>
                 {jogos.map((jogo) => {
                   const p = placarDe(jogo, rodada);
@@ -355,7 +355,7 @@ function Documentacao({ cfg }) {
           <Item>10º ao 14º colocado <Estrelas n={2} tam={11} /></Item>
           <Item>15º colocado em diante <Estrelas n={1} tam={11} /></Item>
         </Lista>
-        <p>Jogador novo no elenco entra direto com <Estrelas n={1} tam={11} /> (Art. 34º §11º), e vai subindo de classe
+        <p>Jogador novo no elenco entra direto com <Estrelas n={1} tam={11} /> (como todos no início do campeonato, Art. 34º §12º), e vai subindo de classe
           conforme sobe na tabela geral com o passar das rodadas. O ícone <IconeGoleiro tam={12} /> é só uma marcação
           visual de "esse aqui é goleiro" — não muda a régua de estrelas.</p>
       </ItemDoc>
@@ -380,7 +380,7 @@ function Documentacao({ cfg }) {
           ))}
         </div>
         <p>O contador zera toda virada de mês — <i>a menos que</i> o último atraso do jogador ainda não tenha sido
-          "compensado" por uma chegada no horário depois dele (Art. 34º §9º, a "emenda"). Nesse caso o contador
+          "compensado" por uma chegada no horário depois dele (Art. 34º §10º, a "emenda"). Nesse caso o contador
           continua contando no mês seguinte, em vez de voltar a zero.</p>
       </ItemDoc>
 
@@ -411,7 +411,7 @@ function Documentacao({ cfg }) {
         <p>Quando o número de presentes não fecha um múltiplo exato de partida completa, sobra sempre uma partida
           extra ("sobressalentes") com vaga em aberto — nunca sobra vaga espalhada em várias partidas ao mesmo tempo.
           Essa vaga se completa na hora, conforme mais gente for chegando.</p>
-        <p>Quem entra numa partida só pra <Forte>completar a equipe</Forte> porque estava faltando gente (Art. 34º §10º)
+        <p>Quem entra numa partida só pra <Forte>completar a equipe</Forte> porque estava faltando gente (Art. 35º §1º)
           não pontua <i>nada</i> ali — nem presença, nem gol, nem cartão. É só pra fechar o time e a partida acontecer.</p>
         <p>O sorteio nunca promove um jogador de linha a goleiro, e nunca coloca dois goleiros na mesma equipe.</p>
       </ItemDoc>

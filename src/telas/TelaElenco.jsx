@@ -87,7 +87,7 @@ function TelaElenco({ base, setBase, dados, cfg, avisar }) {
       )}
 
       <section>
-        <Secao titulo="Novo jogador" detalhe="§11º — entra com 1★" />
+        <Secao titulo="Novo jogador" detalhe="§12º — entra com 1★" />
         <Painel className="space-y-2 p-3">
           <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome" style={inputStyle} />
           <Segmento titulo="Posição" valor={posicao} onChange={setPosicao}
@@ -101,7 +101,7 @@ function TelaElenco({ base, setBase, dados, cfg, avisar }) {
             <Botao variante="secundario" onClick={() => inputRef.current?.click()}>Importar</Botao>
             <input ref={inputRef} type="file" accept=".json,.csv" className="hidden" onChange={importar} />
           </div>
-          <p style={{ fontSize: 11, color: T.fraco }}>Art. 34º §11º: todo jogador começa com 1 estrela; a classe passa a sair da posição na tabela.</p>
+          <p style={{ fontSize: 11, color: T.fraco }}>Art. 34º §12º: todo jogador começa com 1 estrela; a classe passa a sair da posição na tabela.</p>
         </Painel>
       </section>
 

@@ -3,7 +3,7 @@ import { T, AMARELO, AZUL, corDe } from "../theme";
 import { id } from "../core/repositorio";
 import { barradoDoRachao } from "../core/regras";
 import {
-  criarSessao, aguardandoLinha, goleirosLivres, proximosTimes,
+  criarSessao, ordemRachaoDaRodada, aguardandoLinha, goleirosLivres, proximosTimes,
   podeIniciarPartida, iniciarPartida, atribuirGoleiro, limparGoleiro, marcarGol,
   encerrarPartida, encerrarManual, reabrirUltimaPartida, resolverParOuImpar, resolverPrimeiroGol, substituirLinha, removerJogador,
   inserirNaFila, ordemGeral, reclassificarJogador, avisosSessao, NOME_LADO,
@@ -153,7 +153,7 @@ function TelaRachao({ base, avisar }) {
           }
         }}>Encerrar jogos do Rachão</Botao>
       </div>
-      <ListaChegada {...{ sessao, convidados, nomes, ordemIdx }} />
+      <ListaChegada {...{ sessao, convidados, nomes, ordemIdx, base }} />
     </div>
   );
 }
@@ -161,10 +161,17 @@ function TelaRachao({ base, avisar }) {
 /* ------------------------- Lista de chegada (só visual) --------------------
  * Mistura goleiro e convidado numa lista única, na ordem em que cada um
  * entrou no dia. Não é a fila do jogo (aquela gira com vitória/derrota) —
- * é só uma referência de "quem chegou quando", meio apagada de propósito. */
+ * é só uma referência de "quem chegou quando", meio apagada de propósito.
+ * Quando o Rachão veio de uma rodada do Campeonato, a ordem já é a do fim do
+ * Campeonato (quem completou partida no fim, Art. 35º §2º) e esses aparecem
+ * com a etiqueta "+P2" (completou a partida 2). */
 
-function ListaChegada({ sessao, convidados, nomes, ordemIdx }) {
+function ListaChegada({ sessao, convidados, nomes, ordemIdx, base }) {
   const ordenados = ordemGeral(sessao, ordemIdx);
+  const rodadaOrigem = sessao.rodadaOrigemId ? base.rodadas.find((r) => r.id === sessao.rodadaOrigemId) : null;
+  const completou = Object.fromEntries((rodadaOrigem ? ordemRachaoDaRodada(rodadaOrigem).itens : [])
+    .filter((it) => it.foiProFim)
+    .map((it) => [it.jid, it.partidas.filter((p) => p.completou).map((p) => p.numero)]));
   const ehGoleiro = (jid) => sessao.goleiros.includes(jid);
   const ehConvidado = (jid) => convidados.some((c) => c.id === jid);
 
@@ -179,9 +186,20 @@ function ListaChegada({ sessao, convidados, nomes, ordemIdx }) {
             {ehGoleiro(jid) && <IconeGoleiro tam={11} />}
             <span className="truncate" style={{ color: T.secundario }}>{nomes[jid] || "?"}</span>
             {ehConvidado(jid) && <span style={{ fontSize: 8, color: T.roxo, flexShrink: 0 }}>CONV</span>}
+            {completou[jid] && (
+              <span title={`Completou a partida ${completou[jid].join(" e ")} do Campeonato — foi pro fim da fila (Art. 35º §2º)`}
+                style={{ fontSize: 9, fontWeight: 800, color: T.laranja, border: `1px solid ${T.laranja}66`, borderRadius: 999, padding: "0 5px", flexShrink: 0 }}>
+                +P{completou[jid].join(",")}
+              </span>
+            )}
           </div>
         ))}
       </div>
+      {Object.keys(completou).length > 0 && (
+        <p style={{ marginTop: 8, fontSize: 10, lineHeight: 1.4, color: T.laranja }}>
+          +P2 = completou a partida 2 do Campeonato e foi pro fim da fila (Art. 35º §2º).
+        </p>
+      )}
     </aside>
   );
 }
@@ -245,7 +263,8 @@ function AberturaRachao({ base, avisar, setSessao, setConvidados, setOrdemIdx })
 
   // pendência financeira "total" barra do Rachão também: quem já estava na chamada do
   // Campeonato e foi marcado devendo depois sai da lista aqui.
-  const ordemDoCampeonato = rodadaDoDia?.ordemChegada || [];
+  // ordem de chegada do Campeonato, com quem completou partida no fim (Art. 35º §2º)
+  const ordemDoCampeonato = rodadaDoDia ? ordemRachaoDaRodada(rodadaDoDia).ordem : [];
   const chegadaDoCampeonato = ordemDoCampeonato.filter((jid) => !barradoDoRachao(porId[jid]));
   const barradosDoCampeonato = ordemDoCampeonato.filter((jid) => barradoDoRachao(porId[jid]));
 
@@ -275,7 +294,7 @@ function AberturaRachao({ base, avisar, setSessao, setConvidados, setOrdemIdx })
 
         {rodadaDoDia ? (
           <p style={{ fontSize: 12, color: T.secundario }}>
-            Lista de presença vindo da ordem de chegada do Campeonato. Total de: {chegadaDoCampeonato.length} jogadores.
+            Lista de presença vindo da ordem de chegada do Campeonato (quem completou partida vai pro fim — Art. 35º §2º). Total de: {chegadaDoCampeonato.length} jogadores.
             {barradosDoCampeonato.length > 0 && (
               <b style={{ color: T.vermelho }}> Fora por pendência financeira: {barradosDoCampeonato.map((jid) => porId[jid].nome).join(", ")}.</b>
             )}
@@ -542,7 +561,7 @@ function TimeQuadra({ lado, sessao, q, atualizar, avisar, nomes }) {
             <span className="flex items-center gap-1" style={{ fontSize: 12 }}>
               <IconeGoleiro tam={12} />{nomes[time.goleiro] || "?"}
               {!sessao.goleiros.includes(time.goleiro) && (
-                <span title="Jogador de linha completando o gol por falta de goleiro — não conta a partida pra ele (Art. 34º §10º, mesma lógica do Campeonato)"
+                <span title="Jogador de linha completando o gol por falta de goleiro — não conta a partida pra ele (mesma lógica do “só completando” do Campeonato)"
                   style={{ fontSize: 8, fontWeight: 800, color: T.laranja }}>LINHA NO GOL</span>
               )}
             </span>
@@ -614,7 +633,7 @@ function ProximosTimesPainel({ sessao, nomes }) {
   const proximos = proximosTimes(sessao, 2);
   if (!proximos.length) return null;
   return (
-    <section>
+    <section style={{ maxWidth: 540, marginLeft: "auto", marginRight: "auto" }}>
       <Secao titulo="Próximos times" detalhe="prévia — muda conforme a fila muda" />
       <div className="grid grid-cols-2 gap-2">
         {proximos.map(({ jogadores, faltam, goleiro }, i) => (

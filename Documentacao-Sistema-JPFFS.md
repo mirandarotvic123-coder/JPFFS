@@ -1,7 +1,7 @@
 # JPFFS — Documentação técnica do sistema
 
 **Campeonato JPFFS + Rachão + Copa Hendor + Gravação de Lances**
-Referência de desenvolvimento · criada em 05/09/2026 · atualizada em 02/10/2026 (cabeçalho ao vivo com câmeras, Galeria por lance, correções do Rachão) · cobre o que está no ar hoje
+Referência de desenvolvimento · criada em 05/09/2026 · atualizada em 06/10/2026 (súmula nova, lista do dia, ordem do Rachão pelo Art. 35º §2º, Estatuto 2026) · cobre o que está no ar hoje
 
 > Documento voltado para quem mexe no código. Descreve
 > arquitetura, modelo de dados, regras de negócio e operação. Para o comportamento
@@ -136,7 +136,7 @@ saneamento/migração no carregamento):
       "posicao": "LINHA" | "GOLEIRO",
       "ativo": true,                    // false = fora da chamada, mantém histórico
       "convidado": false,              // true = joga mas fica fora da classificação
-      "estrelasIniciais": 1,           // §11º — todo mundo entra com 1★
+      "estrelasIniciais": 1,           // Art. 34º §12º — todo mundo entra com 1★
       "pendenciaFinanceira": false,    // marca o $; nunca desconta ponto
       "pendenciaEfeito": "aviso",      // só vale com o $ ligado: "aviso" | "sorteio" | "total" (ver 6.1)
       "pontuacaoPendente": false,      // idem
@@ -176,7 +176,7 @@ saneamento/migração no carregamento):
           "placarManual": null | { "A": 3, "B": 2 },
           "golsContraA": 0, "golsContraB": 0,
           "golsNaoComputadosA": 0, "golsNaoComputadosB": 0,
-          "soCartoes": ["<jid>"],   // entrou só p/ completar (§10º): não pontua, nem cartão
+          "soCartoes": ["<jid>"],   // entrou só p/ completar (Art. 35º §1º): não pontua, nem cartão
           "completaTime": [],       // legado; unido a soCartoes no cálculo
           "eventos": { "<jid>": { "gols": 1, "assistencias": 0, "ca": 0, "cv": 0, "cz": 0 } }
         }
@@ -519,6 +519,14 @@ quem chegou/saiu depois e devolve `desfazer: null`. `encerrarManual(sessao, lado
 encerra escolhendo quem fica (ou "os dois saem"), passando pelo mesmo `aplicarDesfecho`
 (fila, goleiros e corte do Art. 29º seguem normais). Testes: `testes/rachao.teste.mjs`.
 
+**Ordem do Rachão vinda do Campeonato** — `ordemRachaoDaRodada(rodada)`: ordem de
+chegada da chamada (só quem está presente/atrasado), com quem entrou numa partida
+**só pra completar** (`soCartoes`/`completaTime` do jogo, Art. 35º §1º) mandado pro
+**fim da lista** (Art. 35º §2º) — quem completou partida de número menor fica na
+frente; empate, ordem de chegada. Usada pela abertura do Rachão e pelo widget
+"Lista do dia" da etapa Partidas, então os dois mostram sempre a mesma fila.
+Sessão aberta antes de alguém completar não é reordenada (a fila do dia já girou).
+
 ### 6.3. `core/lances.js` — buffer duplo de gravação
 
 Motor de captura de clipe de **20s fixos** (`TOTAL_MS`). **Dois `MediaRecorder`**
@@ -544,7 +552,10 @@ navegador só finaliza os metadados no `stop()`).
 
 CSV (classificação, súmula), texto de WhatsApp (escalação), e **imagens PNG
 geradas via `<canvas>`** (tabela de classificação, escalações da rodada). Nenhuma
-regra mora aqui, só formatação.
+regra mora aqui, só formatação. Na imagem de escalações, partida com vaga em aberto
+sai como **"INCOMPLETA"** + faixa "escalação provisória" citando o Art. 34º §1º e
+§11º (sorteio adicional p/ reequilibrar, com atrasados dentro da tolerância) — o
+artigo fica em `ARTIGO_EQUILIBRIO`.
 
 ### 6.5. `core/repositorio.js` — I/O
 
@@ -602,8 +613,8 @@ lança as cobranças, troca jogadores e dá W.O. direto nos cartões das partida
 | Tela | Aba | Quem vê | O que faz |
 | --- | --- | --- | --- |
 | [`TelaClassificacao`](src/telas/TelaClassificacao.jsx) | Tabela | todos | Classificação geral, resultados por rodada, e a aba **Documentação** (regras do Estatuto, dentro do app). Exporta CSV/PNG. |
-| [`TelaRodada`](src/telas/TelaRodada.jsx) | Rodada | organizador | Fluxo de 3 etapas: **Presença** (chamada, registra `ordemChegada`; pendência `total` trava o botão e `sorteio` marca mas fica fora do sorteio) → **Sorteio** (motor de equilíbrio, ajuste fino arrastando, "Gravar partidas") → **Partidas** (súmulas ao vivo: gols, assistências, cartões, gol contra, gol não computado; encaixe de vagas abertas; **⇄ troca o jogador de qualquer vaga** (leva o "só completando" §10 se escolhido; apaga os lançamentos do que sai, com confirmação); ajustes P⁺/P⁻; fechar rodada). |
-| [`TelaRachao`](src/telas/TelaRachao.jsx) | Rachão | organizador | Abertura (puxa `ordemChegada` da rodada do dia **ou** chamada manual quando não há rodada) → quadra ao vivo, fila arrastável, próximos times, histórico do dia; **reabrir a última partida** e **decidir na mão quem fica** (seção 6.2). Fila, Goleiros e Adicionar à fila numa coluna centralizada de 540px. Estado no `localStorage`. Jogador com pendência `total` não entra na lista nem na fila. |
+| [`TelaRodada`](src/telas/TelaRodada.jsx) | Rodada | organizador | Fluxo de 3 etapas: **Presença** (chamada, registra `ordemChegada`; pendência `total` trava o botão e `sorteio` marca mas fica fora do sorteio) → **Sorteio** (motor de equilíbrio, ajuste fino arrastando, "Gravar partidas") → **Partidas**: uma [`Sumula`](src/telas/rodada/Sumula.jsx) por partida — cabeçalho "PARTIDA N" com Recolher/Abrir, placar estilo transmissão (tocar no número liga a correção à mão), um bloco por time com **+ Gol** (folha: quem fez → assistência; gol contra e não computado na mesma folha; dispara as câmeras no 1º toque), lista de gols com × e o elenco em tabela (G/A/cartões) — **tocar no jogador** abre gols, assistências, cartões, ⇄ trocar e "só completando" (Art. 35º §1º); embaixo só Encerrar/Reabrir. Widget recolhível [`ListaDoDia`](src/telas/rodada/ListaDoDia.jsx) no canto inferior direito com a ordem do Rachão. Ajustes P⁺/P⁻; fechar rodada. |
+| [`TelaRachao`](src/telas/TelaRachao.jsx) | Rachão | organizador | Abertura (puxa a ordem da rodada do dia via `ordemRachaoDaRodada` — quem completou partida no fim, com etiqueta **+P2** na lista lateral — **ou** chamada manual quando não há rodada) → quadra ao vivo, fila arrastável, próximos times, histórico do dia; **reabrir a última partida** e **decidir na mão quem fica** (seção 6.2). Fila, Goleiros e Adicionar à fila numa coluna centralizada de 540px. Estado no `localStorage`. Jogador com pendência `total` não entra na lista nem na fila. |
 | [`TelaElenco`](src/telas/TelaElenco.jsx) | Elenco | organizador | Cadastro/edição de jogadores, foto, posição, flags (ativo, convidado, **pendência financeira com efeito**: só avisar / sem sorteio / bloqueado), importar CSV/JSON. |
 | [`TelaConfig`](src/telas/TelaConfig.jsx) | Ajustes | organizador | Cadastros de acesso (aprovar/bloquear), histórico de rodadas (reabrir recalcula), regras (quase tudo bloqueado), export/import da base (JSON), restaurar padrão / base oficial. |
 | [`TelaGaleria`](src/telas/TelaGaleria.jsx) | Lances | aprovados | Clipes agrupados por partida e, dentro dela, **por lance**: os ângulos do mesmo lance viram um cartão só, lado a lado, com **"Ver juntos"** (player com os vídeos lado a lado). Filtros modalidade/tipo/jogador; ver, baixar (todos), apagar (só organizador). Atualiza via Realtime. |
@@ -800,6 +811,10 @@ Feche o `cloudflared` ao terminar — enquanto ele roda, qualquer pessoa com a U
 ---
 
 ## 11. Convenções de desenvolvimento
+
+- **Estatuto:** `estatuto/Estatuto-Geral-JPFFS-2026.pdf` (oficial) + `.txt` extraído
+  pra busca. Conferir a numeração ali antes de citar artigo no app (as citações foram
+  atualizadas pra revisão 2026 em 06/10/2026).
 
 - **Sem TypeScript, sem Tailwind, sem libs de UI.** Manter assim — a graça é zero
   configuração e zero risco de quebra em bump de versão.

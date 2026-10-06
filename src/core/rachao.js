@@ -541,9 +541,47 @@ function avisosSessao(sessao, presentesTotal) {
   return avisos;
 }
 
+/* --- ordem do Rachão a partir da rodada do Campeonato (Art. 35º §2º) -------
+ * A fila do Rachão é a ordem de chegada da chamada do Campeonato, com um ajuste:
+ * quem entrou numa partida só pra completar a equipe (Art. 35º §1º — o "só
+ * completando" da súmula, `soCartoes`/`completaTime` do jogo) vai pro FIM da
+ * lista. Entre esses, quem completou primeiro (partida de número menor) fica
+ * na frente; empate, vale a ordem de chegada. Só entra quem está presente ou
+ * atrasado agora (quem foi desmarcado na chamada sai).
+ * Devolve { ordem, itens } — `ordem` são os ids na sequência do Rachão e
+ * `itens` traz, pra cada um, as partidas do dia ({ numero, completou }). */
+function ordemRachaoDaRodada(rodada) {
+  const pres = rodada?.presencas || {};
+  const chegada = [...new Set(rodada?.ordemChegada || [])].filter((jid) => ["presente", "atrasado"].includes(pres[jid]));
+  const timePorIdLocal = Object.fromEntries((rodada?.times || []).map((t) => [t.id, t]));
+  const partidasDe = {};
+  for (const jogo of [...(rodada?.jogos || [])].sort((a, b) => a.numero - b.numero)) {
+    const completando = new Set([...(jogo.completaTime || []), ...(jogo.soCartoes || [])]);
+    for (const tid of [jogo.timeA, jogo.timeB]) {
+      for (const j of timePorIdLocal[tid]?.jogadores || []) {
+        (partidasDe[j.jogadorId] ||= []).push({ numero: jogo.numero, completou: completando.has(j.jogadorId), goleiro: !!j.atuaComoGoleiro });
+      }
+    }
+  }
+  const posChegada = Object.fromEntries(chegada.map((jid, i) => [jid, i]));
+  const primeiraCompletada = (jid) => Math.min(...(partidasDe[jid] || []).filter((p) => p.completou).map((p) => p.numero));
+  const completou = (jid) => (partidasDe[jid] || []).some((p) => p.completou);
+  const normais = chegada.filter((jid) => !completou(jid));
+  const fim = chegada.filter(completou)
+    .sort((a, b) => primeiraCompletada(a) - primeiraCompletada(b) || posChegada[a] - posChegada[b]);
+  const ordem = [...normais, ...fim];
+  return {
+    ordem,
+    itens: ordem.map((jid) => ({
+      jid, status: pres[jid], chegada: posChegada[jid] + 1,
+      partidas: partidasDe[jid] || [], foiProFim: completou(jid),
+    })),
+  };
+}
+
 export {
   RACHAO_PADRAO, NOME_LADO,
-  criarSessao, aguardandoLinha, goleirosLivres, proximosTimes,
+  criarSessao, ordemRachaoDaRodada, aguardandoLinha, goleirosLivres, proximosTimes,
   podeIniciarPartida, iniciarPartida,
   atribuirGoleiro, limparGoleiro, marcarGol,
   encerrarPartida, encerrarManual, reabrirUltimaPartida, resolverParOuImpar, resolverPrimeiroGol,
