@@ -84,7 +84,10 @@ function TelaClassificacao({ base, dados, cfg, avisar }) {
                 <th className="col-fixa col-fixa-nome" style={{ ...th, padding: "8px 6px", textAlign: "left" }}>JOGADOR</th>
                 <th style={{ ...th, textAlign: "center" }}>CLASSE</th>
                 {cols.map(([r]) => <th key={r} style={th}>{r}</th>)}
-                <th style={{ ...th, textAlign: "center" }}>ÚLT. 5</th>
+                <th style={{ ...th, textAlign: "center", whiteSpace: "nowrap" }}>
+                  ÚLT. 5 · RODADA Nº
+                  <MiniLegenda />
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -124,7 +127,7 @@ function TelaClassificacao({ base, dados, cfg, avisar }) {
                     </td>
                   ))}
                   <td style={{ ...td, padding: "8px 5px" }}>
-                    <UltimosJogos seq={detalhe === l.id ? l.ultimos10 : l.ultimos5} expandido={detalhe === l.id} />
+                    <UltimosJogos jogos={detalhe === l.id ? l.ultimosJogos : l.ultimosJogos.slice(-5)} expandido={detalhe === l.id} />
                   </td>
                 </tr>
               ))}
@@ -147,8 +150,9 @@ function TelaClassificacao({ base, dados, cfg, avisar }) {
           <b style={{ color: T.ouro }}>Classe</b> · 1º-3º = 5★ · 4º-6º = 4★ · 7º-9º = 3★ · 10º-14º = 2★ · 15º+ = 1★<br />
           <span style={{ color: T.fraco }}>Escala única: a classe sai da posição geral na tabela, goleiro (<span style={{ color: T.gk }}>★ azul</span>) e linha (<span style={{ color: T.ouro }}>★ ouro</span>) na mesma fila — a cor é só identificação visual. Toque na linha para ver o rank dentro da categoria.</span><br />
           <span style={{ color: T.ouro }}>▌</span> Zona Supercopa · <IconeGoleiro tam={13} /> goleiro · <span style={{ color: T.vermelho }}>$</span> pendência · (*) a confirmar<br />
-          <b style={{ color: T.ouro }}>Últ. 5</b> · {["V", "E", "D", "–"].map((r) => <QuadroResultado key={r} r={r} style={{ margin: "0 3px", verticalAlign: "-3px" }} />)}
-          vitória, empate, derrota, ausência · toque no jogador pra ver os 10 últimos
+          <b style={{ color: T.ouro }}>Últ. 5</b> · o número no quadrado é a rodada · {[["V", "vitória"], ["E", "empate"], ["D", "derrota"], ["–", "ausência"]].map(([r, nome]) => (
+            <span key={r} style={{ whiteSpace: "nowrap" }}><QuadroResultado r={r} rodada={12} style={{ margin: "0 3px", verticalAlign: "-3px" }} />{nome} </span>
+          ))}· toque no jogador pra ver os 10 últimos
         </Painel>
 
         <div className="grid grid-cols-2 gap-2">
@@ -159,36 +163,56 @@ function TelaClassificacao({ base, dados, cfg, avisar }) {
     </div>
   );
 }
-/* Um quadradinho de resultado (V/E/D/–), cores em COR_RESULTADO (theme.js). */
-function QuadroResultado({ r, style }) {
+const NOME_RESULTADO = { V: "vitória", E: "empate", D: "derrota" };
+const LARGURA_QUADRO = 18; // cabe rodada de 2 dígitos
+
+/* Um quadradinho de resultado: a COR diz o resultado (COR_RESULTADO em
+ * theme.js) e o número é a rodada. Ausência leva o número riscado. */
+function QuadroResultado({ r, rodada, style }) {
   const c = corResultado(r);
+  const ausente = !NOME_RESULTADO[r];
   return (
-    <span style={{
-      display: "inline-block", width: 16, height: 16, borderRadius: 3, fontSize: 9, fontWeight: 800, lineHeight: "16px", textAlign: "center",
-      background: c.fundo, color: c.texto, ...style,
-    }}>{r === "V" || r === "E" || r === "D" ? r : "–"}</span>
+    <span title={`Rodada ${rodada} — ${NOME_RESULTADO[r] || "ausente"}`} style={{
+      display: "inline-block", width: LARGURA_QUADRO, height: 16, borderRadius: 3, fontSize: 9, fontWeight: 800, lineHeight: "16px", textAlign: "center",
+      background: c.fundo, color: c.texto, textDecoration: ausente ? "line-through" : "none", ...style,
+    }}>{rodada}</span>
   );
 }
 
-/* Últimos jogos: 5 numa linha; expandido (toque no jogador), os 10 últimos em
- * duas linhas de 5, em ordem de leitura — do mais antigo (em cima, à esquerda)
- * ao mais recente (embaixo, à direita), igual à linha de 5. Com menos de 10
- * rodadas no app, as vagas do começo ficam vazias pra manter o alinhamento. */
-function UltimosJogos({ seq, expandido }) {
+/* Legenda compacta no cabeçalho da coluna (o cabeçalho fica congelado, então
+ * ela está sempre à vista). */
+function MiniLegenda() {
+  return (
+    <span className="flex justify-center" style={{ gap: 6, marginTop: 3, fontSize: 8, fontWeight: 700, letterSpacing: 0, textTransform: "none" }}>
+      {[["V", "vit"], ["E", "emp"], ["D", "der"], ["–", "aus"]].map(([r, rotulo]) => (
+        <span key={r} className="flex items-center" style={{ gap: 2 }}>
+          <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: corResultado(r).fundo }} />
+          {rotulo}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/* Últimos jogos (`jogos` = [{ r, rodada }]): 5 numa linha; expandido (toque no
+ * jogador), os 10 últimos em duas linhas de 5, em ordem de leitura — do mais
+ * antigo (em cima, à esquerda) ao mais recente (embaixo, à direita). Com menos
+ * de 10 rodadas no app, as vagas do começo ficam vazias pra manter o alinhamento. */
+function UltimosJogos({ jogos, expandido }) {
+  const quadro = (j, k) => <QuadroResultado key={k} r={j.r} rodada={j.rodada} />;
   if (!expandido) {
-    return <div className="flex justify-center gap-0.5">{seq.map((r, k) => <QuadroResultado key={k} r={r} />)}</div>;
+    return <div className="flex justify-center gap-0.5">{jogos.map(quadro)}</div>;
   }
-  const vagas = [...Array(Math.max(0, 10 - seq.length)).fill(null), ...seq];
+  const vagas = [...Array(Math.max(0, 10 - jogos.length)).fill(null), ...jogos];
   return (
     <div className="flex flex-col items-center" style={{ gap: 2 }}>
       {[vagas.slice(0, 5), vagas.slice(5)].map((linha, n) => (
         <div key={n} className="flex justify-center gap-0.5">
-          {linha.map((r, k) => r === null
-            ? <span key={k} style={{ display: "inline-block", width: 16, height: 16 }} />
-            : <QuadroResultado key={k} r={r} />)}
+          {linha.map((j, k) => j === null
+            ? <span key={k} style={{ display: "inline-block", width: LARGURA_QUADRO, height: 16 }} />
+            : quadro(j, k))}
         </div>
       ))}
-      <span style={{ fontSize: 8.5, color: T.fraco, whiteSpace: "nowrap" }}>antigo → recente</span>
     </div>
   );
 }

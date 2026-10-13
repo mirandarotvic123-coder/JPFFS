@@ -124,7 +124,7 @@ function calcularEstatisticas(base) {
   const disc = disciplinaAtrasos(base);
   const novo = {};
   for (const j of base.jogadores)
-    novo[j.id] = { J: 0, V: 0, E: 0, D: 0, GP: 0, GC: 0, CA: 0, CV: 0, CZ: 0, gols: 0, assistencias: 0, bonus: 0, penalidadeManual: 0, pontosAtraso: 0, atrasos: 0, sequencia: [] };
+    novo[j.id] = { J: 0, V: 0, E: 0, D: 0, GP: 0, GC: 0, CA: 0, CV: 0, CZ: 0, gols: 0, assistencias: 0, bonus: 0, penalidadeManual: 0, pontosAtraso: 0, atrasos: 0, sequencia: [], sequenciaRodadas: [] };
 
   const rodadas = [...base.rodadas].sort((a, b) => (a.data || "").localeCompare(b.data || "") || a.numero - b.numero);
   const encerrados = (r) => (r.jogos || []).filter((g) => g.encerrado);
@@ -165,7 +165,10 @@ function calcularEstatisticas(base) {
       if (aj.valor >= 0) st.bonus += aj.valor; else st.penalidadeManual += Math.abs(aj.valor);
     }
     if (encerrados(rodada).length > 0)
-      for (const j of base.jogadores) novo[j.id].sequencia.push(naRodada[j.id] || "–");
+      for (const j of base.jogadores) {
+        novo[j.id].sequencia.push(naRodada[j.id] || "–");
+        novo[j.id].sequenciaRodadas.push(rodada.numero);
+      }
   }
 
   // Penalidades da Copa Hendor (−5 do Art. 55 §4): a Copa roda em data FIFA, sem rodada
@@ -203,6 +206,8 @@ function calcularEstatisticas(base) {
       aproveitamento: teto > 0 ? Math.round(((h.P + pontosNovos) / teto) * 100) : 0,
       ultimos5: st.sequencia.slice(-5),
       ultimos10: st.sequencia.slice(-10),
+      // mesmos 10, com o nº da rodada de cada um (a tabela mostra o número no quadrado)
+      ultimosJogos: st.sequencia.slice(-10).map((r, k, a) => ({ r, rodada: st.sequenciaRodadas[st.sequenciaRodadas.length - a.length + k] })),
       temHistorico: !!hist.jogadores?.[j.id],
     };
   });
