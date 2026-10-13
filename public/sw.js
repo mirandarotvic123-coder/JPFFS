@@ -18,7 +18,9 @@ self.addEventListener("install", (evento) => {
 self.addEventListener("activate", (evento) => {
   evento.waitUntil(
     caches.keys()
-      .then((nomes) => Promise.all(nomes.filter((n) => n !== CACHE).map((n) => caches.delete(n))))
+      // "jpffs-lances-*" é o cache de vídeos da Galeria (repositorio.js) — não é
+      // do service worker e não pode sumir a cada versão nova do app.
+      .then((nomes) => Promise.all(nomes.filter((n) => n !== CACHE && !n.startsWith("jpffs-lances")).map((n) => caches.delete(n))))
       .then(() => self.clients.claim())
   );
 });

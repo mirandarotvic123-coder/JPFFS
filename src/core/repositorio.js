@@ -103,26 +103,82 @@ async function decidirPerfil(perfilId, status, decididoPorId) {
 /* Foto do jogador — bucket "avatares" no Supabase Storage. Se o bucket ainda
  * não foi criado no projeto (ver instruções passadas à parte), o upload falha
  * de forma controlada e a tela mostra aviso, sem quebrar o cadastro. */
+/* Foto de celular chega com 2–5 MB e aparece em toda lista do app — cada
+ * abertura baixava tudo de novo (conta no egress do Supabase). Reduz pra no
+ * máximo 512px em JPEG (~40–80 KB) antes de subir. Se o navegador não conseguir
+ * ler a imagem (ex.: HEIC em desktop), sobe o original. */
+const FOTO_MAX_PX = 512;
+
+async function reduzirFoto(arquivo) {
+  try {
+    const url = URL.createObjectURL(arquivo);
+    const img = await new Promise((res, rej) => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = rej;
+      i.src = url;
+    });
+    URL.revokeObjectURL(url);
+    const escala = Math.min(1, FOTO_MAX_PX / Math.max(img.naturalWidth, img.naturalHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(img.naturalWidth * escala);
+    canvas.height = Math.round(img.naturalHeight * escala);
+    canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.85));
+    return blob && blob.size < arquivo.size ? { blob, ext: "jpg" } : null;
+  } catch {
+    return null;
+  }
+}
+
 async function enviarFotoJogador(jogadorId, arquivo) {
-  const ext = (arquivo.name.split(".").pop() || "jpg").toLowerCase();
+  const reduzida = await reduzirFoto(arquivo);
+  const ext = reduzida?.ext || (arquivo.name.split(".").pop() || "jpg").toLowerCase();
   const caminho = `${jogadorId}-${Date.now()}.${ext}`;
-  const { error } = await supabase.storage.from("avatares").upload(caminho, arquivo, { upsert: true, cacheControl: "3600" });
+  // caminho muda a cada foto nova -> pode ficar em cache no aparelho por 30 dias
+  const { error } = await supabase.storage.from("avatares").upload(caminho, reduzida?.blob || arquivo, {
+    upsert: true, cacheControl: "2592000", ...(reduzida ? { contentType: "image/jpeg" } : {}),
+  });
   if (error) throw error;
   const { data } = supabase.storage.from("avatares").getPublicUrl(caminho);
   return data.publicUrl;
 }
 
-/* Lances (replay de gols) — tabela "lances" + bucket privado "lances".
- * Ver supabase-migracoes/004-*: qualquer aprovado grava e lê, só organizador
- * apaga; o vídeo em si só sai por link assinado (createSignedUrl), nunca
- * público. Clipes de teste usam partidaId = "teste-camera". */
+/* Lances (replay de gols) — metadados na tabela "lances" (Supabase) e o
+ * VÍDEO no Cloudflare R2 (desde out/2026; o egress do Supabase free estourou).
+ * Ver supabase-migracoes/004-*, 008-* e lances-r2/: qualquer aprovado grava e
+ * lê, só organizador apaga. O vídeo só sai por link assinado de curta duração,
+ * gerado pela Edge Function "lances-r2" (o app nunca vê a chave do R2).
+ * Coluna "armazenamento": 'r2' (novos) ou 'supabase' (antigos, bucket
+ * "lances", até a limpeza apagar). Clipes de teste usam partidaId = "teste-camera". */
+async function funcaoR2(corpo) {
+  const { data, error } = await supabase.functions.invoke("lances-r2", { body: corpo });
+  if (error) throw error;
+  if (data?.erro) throw new Error(data.erro);
+  return data;
+}
+
 async function enviarLance({ modalidade, partidaId, partidaRotulo, tipo, jogadorId, jogadorNome, angulo, blob, formato }) {
   const ext = (formato || "").startsWith("video/mp4") ? "mp4" : "webm";
-  const caminho = `${partidaId}/${Date.now()}-a${angulo}.${ext}`;
-  const { error: erroUpload } = await supabase.storage
-    .from("lances")
-    .upload(caminho, blob, { contentType: formato || "video/webm", upsert: false });
-  if (erroUpload) throw erroUpload;
+  const contentType = formato || "video/webm";
+  let caminho;
+  let armazenamento = "r2";
+  try {
+    const { key, url } = await funcaoR2({ acao: "upload", partidaId, angulo, ext });
+    const resp = await fetch(url, { method: "PUT", body: blob, headers: { "Content-Type": contentType } });
+    if (!resp.ok) throw new Error(`R2 respondeu ${resp.status}`);
+    caminho = key;
+  } catch (e) {
+    /* R2 fora do ar ou mal configurado: não perde o lance — guarda no Supabase
+     * Storage como antes (conta no egress de lá, mas o clipe fica salvo). */
+    console.warn("R2 indisponível, enviando pro Supabase Storage:", e);
+    armazenamento = "supabase";
+    caminho = `${partidaId}/${Date.now()}-a${angulo}.${ext}`;
+    const { error: erroUpload } = await supabase.storage
+      .from("lances")
+      .upload(caminho, blob, { contentType, upsert: false });
+    if (erroUpload) throw erroUpload;
+  }
 
   const { data: s } = await supabase.auth.getSession();
   const { data, error } = await supabase
@@ -136,6 +192,8 @@ async function enviarLance({ modalidade, partidaId, partidaRotulo, tipo, jogador
       jogador_nome: jogadorNome || null,
       angulo,
       caminho_storage: caminho,
+      armazenamento,
+      tamanho_bytes: blob.size,
       formato: formato || "video/webm",
       criado_por: s?.session?.user?.id || null,
     })
@@ -182,6 +240,68 @@ async function urlAssinadaLance(caminhoStorage, segundos = 3600) {
   return data.signedUrl;
 }
 
+/* Cache dos vídeos NO APARELHO (Cache API). O link assinado muda a cada vez
+ * (token novo), então o navegador nunca reaproveitava nada: cada "Ver" e cada
+ * "Baixar" baixava o clipe inteiro de novo. Agora cada aparelho baixa cada
+ * clipe UMA vez; rever, ver juntos e baixar saem do cache local (mais rápido,
+ * poupa o 4G de quem assiste e o egress dos clipes antigos no Supabase).
+ * A chave é o caminho no bucket (estável), não a URL assinada. O nome começa
+ * com "jpffs-lances" — o sw.js preserva esse cache ao trocar de versão. */
+const CACHE_LANCES = "jpffs-lances-v1";
+const CACHE_LANCES_DIAS = 7;
+const chaveCacheLance = (caminho) => `/__lances__/${caminho}`;
+
+async function abrirCacheLances() {
+  try { return typeof caches !== "undefined" ? await caches.open(CACHE_LANCES) : null; }
+  catch { return null; } // http sem TLS, aba anônima etc. — segue sem cache
+}
+
+/* Link assinado de um clipe, do R2 ou do Supabase conforme "armazenamento". */
+async function urlVideoLance(l) {
+  if (l.armazenamento === "r2") {
+    const { urls } = await funcaoR2({ acao: "ver", caminhos: [l.caminho_storage] });
+    const url = urls?.[l.caminho_storage];
+    if (!url) throw new Error("vídeo não encontrado");
+    return url;
+  }
+  return urlAssinadaLance(l.caminho_storage, 600);
+}
+
+/* `l` = linha da tabela "lances" (precisa de caminho_storage e armazenamento). */
+async function blobLance(l) {
+  const caminhoStorage = l.caminho_storage;
+  const cache = await abrirCacheLances();
+  if (cache) {
+    try {
+      const hit = await cache.match(chaveCacheLance(caminhoStorage));
+      if (hit) return await hit.blob();
+    } catch { /* cache corrompido — baixa de novo */ }
+  }
+  const url = await urlVideoLance(l);
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error("falha ao buscar o vídeo");
+  const blob = await resp.blob();
+  if (cache) {
+    cache.put(chaveCacheLance(caminhoStorage), new Response(blob, {
+      headers: { "Content-Type": blob.type || "video/mp4", "X-Salvo-Em": String(Date.now()) },
+    })).catch(() => { /* sem espaço — tudo bem, só não fica em cache */ });
+  }
+  return blob;
+}
+
+/* Tira do cache os clipes com mais de CACHE_LANCES_DIAS (o servidor já apagou). */
+async function limparCacheLances() {
+  const cache = await abrirCacheLances();
+  if (!cache) return;
+  try {
+    const limite = Date.now() - CACHE_LANCES_DIAS * 86_400_000;
+    for (const req of await cache.keys()) {
+      const r = await cache.match(req);
+      if (Number(r?.headers.get("X-Salvo-Em") || 0) < limite) await cache.delete(req);
+    }
+  } catch { /* nada */ }
+}
+
 /* Nome de arquivo amigável pra baixar: "gol-douglas-22-43-angulo-1.mp4" */
 function nomeArquivoLance(l) {
   const ext =
@@ -196,6 +316,11 @@ function nomeArquivoLance(l) {
 }
 
 async function excluirLance(lance) {
+  abrirCacheLances().then((c) => c?.delete(chaveCacheLance(lance.caminho_storage))).catch(() => {});
+  if (lance.armazenamento === "r2") {
+    await funcaoR2({ acao: "apagar", id: lance.id }); // apaga o arquivo no R2 e a linha
+    return true;
+  }
   const { error: erroStorage } = await supabase.storage.from("lances").remove([lance.caminho_storage]);
   if (erroStorage) throw erroStorage;
   const { error } = await supabase.from("lances").delete().eq("id", lance.id);
@@ -240,5 +365,5 @@ function migrarBase(base) {
 export {
   SIMULACAO, carregarBase, salvarBase, enviarFotoJogador, id, migrarBase, buscarPerfil,
   listarPerfis, decidirPerfil,
-  enviarLance, listarLances, urlAssinadaLance, excluirLance, tituloLance, nomeArquivoLance,
+  enviarLance, listarLances, urlAssinadaLance, blobLance, limparCacheLances, excluirLance, tituloLance, nomeArquivoLance,
 };

@@ -13,9 +13,11 @@
  * caminho gera um arquivo com duração errada e um vão de tempo morto — foi o
  * que aconteceu na 1ª versão (o player mostrava 1:00 e a barra não andava).
  *
- * Custo: o aparelho codifica 720p duas vezes em paralelo. Celular dos últimos
- * ~5 anos aguenta; se algum device velho engasgar, baixar a resolução em
- * abrirCamera() (ou o videoBitsPerSecond) é o primeiro ajuste.
+ * Custo: o aparelho codifica o vídeo DUAS vezes em paralelo. Por isso a câmera
+ * abre em 720p, não 1080p: no jogo de 10/10/2026 um dos celulares gravando 1080p×2
+ * entregou 16 fps (engasgado) e 1,8 Mbps espalhados em 1080p viraram
+ * borrão. 720p tem 2,25× menos pixels — o encoder dá conta dos 30 fps e o
+ * bitrate rende muito mais nitidez por pixel.
  *
  * DURAÇÃO FIXA: com JANELA=17s e DEFASAGEM=8,5s, o gravador "mais velho" sempre
  * tem entre ~8,5s e ~17s de história no momento do sinal. Em vez de gravar um
@@ -79,8 +81,8 @@ export async function abrirCamera() {
   return navigator.mediaDevices.getUserMedia({
     video: {
       facingMode: { ideal: "environment" },
-      width: { ideal: 1920 },
-      height: { ideal: 1080 },
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
       frameRate: { ideal: 30 },
     },
     audio: true,
@@ -192,7 +194,14 @@ export function criarStreamVertical(streamRaw) {
 export function criarGravador(stream, { aoMudarEstado } = {}) {
   const mime = formatosSuportados()[0] || "";
   const ext = mime.startsWith("video/mp4") ? "mp4" : "webm";
-  const opts = { videoBitsPerSecond: 1_800_000, ...(mime ? { mimeType: mime } : {}) };
+  /* ~4 Mbps de vídeo + 64 kbps de áudio ≈ 10 MB por clipe de 20s — boa nitidez
+   * em 720p com jogada rápida. O vídeo fica no Cloudflare R2 (download grátis,
+   * 10 GB); a limpeza segura o espaço. Obs.: o Safari às vezes ignora o bitrate. */
+  const opts = {
+    videoBitsPerSecond: 4_000_000,
+    audioBitsPerSecond: 64_000,
+    ...(mime ? { mimeType: mime } : {}),
+  };
 
   let rodando = false;
   let inicioGeral = 0;

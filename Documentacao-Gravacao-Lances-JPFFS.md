@@ -161,10 +161,24 @@ na galeria (um por ângulo); se só 1 estava ativo, é 1 vídeo só.
 iPhone e Android gravam em formatos diferentes (MP4 / WebM). Cada um toca direto
 no player do sistema, **sem conversão** — não há um servidor para "padronizar".
 
-**Qualidade: 720p comprimido** (~1,8 Mbps, cerca de 5 MB por clipe de 20s),
-nas duas orientações. O
-plano gratuito do Supabase dá só 1 GB de armazenamento, então os clipes são
-salvos comprimidos para caber (ver seção 6).
+**Qualidade: 720p a 30 fps** (~4 Mbps, cerca de 10 MB por clipe de 20s), nas
+duas orientações. Até out/2026 a câmera abria em 1080p: com os dois gravadores
+em paralelo, um dos celulares não deu conta e entregou 16 fps, e o bitrate baixo
+(1,8 Mbps) espalhado em 1080p deixava a imagem borrada. Em 720p o aparelho
+mantém 30 fps e a imagem fica mais nítida.
+
+**Onde fica o vídeo: Cloudflare R2** (plano gratuito: 10 GB, download sem
+custo). Até out/2026 os vídeos ficavam no Supabase Storage, cujo plano gratuito
+dá só 5 GB/mês de download — estourou (12,7 GB num ciclo) e o projeto ficou
+sob risco de restrição. Os dados do lance (tipo, jogador, partida, ângulo)
+continuam no Supabase; só o arquivo de vídeo mora no R2. O app nunca vê a chave
+do R2: a Edge Function `lances-r2` confere o login e devolve links assinados de
+curta duração (enviar: 15 min; assistir: 1 h). Se o R2 falhar na hora de salvar,
+o clipe vai pro Supabase Storage como antes, pra não perder o lance.
+
+**Cache no aparelho.** Cada clipe é baixado uma vez por aparelho e guardado no
+cache do navegador (até 7 dias). Rever, "Ver juntos" e "Baixar" saem desse
+cache, sem baixar de novo do Supabase.
 
 ---
 
@@ -330,10 +344,13 @@ Depois desse prazo, uma rotina automática apaga o vídeo. Essa rotina é uma
 **Edge Function** (`limpar-lances`) chamada por um **Cron Job** a cada 30
 minutos, e ela faz duas coisas:
 
-1. Apaga clipes com mais de 5 dias.
-2. **Trava de segurança de espaço:** se o armazenamento do bucket passar de ~850
-   MB (o plano gratuito do Supabase dá 1 GB), apaga os clipes mais antigos até
-   baixar — sem isso, o upload falharia no meio de uma rodada ao bater o teto.
+1. Apaga clipes com mais de 5 dias (no R2 e no Supabase).
+2. **Trava de segurança de espaço:** se o R2 passar de 8 GB (o gratuito dá 10 GB)
+   — ou os clipes antigos no Supabase passarem de ~850 MB (gratuito: 1 GB) —,
+   apaga os clipes mais antigos até baixar. Clipes das **últimas 24 horas ficam
+   protegidos** — só são apagados se passar de 9,5 GB no R2 (1,5 GB no Supabase). (Antes não havia essa proteção: em 10/10/2026, num dia
+   com Campeonato + Rachão e 4 câmeras, a trava apagou os lances do Campeonato
+   gravados horas antes.)
 
 **Recomendação:** quem quiser guardar um lance específico além dos 5 dias deve
 baixar o vídeo da galeria antes do prazo vencer.
@@ -404,15 +421,17 @@ baixar o vídeo da galeria antes do prazo vencer.
   (`disparo` / `decisao`) e `presence` para numerar os ângulos.
 - **Lances sobrepostos.** Um novo clique durante o "depois" (até ~11s) de um lance
   em andamento é ignorado, para não sobrepor buffers na mesma câmera.
-- **Qualidade de vídeo.** 720p comprimido (~1,8 Mbps) — imposto pelo limite de 1
-  GB de armazenamento do plano gratuito do Supabase.
+- **Qualidade de vídeo.** 720p a 30 fps (~4 Mbps, ~10 MB por clipe).
+- **Armazenamento do vídeo.** Cloudflare R2 gratuito (10 GB, download sem custo),
+  via Edge Function `lances-r2` (links assinados). Metadados seguem no Supabase.
+  Cada aparelho guarda em cache o que já baixou.
 - **Acesso à câmera.** Por link `?camera=1` (não é aba do menu); exige login
   aprovado.
 - **Acesso à galeria.** Aberta a qualquer login aprovado; todos veem e baixam,
-  só o organizador apaga (barrado também pela RLS). Vídeo servido por link
-  assinado (bucket privado).
+  só o organizador apaga (barrado também pela RLS e pela Edge Function). Vídeo
+  servido por link assinado (bucket privado no R2).
 - **Limpeza.** Edge Function `limpar-lances` + Cron Job a cada 30 minutos (5 dias
-  de retenção + trava de espaço em ~850 MB).
+  de retenção + trava de espaço em 8 GB no R2, que poupa as últimas 24h).
 - **Isolamento.** Todo o código de gravação está isolado do resto do app (barreira
   de erro + `try/catch`): se o Realtime cair, a súmula, a fila e o resultado do
   jogo seguem funcionando normalmente.
