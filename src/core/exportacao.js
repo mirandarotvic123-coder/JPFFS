@@ -11,10 +11,15 @@ function paraCSV(l) {
     return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   }).join(";")).join("\n");
 }
+/* Últimos 5 no CSV: planilha não tem cor, então vai rodada + resultado por
+ * extenso curto — "R27:V R28:E R29:D R30:aus". */
+const ultimos5Texto = (l) => (l.ultimosJogos || []).slice(-5)
+  .map((j) => `R${j.rodada}:${j.r === "V" || j.r === "E" || j.r === "D" ? j.r : "aus"}`).join(" ");
+
 function csvClassificacao(cl) {
-  const cab = ["Pos", "Jogador", "Posição", "Estrelas", "P", "%", "J", "V", "E", "D", "GP", "GC", "SG", "Gols", "Ass", "CA", "CV", "P+", "P-", "Atrasos no mês", "Últimos 5"];
+  const cab = ["Pos", "Jogador", "Posição", "Estrelas", "P", "%", "J", "V", "E", "D", "GP", "GC", "SG", "Gols", "Ass", "CA", "CV", "P+", "P-", "Atrasos no mês", "Últimos 5 (rodada:resultado)"];
   return paraCSV([cab, ...cl.map((l) => [l.posicao, l.nome, l.jogador.posicao, l.estrelas, l.pontos,
-  `${l.aproveitamento}%`, l.J, l.V, l.E, l.D, l.GP, l.GC, l.SG, l.gols, l.assistencias, l.CA, l.CV, l.Pmais, l.Pmenos, l.atrasosNoMes, l.ultimos5.join(" ")])]);
+  `${l.aproveitamento}%`, l.J, l.V, l.E, l.D, l.GP, l.GC, l.SG, l.gols, l.assistencias, l.CA, l.CV, l.Pmais, l.Pmenos, l.atrasosNoMes, ultimos5Texto(l)])]);
 }
 function csvSumula(rodada, nomes, niveis) {
   const linhas = [["Rodada", rodada.numero, "Data", rodada.data]];
@@ -73,11 +78,11 @@ function imagemTabela(cl, cfg, meta) {
     { k: "V", r: "V", w: 38, al: "right" }, { k: "E", r: "E", w: 38, al: "right" }, { k: "D", r: "D", w: 38, al: "right" },
     { k: "GP", r: "GP", w: 44, al: "right" }, { k: "GC", r: "GC", w: 44, al: "right" }, { k: "SG", r: "SG", w: 48, al: "right" },
     { k: "gols", r: "GOLS", w: 50, al: "right" }, { k: "assistencias", r: "ASS", w: 46, al: "right" },
-    { k: "ultimos5", r: "ÚLT. 5", w: 106, al: "center" },
+    { k: "ultimos5", r: "ÚLT. 5 · RODADA", w: 122, al: "center" },
   ];
   const esc = 2, pad = 26, hCab = 116, hLinha = 34, hHead = 34;
   const larg = cols.reduce((s, c) => s + c.w, 0) + pad * 2;
-  const alt = hCab + hHead + cl.length * hLinha + 56;
+  const alt = hCab + hHead + cl.length * hLinha + 64;
 
   const logo = new Image();
   logo.onload = () => desenhar(logo);
@@ -131,14 +136,22 @@ function imagemTabela(cl, cfg, meta) {
           x.font = "13px system-ui, sans-serif"; x.fillStyle = T.ouro;
           x.fillText("★".repeat(l.estrelas), px, cy);
         } else if (c.k === "ultimos5") {
-          const w = 16, gap = 3;
-          let sx = cx2 + (c.w - (l.ultimos5.length * (w + gap) - gap)) / 2;
-          for (const r of l.ultimos5) {
-            x.fillStyle = corResultado(r).fundo;
+          // igual à tela: nº da rodada no quadrado, cor = resultado, ausência riscada
+          const jogos = (l.ultimosJogos || []).slice(-5);
+          const w = 20, gap = 3;
+          let sx = cx2 + (c.w - (jogos.length * (w + gap) - gap)) / 2;
+          for (const { r, rodada } of jogos) {
+            const cor = corResultado(r);
+            x.fillStyle = cor.fundo;
             x.fillRect(sx, cy - 8, w, 16);
-            x.fillStyle = corResultado(r).texto;
+            x.fillStyle = cor.texto;
             x.font = "800 10px system-ui, sans-serif"; x.textAlign = "center";
-            x.fillText(r, sx + w / 2, cy); sx += w + gap;
+            x.fillText(String(rodada), sx + w / 2, cy);
+            if (!(r === "V" || r === "E" || r === "D")) {
+              x.strokeStyle = cor.texto; x.lineWidth = 1;
+              x.beginPath(); x.moveTo(sx + 3, cy); x.lineTo(sx + w - 3, cy); x.stroke();
+            }
+            sx += w + gap;
           }
         } else {
           let v = l[c.k];
@@ -158,6 +171,15 @@ function imagemTabela(cl, cfg, meta) {
     });
     x.textAlign = "left"; x.fillStyle = T.fraco; x.font = "400 11px system-ui, sans-serif";
     x.fillText(`Faixa dourada: zona de classificação da Supercopa (1º ao ${cfg.zonaSupercopa}º)  ·  G = goleiro`, pad, y + 26);
+    // legenda dos últimos jogos: número = rodada, cor = resultado
+    let lx = pad;
+    x.fillText("Últ. 5: número = rodada  ·", lx, y + 44);
+    lx += x.measureText("Últ. 5: número = rodada  ·").width + 8;
+    for (const [r, nome] of [["V", "vitória"], ["E", "empate"], ["D", "derrota"], ["–", "ausência"]]) {
+      x.fillStyle = corResultado(r).fundo; x.fillRect(lx, y + 39, 10, 10);
+      x.fillStyle = T.fraco; x.fillText(nome, lx + 14, y + 44);
+      lx += 14 + x.measureText(nome).width + 12;
+    }
     cv.toBlob((b) => {
       const url = URL.createObjectURL(b);
       const a = document.createElement("a");
