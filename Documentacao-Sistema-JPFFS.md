@@ -469,9 +469,11 @@ da Supercopa** (12 de linha + 2 goleiros, com os campeões da Copa Hendor — `c
 entrando mesmo fora do corte), e deriva as **estrelas por posição na tabela**
 (1–3 → 5★, 4–6 → 4★, 7–9 → 3★, 10–14 → 2★, resto → 1★). Convidados ficam de fora.
 Cada linha também traz a sequência das rodadas **jogadas no app** (as do
-`historicoInicial` não têm detalhe por rodada): `ultimos5` / `ultimos10` (letras
-`V`/`E`/`D`/`–`, usadas no CSV e no PNG) e `ultimosJogos` — os 10 últimos como
-`{ r, rodada }`, com o nº da rodada, que é o que a tabela da tela mostra.
+`historicoInicial` não têm detalhe por rodada): `ultimos5` / `ultimos10` (só as
+letras `V`/`E`/`D`/`–`) e `ultimosJogos` — os 10 últimos como `{ r, rodada }`,
+com o nº da rodada. A tabela da tela, a imagem PNG (quadrado com o nº, cor do
+resultado, ausência riscada, legenda no rodapé) e o CSV (`R27:V R28:aus …`)
+usam `ultimosJogos`.
 
 **Motor de sorteio** (`sortearEquipes`): recebe as "entradas" (presentes aptos com
 estrelas/aproveitamento), distribui em `partidas·2` times, e roda uma **busca
