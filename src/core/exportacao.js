@@ -1,7 +1,7 @@
 /* core/exportacao — geração de CSV e das imagens (canvas) de súmula e
  * escalação pra download. Só toca em DOM/Blob/canvas, nenhuma regra do
  * campeonato mora aqui, só formatação de saída. */
-import { T, ESCUDO, AMARELO, AZUL, corDe } from "../theme";
+import { T, ESCUDO, AMARELO, AZUL, corDe, corResultado } from "../theme";
 import { eventoDe, nivelInfo, placarDe, timePorId } from "./regras";
 
 /* --- core/exportacao -----------------------------------------------------*/
@@ -134,9 +134,9 @@ function imagemTabela(cl, cfg, meta) {
           const w = 16, gap = 3;
           let sx = cx2 + (c.w - (l.ultimos5.length * (w + gap) - gap)) / 2;
           for (const r of l.ultimos5) {
-            x.fillStyle = r === "V" ? T.verde : r === "E" ? "#5A76A8" : r === "D" ? T.vermelho : "rgba(255,255,255,.08)";
+            x.fillStyle = corResultado(r).fundo;
             x.fillRect(sx, cy - 8, w, 16);
-            x.fillStyle = r === "V" || r === "D" ? "#06122b" : T.texto;
+            x.fillStyle = corResultado(r).texto;
             x.font = "800 10px system-ui, sans-serif"; x.textAlign = "center";
             x.fillText(r, sx + w / 2, cy); sx += w + gap;
           }

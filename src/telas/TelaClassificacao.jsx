@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { T, ESCUDO } from "../theme";
+import { T, ESCUDO, corResultado } from "../theme";
 import { eventoDe, placarDe, faltasDe, shootoutsContra } from "../core/regras";
 import { csvClassificacao, imagemTabela, baixarArquivo } from "../core/exportacao";
 import {
@@ -24,6 +24,16 @@ function TelaClassificacao({ base, dados, cfg, avisar }) {
         : filtro === "goleiros" ? l.jogador.posicao === "GOLEIRO"
           : filtro === "supercopa" ? l.supercopa
             : l.atrasosNoMes > 0 || l.jogador.pendenciaFinanceira || l.jogador.pontuacaoPendente || l.cartoes > 0);
+
+  /* Cabeçalho e colunas "#"/"Jogador" ficam congelados (CSS .tabela-congelada
+   * em estilo.css). Célula congelada precisa de fundo OPACO: pinta a cor da
+   * linha (que é translúcida) por cima do fundo sólido da tabela. */
+  const fundoSolido = T.fundoMeio;
+  const tingir = (cor) => `linear-gradient(${cor}, ${cor}), ${fundoSolido}`;
+  const fundoCabecalho = tingir("rgba(0,0,0,.3)");
+  const corLinha = (l, i) => (l.supercopa ? T.ouroFraco : i % 2 ? T.linhaPar : "rgba(0,0,0,0)");
+  const th = { padding: "8px 5px", fontSize: 9.5, color: T.fraco, background: fundoCabecalho, borderBottom: `2px solid ${T.ouro}` };
+  const td = { borderBottom: "1px solid rgba(255,255,255,.05)" };
 
   const cor = (k, l) => k === "pontos" ? T.ouro : k === "SG" ? (l.SG > 0 ? T.verde : l.SG < 0 ? T.vermelho : T.fraco)
     : k === "Pmais" ? T.verde : k === "Pmenos" ? T.vermelho : k === "aproveitamento" ? T.texto : T.secundario;
@@ -65,26 +75,27 @@ function TelaClassificacao({ base, dados, cfg, avisar }) {
         </div></>)}
 
       {vista === "classificacao" && (<>
-        <div className="overflow-x-auto rounded-xl" style={{ border: `1px solid ${T.borda}` }}>
-          <table style={{ width: "100%", textAlign: "right", fontSize: 11, borderCollapse: "collapse" }}>
+        <div className="tabela-congelada rounded-xl" style={{ border: `1px solid ${T.borda}`, background: fundoSolido }}
+          onScroll={(e) => { e.currentTarget.dataset.rolouLado = e.currentTarget.scrollLeft > 0 ? "1" : "0"; }}>
+          <table style={{ width: "100%", textAlign: "right", fontSize: 11 }}>
             <thead>
-              <tr style={{ background: "rgba(0,0,0,.3)", borderBottom: `2px solid ${T.ouro}` }}>
-                <th style={{ padding: "8px 5px", textAlign: "center", fontSize: 9.5, color: T.fraco }}>#</th>
-                <th style={{ padding: "8px 6px", textAlign: "left", fontSize: 9.5, color: T.fraco }}>JOGADOR</th>
-                <th style={{ padding: "8px 5px", textAlign: "center", fontSize: 9.5, color: T.fraco }}>CLASSE</th>
-                {cols.map(([r]) => <th key={r} style={{ padding: "8px 5px", fontSize: 9.5, color: T.fraco }}>{r}</th>)}
-                <th style={{ padding: "8px 5px", textAlign: "center", fontSize: 9.5, color: T.fraco }}>ÚLT. 5</th>
+              <tr>
+                <th className="col-fixa col-fixa-pos" style={{ ...th, textAlign: "center" }}>#</th>
+                <th className="col-fixa col-fixa-nome" style={{ ...th, padding: "8px 6px", textAlign: "left" }}>JOGADOR</th>
+                <th style={{ ...th, textAlign: "center" }}>CLASSE</th>
+                {cols.map(([r]) => <th key={r} style={th}>{r}</th>)}
+                <th style={{ ...th, textAlign: "center" }}>ÚLT. 5</th>
               </tr>
             </thead>
             <tbody>
               {visiveis.map((l, i) => (
                 <tr key={l.id} onClick={() => setDetalhe(detalhe === l.id ? null : l.id)}
-                  style={{ background: l.supercopa ? T.ouroFraco : i % 2 ? T.linhaPar : "transparent", borderBottom: "1px solid rgba(255,255,255,.05)", cursor: "pointer" }}>
-                  <td style={{ padding: "8px 5px", textAlign: "center", fontWeight: 900, color: l.supercopa ? T.ouro : T.fraco, borderLeft: l.supercopa ? `4px solid ${T.ouro}` : "4px solid transparent" }}>{l.posicao}</td>
-                  <td style={{ padding: "8px 6px", textAlign: "left" }}>
+                  style={{ background: corLinha(l, i), cursor: "pointer" }}>
+                  <td className="col-fixa col-fixa-pos" style={{ ...td, padding: "8px 5px", textAlign: "center", fontWeight: 900, color: l.supercopa ? T.ouro : T.fraco, background: tingir(corLinha(l, i)), borderLeft: l.supercopa ? `4px solid ${T.ouro}` : "4px solid transparent" }}>{l.posicao}</td>
+                  <td className="col-fixa col-fixa-nome" style={{ ...td, padding: "8px 6px", textAlign: "left", background: tingir(corLinha(l, i)) }}>
                     <div className="flex items-center" style={{ gap: 8 }}>
                       {detalhe === l.id && <AvatarJogador jogador={l.jogador} tam={36} />}
-                      <div className="min-w-0">
+                      <div className={detalhe === l.id ? "min-w-0 detalhe-jogador" : "min-w-0"}>
                         <div className="flex items-center gap-1.5" style={{ whiteSpace: "nowrap" }}>
                           {l.jogador.posicao === "GOLEIRO" && <IconeGoleiro />}
                           <span style={{ color: T.texto, fontWeight: 600, fontSize: 12.5 }}>{l.nome}</span>
@@ -106,22 +117,14 @@ function TelaClassificacao({ base, dados, cfg, avisar }) {
                       </div>
                     </div>
                   </td>
-                  <td style={{ padding: "8px 5px", textAlign: "center" }}><Estrelas n={l.estrelas} tam={10.5} goleiro={l.ehGoleiro} /></td>
+                  <td style={{ ...td, padding: "8px 5px", textAlign: "center" }}><Estrelas n={l.estrelas} tam={10.5} goleiro={l.ehGoleiro} /></td>
                   {cols.map(([r, k]) => (
-                    <td key={r} className={k === "pontos" ? "font-destaque" : ""} style={{ padding: "8px 5px", color: cor(k, l), fontWeight: k === "pontos" ? 700 : 400, fontSize: k === "pontos" ? 14 : 12 }}>
+                    <td key={r} className={k === "pontos" ? "font-destaque" : ""} style={{ ...td, padding: "8px 5px", color: cor(k, l), fontWeight: k === "pontos" ? 700 : 400, fontSize: k === "pontos" ? 14 : 12 }}>
                       {k === "aproveitamento" ? `${l[k]}%` : k === "SG" ? `${l.SG > 0 ? "+" : ""}${l.SG}` : (k === "Pmais" || k === "Pmenos") ? (l[k] || "") : l[k]}
                     </td>
                   ))}
-                  <td style={{ padding: "8px 5px" }}>
-                    <div className="flex justify-center gap-0.5">
-                      {l.ultimos5.map((r, k) => (
-                        <span key={k} style={{
-                          display: "inline-block", width: 16, height: 16, borderRadius: 3, fontSize: 9, fontWeight: 800, lineHeight: "16px", textAlign: "center",
-                          background: r === "V" ? T.verde : r === "E" ? "#5A76A8" : r === "D" ? T.vermelho : "rgba(255,255,255,.07)",
-                          color: r === "V" || r === "D" ? T.fundoBase : r === "E" ? "#fff" : "rgba(255,255,255,.25)"
-                        }}>{r}</span>
-                      ))}
-                    </div>
+                  <td style={{ ...td, padding: "8px 5px" }}>
+                    <UltimosJogos seq={detalhe === l.id ? l.ultimos10 : l.ultimos5} expandido={detalhe === l.id} />
                   </td>
                 </tr>
               ))}
@@ -143,7 +146,9 @@ function TelaClassificacao({ base, dados, cfg, avisar }) {
           <b style={{ color: T.ouro }}>Atrasos</b> · 1º alerta · 2º amarelo · 3º perde a presença · 4º suspensão. Zera na virada do mês, salvo emenda (§10º)<br />
           <b style={{ color: T.ouro }}>Classe</b> · 1º-3º = 5★ · 4º-6º = 4★ · 7º-9º = 3★ · 10º-14º = 2★ · 15º+ = 1★<br />
           <span style={{ color: T.fraco }}>Escala única: a classe sai da posição geral na tabela, goleiro (<span style={{ color: T.gk }}>★ azul</span>) e linha (<span style={{ color: T.ouro }}>★ ouro</span>) na mesma fila — a cor é só identificação visual. Toque na linha para ver o rank dentro da categoria.</span><br />
-          <span style={{ color: T.ouro }}>▌</span> Zona Supercopa · <IconeGoleiro tam={13} /> goleiro · <span style={{ color: T.vermelho }}>$</span> pendência · (*) a confirmar
+          <span style={{ color: T.ouro }}>▌</span> Zona Supercopa · <IconeGoleiro tam={13} /> goleiro · <span style={{ color: T.vermelho }}>$</span> pendência · (*) a confirmar<br />
+          <b style={{ color: T.ouro }}>Últ. 5</b> · {["V", "E", "D", "–"].map((r) => <QuadroResultado key={r} r={r} style={{ margin: "0 3px", verticalAlign: "-3px" }} />)}
+          vitória, empate, derrota, ausência · toque no jogador pra ver os 10 últimos
         </Painel>
 
         <div className="grid grid-cols-2 gap-2">
@@ -154,6 +159,40 @@ function TelaClassificacao({ base, dados, cfg, avisar }) {
     </div>
   );
 }
+/* Um quadradinho de resultado (V/E/D/–), cores em COR_RESULTADO (theme.js). */
+function QuadroResultado({ r, style }) {
+  const c = corResultado(r);
+  return (
+    <span style={{
+      display: "inline-block", width: 16, height: 16, borderRadius: 3, fontSize: 9, fontWeight: 800, lineHeight: "16px", textAlign: "center",
+      background: c.fundo, color: c.texto, ...style,
+    }}>{r === "V" || r === "E" || r === "D" ? r : "–"}</span>
+  );
+}
+
+/* Últimos jogos: 5 numa linha; expandido (toque no jogador), os 10 últimos em
+ * duas linhas de 5, em ordem de leitura — do mais antigo (em cima, à esquerda)
+ * ao mais recente (embaixo, à direita), igual à linha de 5. Com menos de 10
+ * rodadas no app, as vagas do começo ficam vazias pra manter o alinhamento. */
+function UltimosJogos({ seq, expandido }) {
+  if (!expandido) {
+    return <div className="flex justify-center gap-0.5">{seq.map((r, k) => <QuadroResultado key={k} r={r} />)}</div>;
+  }
+  const vagas = [...Array(Math.max(0, 10 - seq.length)).fill(null), ...seq];
+  return (
+    <div className="flex flex-col items-center" style={{ gap: 2 }}>
+      {[vagas.slice(0, 5), vagas.slice(5)].map((linha, n) => (
+        <div key={n} className="flex justify-center gap-0.5">
+          {linha.map((r, k) => r === null
+            ? <span key={k} style={{ display: "inline-block", width: 16, height: 16 }} />
+            : <QuadroResultado key={k} r={r} />)}
+        </div>
+      ))}
+      <span style={{ fontSize: 8.5, color: T.fraco, whiteSpace: "nowrap" }}>antigo → recente</span>
+    </div>
+  );
+}
+
 /* Faltas do jogo (Art. 83º, item 13 "a"): "faltas 2 × 4 · shootout: 1 pro Amarelo".
  * Jogo sem falta lançada (inclusive os antigos, de antes do contador) não mostra nada. */
 function LinhaFaltas({ jogo }) {

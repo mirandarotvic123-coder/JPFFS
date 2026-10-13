@@ -28,6 +28,16 @@ export const T = {
 };
 export const FUNDO_APP = `linear-gradient(180deg, ${T.fundoTopo} 0%, ${T.fundoMeio} 42%, ${T.fundoBase} 100%)`;
 
+/* Quadradinhos de "últimos jogos" (classificação e imagem PNG): vitória verde,
+ * empate cinza claro, derrota vermelho, ausência cinza escuro com traço. */
+export const COR_RESULTADO = {
+  V: { fundo: T.verde, texto: T.fundoBase },
+  E: { fundo: "#C9D0E0", texto: "#1A2440" },
+  D: { fundo: T.vermelho, texto: T.fundoBase },
+  ausente: { fundo: "#353D55", texto: "#8D96B0" },
+};
+export const corResultado = (r) => COR_RESULTADO[r] || COR_RESULTADO.ausente;
+
 export { default as ESCUDO } from "./assets/escudo.png";
 
 export const AMARELO = { cor: "AMARELO", chave: "amarelo", emoji: "🟡", hex: "#F5C518" };
