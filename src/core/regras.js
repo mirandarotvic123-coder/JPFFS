@@ -202,6 +202,7 @@ function calcularEstatisticas(base) {
       nivelAtraso: nivelInfo(estadoAtraso.contador, cfg),
       aproveitamento: teto > 0 ? Math.round(((h.P + pontosNovos) / teto) * 100) : 0,
       ultimos5: st.sequencia.slice(-5),
+      ultimos10: st.sequencia.slice(-10),
       temHistorico: !!hist.jogadores?.[j.id],
     };
   });

@@ -341,3 +341,43 @@ input:-webkit-autofill:focus {
 @media (min-width: 1024px) {
   .lista-dia { right: 20px; bottom: 20px; }
 }
+
+/* ============================================================================
+ * Classificação — cabeçalho e colunas "#" + "Jogador" CONGELADOS
+ * (ver TelaClassificacao.jsx)
+ * ----------------------------------------------------------------------------
+ * A tabela precisa rolar de lado no celular (overflow-x), e um elemento com
+ * overflow vira o "dono" do sticky: o cabeçalho só gruda se a rolagem
+ * VERTICAL também for desse mesmo elemento. Por isso a caixa da tabela tem
+ * altura limitada ao espaço da tela (abaixo da barra do topo e acima do menu
+ * de baixo) e rola nos dois sentidos; o cabeçalho gruda no topo dela e as
+ * duas primeiras colunas na esquerda. Quando a tabela chega ao fim, a rolagem
+ * continua na página normalmente.
+ * As células congeladas precisam de fundo opaco (senão o resto da linha
+ * aparece por baixo ao rolar) — as cores vêm prontas do componente.
+ * ==========================================================================*/
+.tabela-congelada {
+  overflow: auto;
+  overscroll-behavior-x: contain;
+  max-height: calc(100vh - var(--altura-cabecalho-app, 54px) - 70px - 16px);
+  max-height: calc(100dvh - var(--altura-cabecalho-app, 54px) - 70px - 16px);
+}
+@media (min-width: 1024px) {
+  .tabela-congelada {
+    max-height: calc(100vh - var(--altura-cabecalho-app, 54px) - 24px);
+    max-height: calc(100dvh - var(--altura-cabecalho-app, 54px) - 24px);
+  }
+}
+.tabela-congelada table { border-collapse: separate; border-spacing: 0; }
+.tabela-congelada thead th { position: sticky; top: 0; z-index: 3; }
+.tabela-congelada .col-fixa { position: sticky; z-index: 2; }
+.tabela-congelada thead th.col-fixa { z-index: 4; }
+.tabela-congelada .col-fixa-pos { left: 0; width: 34px; min-width: 34px; max-width: 34px; }
+.tabela-congelada .col-fixa-nome { left: 34px; }
+/* sombra na borda da coluna congelada só quando há conteúdo rolado por baixo dela */
+.tabela-congelada[data-rolou-lado="1"] .col-fixa-nome { box-shadow: 6px 0 8px -6px rgba(0, 0, 0, 0.7); }
+/* nome expandido (foto + detalhes) não pode virar uma coluna congelada gigante */
+.tabela-congelada .detalhe-jogador { max-width: 210px; }
+@media (max-width: 420px) {
+  .tabela-congelada .detalhe-jogador { max-width: 170px; }
+}
