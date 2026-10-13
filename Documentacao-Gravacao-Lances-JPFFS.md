@@ -161,10 +161,17 @@ na galeria (um por ângulo); se só 1 estava ativo, é 1 vídeo só.
 iPhone e Android gravam em formatos diferentes (MP4 / WebM). Cada um toca direto
 no player do sistema, **sem conversão** — não há um servidor para "padronizar".
 
-**Qualidade: 720p comprimido** (~1,8 Mbps, cerca de 5 MB por clipe de 20s),
-nas duas orientações. O
-plano gratuito do Supabase dá só 1 GB de armazenamento, então os clipes são
-salvos comprimidos para caber (ver seção 6).
+**Qualidade: 720p a 30 fps** (~2,5 Mbps, cerca de 6 MB por clipe de 20s), nas
+duas orientações. Até out/2026 a câmera abria em 1080p: com os dois gravadores
+em paralelo, um dos celulares não deu conta e entregou 16 fps, e o bitrate baixo
+espalhado em 1080p deixava a imagem borrada. Em 720p o aparelho mantém 30 fps e
+a imagem fica mais nítida. O tamanho do arquivo importa por causa dos limites do
+plano gratuito do Supabase: 1 GB de armazenamento e **5 GB/mês de download
+(egress)** — ver seção 6.
+
+**Cache no aparelho.** Cada clipe é baixado uma vez por aparelho e guardado no
+cache do navegador (até 7 dias). Rever, "Ver juntos" e "Baixar" saem desse
+cache, sem baixar de novo do Supabase.
 
 ---
 
@@ -323,19 +330,22 @@ bagunça.
 
 ## 6. Retenção e limpeza automática
 
-Todo lance salvo fica disponível na galeria por **5 dias corridos**, contando a
-partir da data da gravação.
+Todo lance salvo fica disponível na galeria por **3 dias corridos**, contando a
+partir da data da gravação (eram 5 até out/2026).
 
 Depois desse prazo, uma rotina automática apaga o vídeo. Essa rotina é uma
 **Edge Function** (`limpar-lances`) chamada por um **Cron Job** a cada 30
 minutos, e ela faz duas coisas:
 
-1. Apaga clipes com mais de 5 dias.
+1. Apaga clipes com mais de 3 dias.
 2. **Trava de segurança de espaço:** se o armazenamento do bucket passar de ~850
    MB (o plano gratuito do Supabase dá 1 GB), apaga os clipes mais antigos até
-   baixar — sem isso, o upload falharia no meio de uma rodada ao bater o teto.
+   baixar. Clipes das **últimas 24 horas ficam protegidos** — só são apagados se o
+   bucket passar de 1,5 GB. (Antes não havia essa proteção: em 10/10/2026, num dia
+   com Campeonato + Rachão e 4 câmeras, a trava apagou os lances do Campeonato
+   gravados horas antes.)
 
-**Recomendação:** quem quiser guardar um lance específico além dos 5 dias deve
+**Recomendação:** quem quiser guardar um lance específico além dos 3 dias deve
 baixar o vídeo da galeria antes do prazo vencer.
 
 ---
@@ -388,7 +398,7 @@ baixar o vídeo da galeria antes do prazo vencer.
 | Quantidade de câmeras | livre | livre |
 | Arquivo por lance | 1 vídeo por câmera (ângulo), juntos num cartão na Galeria | 1 vídeo por câmera (ângulo), juntos num cartão na Galeria |
 | Orientação | escolhida em cada câmera (horizontal padrão / vertical) | idem |
-| Retenção do vídeo | 5 dias corridos | 5 dias corridos |
+| Retenção do vídeo | 3 dias corridos | 3 dias corridos |
 
 ### 8.1. Decisões técnicas gerais
 
@@ -404,15 +414,16 @@ baixar o vídeo da galeria antes do prazo vencer.
   (`disparo` / `decisao`) e `presence` para numerar os ângulos.
 - **Lances sobrepostos.** Um novo clique durante o "depois" (até ~11s) de um lance
   em andamento é ignorado, para não sobrepor buffers na mesma câmera.
-- **Qualidade de vídeo.** 720p comprimido (~1,8 Mbps) — imposto pelo limite de 1
-  GB de armazenamento do plano gratuito do Supabase.
+- **Qualidade de vídeo.** 720p a 30 fps (~2,5 Mbps, ~6 MB por clipe) — equilíbrio
+  entre nitidez e os limites do plano gratuito do Supabase (1 GB de armazenamento,
+  5 GB/mês de egress). Cada aparelho guarda em cache o que já baixou.
 - **Acesso à câmera.** Por link `?camera=1` (não é aba do menu); exige login
   aprovado.
 - **Acesso à galeria.** Aberta a qualquer login aprovado; todos veem e baixam,
   só o organizador apaga (barrado também pela RLS). Vídeo servido por link
   assinado (bucket privado).
-- **Limpeza.** Edge Function `limpar-lances` + Cron Job a cada 30 minutos (5 dias
-  de retenção + trava de espaço em ~850 MB).
+- **Limpeza.** Edge Function `limpar-lances` + Cron Job a cada 30 minutos (3 dias
+  de retenção + trava de espaço em ~850 MB, que poupa as últimas 24h).
 - **Isolamento.** Todo o código de gravação está isolado do resto do app (barreira
   de erro + `try/catch`): se o Realtime cair, a súmula, a fila e o resultado do
   jogo seguem funcionando normalmente.

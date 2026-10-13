@@ -2,10 +2,18 @@
 // JPFFS — Edge Function "limpar-lances"
 // ----------------------------------------------------------------------------
 // Apaga clipes de lance:
-//   1) mais velhos que 5 dias (retenção combinada na doc);
+//   1) mais velhos que 3 dias (retenção — era 5; o grosso das visualizações
+//      acontece nos 2 primeiros dias, e menos dias = menos espaço ocupado);
 //   2) os mais antigos, se o bucket "lances" passar do limite de espaço
-//      (o plano free do Supabase dá 1 GB — sem isso, o upload falharia no
-//      meio de uma rodada ao bater o teto).
+//      (o plano free do Supabase dá 1 GB).
+//
+// A trava de espaço NÃO mexe em clipe recente (< PROTEGE_HORAS) enquanto o
+// bucket estiver abaixo do TETO_BYTES. Antes ela apagava "os mais antigos" sem
+// olhar a idade: no dia 10/10/2026 (Campeonato + Rachão, 4 câmeras, ~100
+// arquivos) o bucket passou de 850 MB no meio do Rachão e a limpeza apagou os
+// lances do Campeonato gravados horas antes. A cota de 1 GB do free é medida
+// como média no mês, então passar um pouco do limite num dia de jogo é bem
+// menos grave do que perder os lances do dia.
 //
 // Roda a cada 30 min via Cron Job (ver 006-lances-prod.sql).
 // Responde na hora (200) e faz a limpeza em segundo plano com
@@ -19,9 +27,11 @@
 // ============================================================================
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const RETENCAO_DIAS = 5;
-const LIMITE_BYTES = 850 * 1024 * 1024; // acima disso, começa a expurgar por espaço
-const ALVO_BYTES = 650 * 1024 * 1024;   // expurga até baixar disso
+const RETENCAO_DIAS = 3;
+const LIMITE_BYTES = 850 * 1024 * 1024;  // acima disso, começa a expurgar por espaço
+const ALVO_BYTES = 650 * 1024 * 1024;    // expurga até baixar disso
+const PROTEGE_HORAS = 24;                // clipe mais novo que isso só sai acima do TETO
+const TETO_BYTES = 1536 * 1024 * 1024;   // só aqui a trava encosta nos clipes recentes
 const LOTE = 100;
 
 const json = (body: unknown, status = 200) =>
@@ -60,17 +70,21 @@ async function limpar() {
       if (data.length < LOTE) break;
     }
 
-    // 2) espaço — se acima do limite, apaga os mais antigos até baixar do alvo
+    // 2) espaço — se acima do limite, apaga os mais antigos até baixar do alvo,
+    //    poupando os das últimas PROTEGE_HORAS enquanto não passar do TETO
     let { data: uso } = await sb.rpc("uso_bucket_lances");
     let bytes = Number(uso ?? 0);
+    const corteRecente = new Date(Date.now() - PROTEGE_HORAS * 3_600_000).toISOString();
     let voltas = 0;
     while (bytes > LIMITE_BYTES && voltas < 40) {
       voltas++;
-      const { data } = await sb
+      let q = sb
         .from("lances")
         .select("id, caminho_storage")
         .order("criado_em", { ascending: true })
-        .limit(50);
+        .limit(bytes > TETO_BYTES ? 10 : 50);
+      if (bytes <= TETO_BYTES) q = q.lt("criado_em", corteRecente);
+      const { data } = await q;
       if (!data || data.length === 0) break;
       await expurgar(data);
       const { data: uso2 } = await sb.rpc("uso_bucket_lances");

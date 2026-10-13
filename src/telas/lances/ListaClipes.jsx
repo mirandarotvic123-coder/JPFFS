@@ -1,20 +1,18 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { T } from "../../theme";
-import { urlAssinadaLance, tituloLance, nomeArquivoLance } from "../../core/repositorio";
+import { blobLance, limparCacheLances, tituloLance, nomeArquivoLance } from "../../core/repositorio";
 import { Botao, Painel, Secao } from "../../components/ui";
 import { IconeDownload, IconeLixeira, IconePlay } from "../../components/icones";
 
 const msgErro = (e) => e?.message || e?.error_description || String(e);
 
 /* Baixa o clipe no aparelho. No celular tenta o menu "compartilhar" do
- * sistema (que tem "Salvar vídeo"); senão, link de download comum. */
+ * sistema (que tem "Salvar vídeo"); senão, link de download comum. O vídeo sai
+ * do cache local se já foi visto (blobLance) — não gasta egress de novo. */
 async function baixarClipe(l, aoErro, aoAviso) {
   try {
     aoAviso?.("Preparando download…");
-    const url = await urlAssinadaLance(l.caminho_storage);
-    const resp = await fetch(url);
-    if (!resp.ok) throw new Error("falha ao buscar o vídeo");
-    const blob = await resp.blob();
+    const blob = await blobLance(l.caminho_storage);
     const nome = nomeArquivoLance(l);
     const arquivo = new File([blob], nome, { type: blob.type || "video/mp4" });
 
@@ -154,10 +152,26 @@ function ListaClipes({ lances, grupos, titulo = "Clipes", vazio = "Nenhum clipe 
   const [aviso, setAviso] = useState(null);
   const [baixandoId, setBaixandoId] = useState(null);
 
-  const abrir = (lista) =>
-    Promise.all(lista.map((l) => urlAssinadaLance(l.caminho_storage)))
-      .then(setVerUrls)
-      .catch((e) => setErro(msgErro(e)));
+  useEffect(() => { limparCacheLances(); }, []);
+
+  /* O player toca o arquivo inteiro já baixado (blob local), não o link do
+   * Storage: assim rever/voltar a barra não puxa o vídeo de novo da rede. */
+  const abrir = async (lista) => {
+    setErro(null);
+    setAviso(lista.length > 1 ? "Carregando vídeos…" : "Carregando vídeo…");
+    try {
+      const blobs = await Promise.all(lista.map((l) => blobLance(l.caminho_storage)));
+      setVerUrls(blobs.map((b) => URL.createObjectURL(b)));
+    } catch (e) {
+      setErro(msgErro(e));
+    } finally {
+      setAviso(null);
+    }
+  };
+
+  const fecharPlayer = () => {
+    setVerUrls((us) => { us?.forEach((u) => URL.revokeObjectURL(u)); return null; });
+  };
 
   const baixar = async (l) => {
     setErro(null);
@@ -203,7 +217,7 @@ function ListaClipes({ lances, grupos, titulo = "Clipes", vazio = "Nenhum clipe 
         cartoes(lances)
       )}
 
-      {verUrls && <Player urls={verUrls} onFechar={() => setVerUrls(null)} />}
+      {verUrls && <Player urls={verUrls} onFechar={fecharPlayer} />}
     </section>
   );
 }

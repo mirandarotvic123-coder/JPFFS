@@ -537,7 +537,7 @@ que sai é um arquivo **encerrado de verdade** pelo navegador (duração correta
 buraco). Concatenar chunks de uma gravação em andamento **não funciona** (o
 navegador só finaliza os metadados no `stop()`).
 
-- `abrirCamera()` — `getUserMedia` cru (1920×1080 ideal).
+- `abrirCamera()` — `getUserMedia` cru (1280×720 ideal, 30 fps — 1080p com os dois gravadores derrubava o fps).
 - `criarStreamVertical(streamRaw)` — desenha cada frame num `<canvas>` 720×1280 e
   devolve `canvas.captureStream()` + áudio. Usado só no **modo vertical**; gira 90°
   quando a câmera vem deitada e a tela está em pé (iPhone entrega a câmera
@@ -692,9 +692,13 @@ Resumo para desenvolvimento:
   para retomar", que reinicia só os gravadores, sem derrubar câmera nem canal.
 - **Orientação** escolhida pelo operador na `TelaCamera` (`jpffs:camera-orientacao`):
   horizontal (padrão, pega mais campo) grava cru; vertical passa pelo canvas.
-- **Vídeo:** 720p comprimido (~1,8 Mbps, ~5 MB / 20 s) — imposto pelo limite de
-  1 GB de storage do plano free.
-- **Retenção:** 5 dias corridos + trava de espaço (ver seção 9.3).
+- **Vídeo:** 720p a 30 fps (~2,5 Mbps, ~6 MB / 20 s) — limites do plano free:
+  1 GB de storage e 5 GB/mês de egress.
+- **Cache local:** `blobLance()` (repositorio.js) baixa o clipe uma vez e guarda na
+  Cache API (`jpffs-lances-v1`, 7 dias); Ver/Ver juntos/Baixar tocam o blob local.
+  O link assinado muda a cada chamada, então sem isso cada visualização baixava o
+  arquivo inteiro de novo (estourou o egress em out/2026).
+- **Retenção:** 3 dias corridos + trava de espaço (ver seção 9.3).
 
 ### 8.1. Pendências da feature (feedback do 1º teste em campo, 03/09/2026)
 
@@ -748,10 +752,10 @@ Edge Function **`limpar-lances`** ([`supabase-migracoes/limpar-lances/index.ts`]
 + **Cron Job** a cada 30 min (`*/30 * * * *`). Responde 200 na hora e limpa em
 segundo plano (`EdgeRuntime.waitUntil`).
 
-1. Apaga clipes com `criado_em` > 5 dias.
+1. Apaga clipes com `criado_em` > 3 dias.
 2. **Trava de espaço:** se `uso_bucket_lances()` > 850 MB, apaga os mais antigos
-   até baixar de ~650 MB (plano free = 1 GB; sem isso o upload falharia no meio de
-   uma rodada).
+   até baixar de ~650 MB (plano free = 1 GB), **sem tocar nos clipes das últimas
+   24h** enquanto o bucket estiver abaixo de 1,5 GB (`PROTEGE_HORAS`/`TETO_BYTES`).
 
 Sempre apaga o arquivo no Storage **antes** da linha da tabela — se o storage
 falhar, a linha fica e a próxima execução tenta de novo.
