@@ -554,6 +554,12 @@ function Documentacao({ cfg }) {
           <div className="flex items-center gap-2"><span style={{ color: T.secundario, fontWeight: 800 }}>(*)</span> pontuação a confirmar — sinaliza que os pontos aguardam alguma confirmação (ex.: pagamento)</div>
           <div className="flex items-center gap-2"><span style={{ background: "rgba(192,140,255,.22)", color: T.roxo, fontSize: 9, fontWeight: 800, padding: "1px 4px", borderRadius: 3 }}>CONV</span> jogador convidado, fora da classificação oficial</div>
           <div className="flex items-center gap-2"><span style={{ fontStyle: "italic", color: T.laranja, fontSize: 11 }}>itálico laranja</span> na súmula = entrou só pra completar a equipe, não pontuou nada</div>
+          <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+            <span className="flex" style={{ gap: 2 }}>
+              <QuadroResultado r="V" rodada={27} /><QuadroResultado r="E" rodada={28} /><QuadroResultado r="D" rodada={29} /><QuadroResultado r="–" rodada={30} />
+            </span>
+            coluna "Últ. 5": cada quadrado é uma rodada (o número dentro) — verde vitória, cinza claro empate, vermelho derrota, cinza escuro riscado ausência. Tocando no jogador aparecem os 10 últimos
+          </div>
         </div>
       </ItemDoc>
     </div>

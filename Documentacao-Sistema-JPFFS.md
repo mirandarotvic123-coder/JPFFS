@@ -1,7 +1,7 @@
 # JPFFS — Documentação técnica do sistema
 
 **Campeonato JPFFS + Rachão + Copa Hendor + Gravação de Lances**
-Referência de desenvolvimento · criada em 05/09/2026 · atualizada em 06/10/2026 (súmula nova, lista do dia, ordem do Rachão pelo Art. 35º §2º, Estatuto 2026) · cobre o que está no ar hoje
+Referência de desenvolvimento · criada em 05/09/2026 · atualizada em 13/10/2026 (vídeos de lance no Cloudflare R2, tabela de classificação congelada com os 10 últimos jogos) · cobre o que está no ar hoje
 
 > Documento voltado para quem mexe no código. Descreve
 > arquitetura, modelo de dados, regras de negócio e operação. Para o comportamento
@@ -95,6 +95,12 @@ Node 18+. Scripts: `npm run dev` (Vite, porta 5173), `npm run build` (→ `dist/
                     │             lances *,        │
                     │             canal de câmera  │
                     │  Edge Fn + Cron: limpar-lances│
+                    │  Edge Fn: lances-r2 (assina) │
+                    └──────────────┬───────────────┘
+                                   │  links assinados (S3 API)
+                    ┌──────────────┴───────────────┐
+                    │  Cloudflare R2 (free, 10 GB) │
+                    │  bucket jpffs-lances: vídeos │
                     └──────────────────────────────┘
 ```
 
@@ -267,8 +273,9 @@ que impede autopromoção.
 
 ### 3.3. Tabela `lances` — metadados dos clipes
 
-Ver [`supabase-migracoes/004-lances.sql`](supabase-migracoes/004-lances.sql) e
-[`006-lances-prod.sql`](supabase-migracoes/006-lances-prod.sql).
+Ver [`supabase-migracoes/004-lances.sql`](supabase-migracoes/004-lances.sql),
+[`006-lances-prod.sql`](supabase-migracoes/006-lances-prod.sql) e
+[`008-lances-r2.sql`](supabase-migracoes/008-lances-r2.sql).
 
 | Coluna | Tipo | Observação |
 | --- | --- | --- |
@@ -279,7 +286,9 @@ Ver [`supabase-migracoes/004-lances.sql`](supabase-migracoes/004-lances.sql) e
 | `tipo` | `text` | `gol` \| `lance` |
 | `jogador_id`, `jogador_nome` | `text` | opcional |
 | `angulo` | `int` | número da câmera (1, 2, …), via Presence |
-| `caminho_storage` | `text` | `lances/<partida_id>/<ts>-a<angulo>.<ext>` |
+| `caminho_storage` | `text` | `<partida_id>/<ts>-a<angulo>.<ext>` (chave no R2 ou no bucket `lances`) |
+| `armazenamento` | `text` | `r2` (novos, desde 13/10/2026) \| `supabase` (antigos / plano B se o R2 falhar) — 008 |
+| `tamanho_bytes` | `bigint` | tamanho do arquivo; a trava de espaço do R2 soma esta coluna — 008 |
 | `formato` | `text` | `video/mp4` (iPhone) \| `video/webm` (Android) |
 | `criado_por` | `uuid` | FK → `auth.users` |
 | `criado_em` | `timestamptz` | |
@@ -292,7 +301,8 @@ Realtime habilitado (`alter publication supabase_realtime add table public.lance
 | Bucket | Público? | Uso | Acesso |
 | --- | --- | --- | --- |
 | `avatares` | sim (marcado Public) | fotos de jogador | upload/update só organizador; leitura livre pela URL pública |
-| `lances` | **não** | clipes de vídeo | tudo por `createSignedUrl` (link de 1 h); upload por qualquer aprovado; delete só organizador |
+| `lances` | **não** | clipes **antigos** e plano B (desde 13/10/2026 os novos vão pro R2) | tudo por `createSignedUrl` (link de 1 h); upload por qualquer aprovado; delete só organizador |
+| R2 `jpffs-lances` (Cloudflare) | **não** | clipes de vídeo novos | só por link assinado da Edge Function `lances-r2` (PUT 15 min / GET 1 h); CORS `*` em GET/PUT/HEAD; chave em secrets `R2_*` do Supabase |
 
 ### 3.5. `localStorage` (por aparelho, nunca sincroniza)
 
@@ -458,6 +468,10 @@ alfabetica`), separa linha × goleiro para os rankings de categoria, marca a **z
 da Supercopa** (12 de linha + 2 goleiros, com os campeões da Copa Hendor — `campeoesHendor(base)` —
 entrando mesmo fora do corte), e deriva as **estrelas por posição na tabela**
 (1–3 → 5★, 4–6 → 4★, 7–9 → 3★, 10–14 → 2★, resto → 1★). Convidados ficam de fora.
+Cada linha também traz a sequência das rodadas **jogadas no app** (as do
+`historicoInicial` não têm detalhe por rodada): `ultimos5` / `ultimos10` (letras
+`V`/`E`/`D`/`–`, usadas no CSV e no PNG) e `ultimosJogos` — os 10 últimos como
+`{ r, rodada }`, com o nº da rodada, que é o que a tabela da tela mostra.
 
 **Motor de sorteio** (`sortearEquipes`): recebe as "entradas" (presentes aptos com
 estrelas/aproveitamento), distribui em `partidas·2` times, e roda uma **busca
@@ -612,7 +626,7 @@ lança as cobranças, troca jogadores e dá W.O. direto nos cartões das partida
 
 | Tela | Aba | Quem vê | O que faz |
 | --- | --- | --- | --- |
-| [`TelaClassificacao`](src/telas/TelaClassificacao.jsx) | Tabela | todos | Classificação geral, resultados por rodada, e a aba **Documentação** (regras do Estatuto, dentro do app). Exporta CSV/PNG. |
+| [`TelaClassificacao`](src/telas/TelaClassificacao.jsx) | Tabela | todos | Classificação geral, resultados por rodada, e a aba **Documentação** (regras do Estatuto, dentro do app). Exporta CSV/PNG. Tabela com **cabeçalho e colunas "#"/"Jogador" congelados** (CSS `.tabela-congelada` em `estilo.css`: a caixa rola nos dois sentidos com altura limitada à tela, entre a barra do topo e o menu; células congeladas com fundo opaco). Coluna **Últ. 5**: um quadrado por rodada com o **nº da rodada** dentro e a cor do resultado (`COR_RESULTADO` em `theme.js`: vitória verde, empate cinza claro, derrota vermelho, ausência cinza escuro com o número riscado) e mini legenda no cabeçalho. **Tocar no jogador** abre foto, detalhes de cartões/atrasos e os **10 últimos** em duas linhas de 5 (do mais antigo ao mais recente). |
 | [`TelaRodada`](src/telas/TelaRodada.jsx) | Rodada | organizador | Fluxo de 3 etapas: **Presença** (chamada, registra `ordemChegada`; pendência `total` trava o botão e `sorteio` marca mas fica fora do sorteio) → **Sorteio** (motor de equilíbrio, ajuste fino arrastando, "Gravar partidas") → **Partidas**: uma [`Sumula`](src/telas/rodada/Sumula.jsx) por partida — cabeçalho "PARTIDA N" com Recolher/Abrir, placar estilo transmissão (tocar no número liga a correção à mão), um bloco por time com **+ Gol** (folha: quem fez → assistência; gol contra e não computado na mesma folha; dispara as câmeras no 1º toque), lista de gols com × e o elenco em tabela (G/A/cartões) — **tocar no jogador** abre gols, assistências, cartões, ⇄ trocar e "só completando" (Art. 35º §1º); embaixo só Encerrar/Reabrir. Widget recolhível [`ListaDoDia`](src/telas/rodada/ListaDoDia.jsx) no canto inferior direito com a ordem do Rachão. Ajustes P⁺/P⁻; fechar rodada. |
 | [`TelaRachao`](src/telas/TelaRachao.jsx) | Rachão | organizador | Abertura (puxa a ordem da rodada do dia via `ordemRachaoDaRodada` — quem completou partida no fim, com etiqueta **+P2** na lista lateral — **ou** chamada manual quando não há rodada) → quadra ao vivo, fila arrastável, próximos times, histórico do dia; **reabrir a última partida** e **decidir na mão quem fica** (seção 6.2). Fila, Goleiros e Adicionar à fila numa coluna centralizada de 540px. Estado no `localStorage`. Jogador com pendência `total` não entra na lista nem na fila. |
 | [`TelaElenco`](src/telas/TelaElenco.jsx) | Elenco | organizador | Cadastro/edição de jogadores, foto, posição, flags (ativo, convidado, **pendência financeira com efeito**: só avisar / sem sorteio / bloqueado), importar CSV/JSON. |
@@ -736,7 +750,9 @@ painel, em ordem. Todos idempotentes.
 | `005-backfill-perfis.sql` | cria `perfis` p/ contas órfãs (criadas antes do trigger da 001 existir). Já rodado; não deve mais ser necessário |
 | `006-lances-prod.sql` | Realtime em `lances`, coluna `partida_rotulo`, função `uso_bucket_lances()`, `pg_net` + `pg_cron`, índices, e o passo-a-passo do Cron |
 | `007-lances-service-role.sql` | `grant select, delete on lances to service_role` — sem isso a Edge Function de limpeza dava `permission denied` |
+| `008-lances-r2.sql` | colunas `armazenamento` e `tamanho_bytes` em `lances`, função `uso_r2_lances()`, repete o grant do 007 |
 | `limpar-lances/index.ts` | Edge Function da limpeza (ver 9.3) |
+| `lances-r2/index.ts` | Edge Function que assina upload/leitura e apaga no R2 (passo a passo em `lances-r2/LEIAME.md`) |
 
 Ao adicionar uma tabela nova: **lembrar do `GRANT ... to authenticated`** (seção
 4.2) e, se for consumida por Realtime, `add table` na publication +
@@ -772,6 +788,12 @@ falhar, a linha fica e a próxima execução tenta de novo.
   `Authorization: Bearer <anon JWT>` no `net.http_post`. Com `headers := '{}'`
   toda chamada voltava **401**.
 - O `service_role` precisa de `select, delete` em `lances` (migração 007).
+- **`lances-r2` fica com "Verify JWT with legacy secret" DESLIGADO**: o projeto
+  assina o login com a chave nova (ECC P-256) e essa verificação do gateway
+  recusaria todo usuário logado. A função confere o login sozinha
+  (`eh_aprovado` / `eh_organizador_aprovado` / RLS) — sem login, tudo dá 403.
+  A `limpar-lances` continua com a verificação ligada (o Cron manda o anon JWT
+  legado, que ainda vale).
 
 Conferir execuções — `cron.job_run_details` mostrar "succeeded" só quer dizer que
 o `pg_net` enfileirou a requisição; o status HTTP de verdade está em
