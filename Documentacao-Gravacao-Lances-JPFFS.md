@@ -1,7 +1,7 @@
 # JPFFS — Sistema de Gravação de Lances
 
 **Replay automático de gols e lances — Campeonato e Rachão**
-Documentação técnica e funcional · versão em produção · atualizada em 02/10/2026
+Documentação técnica e funcional · versão em produção · atualizada em 13/10/2026 (vídeos no Cloudflare R2, 720p/30 fps, clipes no ar por 3 dias)
 
 > Esta documentação substitui o PDF original e descreve o sistema **como ele
 > está no ar hoje**.
