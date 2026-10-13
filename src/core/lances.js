@@ -194,11 +194,11 @@ export function criarStreamVertical(streamRaw) {
 export function criarGravador(stream, { aoMudarEstado } = {}) {
   const mime = formatosSuportados()[0] || "";
   const ext = mime.startsWith("video/mp4") ? "mp4" : "webm";
-  /* ~2,5 Mbps de vídeo + 64 kbps de áudio ≈ 6,4 MB por clipe de 20s. Mais que
-   * isso estoura o egress do Supabase free (cada visualização baixa o arquivo
-   * inteiro). Obs.: o Safari às vezes ignora o bitrate pedido. */
+  /* ~4 Mbps de vídeo + 64 kbps de áudio ≈ 10 MB por clipe de 20s — boa nitidez
+   * em 720p com jogada rápida. O vídeo fica no Cloudflare R2 (download grátis,
+   * 10 GB); a limpeza segura o espaço. Obs.: o Safari às vezes ignora o bitrate. */
   const opts = {
-    videoBitsPerSecond: 2_500_000,
+    videoBitsPerSecond: 4_000_000,
     audioBitsPerSecond: 64_000,
     ...(mime ? { mimeType: mime } : {}),
   };

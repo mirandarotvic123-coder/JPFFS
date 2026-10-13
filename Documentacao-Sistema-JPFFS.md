@@ -692,13 +692,18 @@ Resumo para desenvolvimento:
   para retomar", que reinicia só os gravadores, sem derrubar câmera nem canal.
 - **Orientação** escolhida pelo operador na `TelaCamera` (`jpffs:camera-orientacao`):
   horizontal (padrão, pega mais campo) grava cru; vertical passa pelo canvas.
-- **Vídeo:** 720p a 30 fps (~2,5 Mbps, ~6 MB / 20 s) — limites do plano free:
-  1 GB de storage e 5 GB/mês de egress.
+- **Vídeo:** 720p a 30 fps (~4 Mbps, ~10 MB / 20 s).
+- **Armazenamento:** arquivo no **Cloudflare R2** (free: 10 GB, egress grátis);
+  metadados na tabela `lances` (colunas `armazenamento` 'r2'|'supabase' e
+  `tamanho_bytes`, migração 008). Edge Function `lances-r2`
+  ([`supabase-migracoes/lances-r2/index.ts`](supabase-migracoes/lances-r2/index.ts))
+  assina PUT/GET com aws4fetch e apaga (só organizador). `enviarLance` cai pro
+  Supabase Storage se o R2 falhar.
 - **Cache local:** `blobLance()` (repositorio.js) baixa o clipe uma vez e guarda na
   Cache API (`jpffs-lances-v1`, 7 dias); Ver/Ver juntos/Baixar tocam o blob local.
   O link assinado muda a cada chamada, então sem isso cada visualização baixava o
   arquivo inteiro de novo (estourou o egress em out/2026).
-- **Retenção:** 3 dias corridos + trava de espaço (ver seção 9.3).
+- **Retenção:** 5 dias corridos + trava de espaço (ver seção 9.3).
 
 ### 8.1. Pendências da feature (feedback do 1º teste em campo, 03/09/2026)
 
@@ -752,10 +757,11 @@ Edge Function **`limpar-lances`** ([`supabase-migracoes/limpar-lances/index.ts`]
 + **Cron Job** a cada 30 min (`*/30 * * * *`). Responde 200 na hora e limpa em
 segundo plano (`EdgeRuntime.waitUntil`).
 
-1. Apaga clipes com `criado_em` > 3 dias.
-2. **Trava de espaço:** se `uso_bucket_lances()` > 850 MB, apaga os mais antigos
-   até baixar de ~650 MB (plano free = 1 GB), **sem tocar nos clipes das últimas
-   24h** enquanto o bucket estiver abaixo de 1,5 GB (`PROTEGE_HORAS`/`TETO_BYTES`).
+1. Apaga clipes com `criado_em` > 5 dias (R2 e Supabase Storage).
+2. **Trava de espaço** por armazenamento (`TRAVAS`): R2 via `uso_r2_lances()`
+   (soma de `tamanho_bytes`) > 8 GB → apaga até 6,5 GB; Supabase via
+   `uso_bucket_lances()` > 850 MB → até 650 MB. **Não toca nos clipes das últimas
+   24h** abaixo do teto (9,5 GB / 1,5 GB).
 
 Sempre apaga o arquivo no Storage **antes** da linha da tabela — se o storage
 falhar, a linha fica e a próxima execução tenta de novo.

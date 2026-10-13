@@ -12,7 +12,7 @@ const msgErro = (e) => e?.message || e?.error_description || String(e);
 async function baixarClipe(l, aoErro, aoAviso) {
   try {
     aoAviso?.("Preparando download…");
-    const blob = await blobLance(l.caminho_storage);
+    const blob = await blobLance(l);
     const nome = nomeArquivoLance(l);
     const arquivo = new File([blob], nome, { type: blob.type || "video/mp4" });
 
@@ -160,7 +160,7 @@ function ListaClipes({ lances, grupos, titulo = "Clipes", vazio = "Nenhum clipe 
     setErro(null);
     setAviso(lista.length > 1 ? "Carregando vídeos…" : "Carregando vídeo…");
     try {
-      const blobs = await Promise.all(lista.map((l) => blobLance(l.caminho_storage)));
+      const blobs = await Promise.all(lista.map((l) => blobLance(l)));
       setVerUrls(blobs.map((b) => URL.createObjectURL(b)));
     } catch (e) {
       setErro(msgErro(e));
