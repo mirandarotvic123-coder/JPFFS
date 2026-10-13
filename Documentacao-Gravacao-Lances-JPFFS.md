@@ -337,14 +337,14 @@ bagunça.
 
 ## 6. Retenção e limpeza automática
 
-Todo lance salvo fica disponível na galeria por **5 dias corridos**, contando a
+Todo lance salvo fica disponível na galeria por **3 dias corridos**, contando a
 partir da data da gravação.
 
 Depois desse prazo, uma rotina automática apaga o vídeo. Essa rotina é uma
 **Edge Function** (`limpar-lances`) chamada por um **Cron Job** a cada 30
 minutos, e ela faz duas coisas:
 
-1. Apaga clipes com mais de 5 dias (no R2 e no Supabase).
+1. Apaga clipes com mais de 3 dias (no R2 e no Supabase).
 2. **Trava de segurança de espaço:** se o R2 passar de 8 GB (o gratuito dá 10 GB)
    — ou os clipes antigos no Supabase passarem de ~850 MB (gratuito: 1 GB) —,
    apaga os clipes mais antigos até baixar. Clipes das **últimas 24 horas ficam
@@ -352,7 +352,7 @@ minutos, e ela faz duas coisas:
    com Campeonato + Rachão e 4 câmeras, a trava apagou os lances do Campeonato
    gravados horas antes.)
 
-**Recomendação:** quem quiser guardar um lance específico além dos 5 dias deve
+**Recomendação:** quem quiser guardar um lance específico além dos 3 dias deve
 baixar o vídeo da galeria antes do prazo vencer.
 
 ---
@@ -405,7 +405,7 @@ baixar o vídeo da galeria antes do prazo vencer.
 | Quantidade de câmeras | livre | livre |
 | Arquivo por lance | 1 vídeo por câmera (ângulo), juntos num cartão na Galeria | 1 vídeo por câmera (ângulo), juntos num cartão na Galeria |
 | Orientação | escolhida em cada câmera (horizontal padrão / vertical) | idem |
-| Retenção do vídeo | 5 dias corridos | 5 dias corridos |
+| Retenção do vídeo | 3 dias corridos | 3 dias corridos |
 
 ### 8.1. Decisões técnicas gerais
 
@@ -430,7 +430,7 @@ baixar o vídeo da galeria antes do prazo vencer.
 - **Acesso à galeria.** Aberta a qualquer login aprovado; todos veem e baixam,
   só o organizador apaga (barrado também pela RLS e pela Edge Function). Vídeo
   servido por link assinado (bucket privado no R2).
-- **Limpeza.** Edge Function `limpar-lances` + Cron Job a cada 30 minutos (5 dias
+- **Limpeza.** Edge Function `limpar-lances` + Cron Job a cada 30 minutos (3 dias
   de retenção + trava de espaço em 8 GB no R2, que poupa as últimas 24h).
 - **Isolamento.** Todo o código de gravação está isolado do resto do app (barreira
   de erro + `try/catch`): se o Realtime cair, a súmula, a fila e o resultado do

@@ -703,7 +703,7 @@ Resumo para desenvolvimento:
   Cache API (`jpffs-lances-v1`, 7 dias); Ver/Ver juntos/Baixar tocam o blob local.
   O link assinado muda a cada chamada, então sem isso cada visualização baixava o
   arquivo inteiro de novo (estourou o egress em out/2026).
-- **Retenção:** 5 dias corridos + trava de espaço (ver seção 9.3).
+- **Retenção:** 3 dias corridos + trava de espaço (ver seção 9.3).
 
 ### 8.1. Pendências da feature (feedback do 1º teste em campo, 03/09/2026)
 
@@ -757,7 +757,7 @@ Edge Function **`limpar-lances`** ([`supabase-migracoes/limpar-lances/index.ts`]
 + **Cron Job** a cada 30 min (`*/30 * * * *`). Responde 200 na hora e limpa em
 segundo plano (`EdgeRuntime.waitUntil`).
 
-1. Apaga clipes com `criado_em` > 5 dias (R2 e Supabase Storage).
+1. Apaga clipes com `criado_em` > 3 dias (R2 e Supabase Storage).
 2. **Trava de espaço** por armazenamento (`TRAVAS`): R2 via `uso_r2_lances()`
    (soma de `tamanho_bytes`) > 8 GB → apaga até 6,5 GB; Supabase via
    `uso_bucket_lances()` > 850 MB → até 650 MB. **Não toca nos clipes das últimas
