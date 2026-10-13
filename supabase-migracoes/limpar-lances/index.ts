@@ -2,7 +2,7 @@
 // JPFFS — Edge Function "limpar-lances"
 // ----------------------------------------------------------------------------
 // Apaga clipes de lance:
-//   1) mais velhos que 5 dias (retenção combinada na doc);
+//   1) mais velhos que 3 dias (retenção combinada na doc);
 //   2) os mais antigos, se o armazenamento passar do limite de espaço.
 //
 // Desde out/2026 os vídeos novos vão pro Cloudflare R2 (free: 10 GB, download
@@ -33,7 +33,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { AwsClient } from "https://esm.sh/aws4fetch@1.0.20";
 
-const RETENCAO_DIAS = 5;
+const RETENCAO_DIAS = 3;
 const PROTEGE_HORAS = 24; // clipe mais novo que isso só sai se o uso passar do teto
 const LOTE = 100;
 const MB = 1024 * 1024;

@@ -123,7 +123,7 @@ function TelaGaleria({ perfil, avisar }) {
 
   return (
     <div className="space-y-4">
-      <CabecalhoPagina titulo="Lances" descricao="Clipes de gols e lances gravados pelas câmeras. Ficam disponíveis por 5 dias." />
+      <CabecalhoPagina titulo="Lances" descricao="Clipes de gols e lances gravados pelas câmeras. Ficam disponíveis por 3 dias." />
 
       {erro && (
         <Painel className="p-3" style={{ borderColor: T.vermelho, background: "rgba(255,107,107,.1)" }}>
