@@ -59,8 +59,10 @@ só pode subir pra produção depois dos passos 1 a 6.
 6. **SQL.** SQL Editor → cole e rode `supabase-migracoes/008-lances-r2.sql`.
 
 7. **Função nova `lances-r2`.** Edge Functions → **Deploy a new function** →
-   nome `lances-r2` → cole `supabase-migracoes/lances-r2/index.ts` → Deploy
-   (deixe **Verify JWT ligado**).
+   nome `lances-r2` → cole `supabase-migracoes/lances-r2/index.ts` → Deploy.
+   Depois, em Settings da função, **desligue "Verify JWT with legacy secret"** →
+   Save changes. O login dos usuários usa a chave nova (ECC) e seria recusado;
+   a própria função confere o login pelo banco.
 
 8. **Atualizar a `limpar-lances`.** Edge Functions → `limpar-lances` → Code →
    substitua pelo conteúdo de `supabase-migracoes/limpar-lances/index.ts` →

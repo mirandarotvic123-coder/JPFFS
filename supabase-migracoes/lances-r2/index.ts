@@ -19,7 +19,10 @@
 // Secrets (Painel → Edge Functions → Secrets):
 //   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET
 // SUPABASE_URL e SUPABASE_ANON_KEY o Supabase injeta sozinho.
-// Deploy com "Verify JWT" LIGADO (padrão).
+// Deploy com "Verify JWT with legacy secret" DESLIGADO: o login dos usuários é
+// assinado pela chave nova do projeto (ECC P-256), que essa verificação do
+// gateway recusa. Quem confere o login é esta função, pelo banco (eh_aprovado /
+// RLS) — sem login válido, toda ação devolve 403.
 // ============================================================================
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { AwsClient } from "https://esm.sh/aws4fetch@1.0.20";
