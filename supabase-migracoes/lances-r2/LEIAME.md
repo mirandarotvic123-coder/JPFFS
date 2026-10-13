@@ -33,13 +33,17 @@ só pode subir pra produção depois dos passos 1 a 6.
    O `*` é seguro aqui: o bucket é privado e só aceita links assinados pela
    Edge Function. Sem link assinado não se lê nem grava nada.
 
-4. **Criar a chave de acesso.** R2 → **Manage API tokens** (ou "API" →
-   "Manage API tokens") → **Create API token**:
+4. **Criar a chave de acesso.** Menu lateral **Storage & databases → R2 Object
+   Storage** → na página Overview, role até o quadro **Account Details** (coluna
+   da direita, embaixo) → botão **Manage API Tokens** → **Create Account API
+   token** (o primeiro, "recommended"):
+   - Token name: `jpffs-lances`
    - Permissions: **Object Read & Write**
-   - Specify bucket: **apenas `jpffs-lances`**
-   - Create. Anote os 3 valores que aparecem: **Access Key ID**,
-     **Secret Access Key** (só aparece uma vez) e o **Account ID** (também
-     aparece na página inicial do R2).
+   - Specify bucket(s): **Apply to specific buckets only** → `jpffs-lances`
+   - TTL: **Forever**; Client IP filtering: deixe vazio
+   - **Create Account API Token**. Na tela seguinte, copie o **Access Key ID** e
+     o **Secret Access Key** (só aparece uma vez). O **Account ID** fica no
+     mesmo quadro Account Details.
 
 ## Supabase (painel do projeto JPFFS)
 
